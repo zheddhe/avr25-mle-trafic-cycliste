@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avr25-mle-trafic-cycliste"
+version = "0.1.0"
+description = "bike trafic science project for MLE April 2025 promotion"
+authors = [
+    { name = "Rémy CANAL", email = "remy.canal@live.fr" },
+    { name = "Elias DJOUADI", email = "dummy@mail.com" },
+    { name = "Koldé HOUESSOU", email = "dummy@mail.com" }
+]
+license = "MIT"
+requires-python = ">=3.9,<3.13"
+
+# NOTE: no direct dependencies — all handled through optional profiles
+dependencies = []
+
+[project.optional-dependencies]
+
+py312 = [
+    "pandas==2.2.3",
+    "scikit-learn==1.5.0",
+    "xgboost==3.0.2",
+    "pyproj==3.7.1",
+]
+
+test = [
+    "pytest==8.3.5",
+    "coverage==7.8.2",
+    "pytest-cov==6.1.1",
+    "flake8==7.2.0",
+]
+
+dev = [
+    "dvc[s3]",
+    "notebook==7.4.3",
+    "nox",
+    "uv",
+]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.urls]
+Source = "https://github.com/zheddhe/avr25-mle-trafic-cycliste"
+
+[tool.setuptools]
+packages = { find = {} }
+include-package-data = true
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-config=.coveragerc --cov-report=html --cov-report=term"
+testpaths = ["tests"]
+pythonpath = ["."]

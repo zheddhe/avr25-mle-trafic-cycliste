@@ -1,0 +1,43 @@
+name: Workflow CI on main branch
+
+on:
+  push: # Full Feedback on Push on main branch
+    branches:
+      - main
+  pull_request: # Full Feedback on Pull Request on main branch
+    branches:
+      - main
+  workflow_dispatch: # Full feedback on Manual demand
+
+jobs:
+  ci-checks:
+    name: 🔍 Tests & Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install '.[py312, test]'
+
+      - name: Check code style with flake8
+        run: |
+          flake8
+
+      - name: Run tests with coverage
+        run: |
+          pytest
+
+      - name: Upload HTML coverage report locally
+        uses: actions/upload-artifact@v4
+        with:
+          name: htmlcov
+          path: htmlcov
