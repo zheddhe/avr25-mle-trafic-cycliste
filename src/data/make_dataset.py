@@ -1,13 +1,13 @@
 import os
 import logging
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from src.common.preprocessing_util import train_test_split_time_aware
 
 # -------------------------------------------------------------------
 # Configuration des logs
 # -------------------------------------------------------------------
 os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "split.log")
+log_path = os.path.join("logs", "make_dataset.log")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,40 +18,49 @@ logging.basicConfig(
     ]
 )
 
+logger = logging.getLogger(__name__)
+
 
 # -------------------------------------------------------------------
 # Script principal
 # -------------------------------------------------------------------
 def main():
-    # chemins
-    raw_path = os.path.join("data", "raw", "raw.csv")
+    '''
+    This script extract the raw information based on the SITE_TEST dictionnary
+    for this particular counter and in between the mentionned range
+    Arguments:
+        None (from dictionnary directly)
+    Returns:
+        exit 1 if error during processing
+        exit 0 if OK
+    '''
+    # working paths
+    raw_path = os.path.join("data", "interim",
+                            "df_compteur.csv")
     processed_dir = os.path.join("data", "processed")
     os.makedirs(processed_dir, exist_ok=True)
 
-    # chargement des données
+    # data load
     logging.info(f"Chargement des données brutes depuis {raw_path}")
-    df = pd.read_csv(raw_path)
+    df = pd.read_csv(raw_path, index_col=0)
 
-    # séparation features (la date n'est pas considérée comme pertinente et mise de côté) / cible
-    target_col = "silica_concentrate"
-    date_col = "date"
-    X = df.drop(columns=[target_col, date_col])
-    y = df[target_col]
-
-    # split train/test
-    logging.info("Découpage train/test en cours (80%/20%)")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+    # split train/test and features/dates/target
+    logging.info("Découpage train/test en cours (75%/25%)")
+    X_train, X_train_dates, X_test, X_test_dates, y_train, y_test = train_test_split_time_aware(
+        df, ["date_et_heure_de_comptage"], "comptage_horaire", test_size=0.2
     )
 
-    # sauvegarde
+    # save the processed data
     logging.info("Sauvegarde des fichiers dans data/processed")
-    X_train.to_csv(os.path.join(processed_dir, "X_train.csv"), index=False)
-    X_test.to_csv(os.path.join(processed_dir, "X_test.csv"), index=False)
-    y_train.to_csv(os.path.join(processed_dir, "y_train.csv"), index=False, header=True)
-    y_test.to_csv(os.path.join(processed_dir, "y_test.csv"), index=False, header=True)
+    X_train.to_csv(os.path.join(processed_dir, "X_train.csv"), index=True)
+    X_test.to_csv(os.path.join(processed_dir, "X_test.csv"), index=True)
+    X_train_dates.to_csv(os.path.join(processed_dir, "X_train_dates.csv"), index=True, header=True)
+    X_test_dates.to_csv(os.path.join(processed_dir, "X_test_dates.csv"), index=True, header=True)
+    y_train.to_csv(os.path.join(processed_dir, "y_train.csv"), index=True, header=True)
+    y_test.to_csv(os.path.join(processed_dir, "y_test.csv"), index=True, header=True)
 
-    logging.info("✅ Split terminé avec succès.")
+    logging.info("✅ Dataset pour le machine learning extrait avec succès.")
+    exit(0)
 
 
 if __name__ == "__main__":

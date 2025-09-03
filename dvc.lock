@@ -1,0 +1,55 @@
+schema: '2.0'
+stages:
+  extract_compteur:
+    cmd: python src/data/import_raw_data.py
+    deps:
+    - path: 
+        data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
+      hash: md5
+      md5: e38aee22570ad4ab0b92d72dba3690cf
+      size: 149464819
+    - path: src/data/import_raw_data.py
+      hash: md5
+      md5: 8f4a4862d09d27f2404c2d2f85f5259d
+      size: 2475
+    outs:
+    - path: data/interim/df_compteur.csv
+      hash: md5
+      md5: 1b29ca239f9fd0bad92c1b26c2026e4a
+      size: 1638382
+  make_dataset:
+    cmd: python src/data/make_dataset.py
+    deps:
+    - path: data/interim/df_compteur.csv
+      hash: md5
+      md5: 1b29ca239f9fd0bad92c1b26c2026e4a
+      size: 1638382
+    - path: src/data/make_dataset.py
+      hash: md5
+      md5: aaa2144b407cf0f52ab7e548385e5afd
+      size: 2238
+    outs:
+    - path: data/processed/X_test.csv
+      hash: md5
+      md5: b0c809eba8edb067b3576b7452b3a6ed
+      size: 266384
+    - path: data/processed/X_test_dates.csv
+      hash: md5
+      md5: 295ff957fa8a7735dd40534086819657
+      size: 66872
+    - path: data/processed/X_train.csv
+      hash: md5
+      md5: 0da889e4a00455a95bc5122c52ac08c0
+      size: 1080668
+    - path: data/processed/X_train_dates.csv
+      hash: md5
+      md5: 80b43191687df38becfa64840ea99871
+      size: 267540
+    - path: data/processed/y_test.csv
+      hash: md5
+      md5: 952a54b0001589ba22eeb915aeef188c
+      size: 22973
+    - path: data/processed/y_train.csv
+      hash: md5
+      md5: 056be1364ba0b8a7057d6ce2c6161959
+      size: 91551

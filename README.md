@@ -58,6 +58,10 @@ avr25-mle-trafic-cycliste/
 │       └──...
 ├── src                <- Source code for use in this project.
 │   ├── __init__.py    <- Makes src a Python module
+│   ├── common         <- common functions reusable between each stage
+│   │   ├── __init__.py
+│   │   ├── modeling_util.py 
+│   │   └── preprocessing_util.py
 │   ├── data           <- Scripts to download or generate data
 │   │   ├── __init__.py
 │   │   ├── import_raw_data.py 
