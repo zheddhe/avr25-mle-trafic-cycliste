@@ -97,15 +97,15 @@ pipx install nox uv # set up NOX (session manager like a MAKE multi OS) and UV (
 
 ```bash
 # Rebuild and complete virtual env for standard streamlit application and notebooks with pytorch (+ trigger test/flake8)
-nox -s build-3.12
+nox -s build
 
 # Activate the virtual env in command line based on your OS (and preferrably add it in your IDE as the interpreter)
-.nox\build-3-12\Scripts\activate.bat # cmd shell windows only
+.nox\build\Scripts\activate.bat # cmd shell windows only
 # or
-source .nox/build-3-12/bin/activate # cmd shell Mac/Linux only
+source .nox/build/bin/activate # cmd shell Mac/Linux only
 
-# Optional: clean (project generated file only)
-nox -s clean_project
+# Optional: cleanall (project generated file and virtual envs)
+nox -s cleanall
 
 # Optional: trigger packaging construction
 nox -s package
