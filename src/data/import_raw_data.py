@@ -6,7 +6,7 @@ from src.common.preprocessing_util import apply_percent_range_selection
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
         "short_name": "Sebastopol_N-S",
-        "range": (0.0, 100.0),
+        "range": (0.0, 100.0),  # a portion of the original range TODO : use exact timestamp ?
     }
 }
 
@@ -52,27 +52,28 @@ def main():
     df = pd.read_csv(raw_path, index_col=0)
 
     # extract data for choosen counter
-    logger.info(f"récupération des données de comptage pour les compteurs {SITE_TEST}")
+    logger.info(f"récupération des données de comptage avec filtrage : {SITE_TEST}")
     grouped = df.groupby(["nom_du_site_de_comptage", "orientation_compteur"])
     compteur_trouve = False
     for compteur_id, df_compteur in grouped:
         logger.info(f"compteur : {compteur_id}")
         if compteur_id in SITE_TEST:
+            logger.info(f"range conservé : {SITE_TEST[compteur_id]["range"]}")
             df_compteur = apply_percent_range_selection(
                 df_compteur,
                 SITE_TEST[compteur_id]["range"],
             )
             # save extracted data
-            logger.info("Sauvegarde des fichiers dans data/interim")
+            logger.info("Sauvegarde du fichier df_compteur.csv dans data/interim")
             df_compteur.to_csv(os.path.join(interim_dir, "df_compteur.csv"),
                                index=True)
             compteur_trouve = True
             break
     if compteur_trouve:
-        logger.info("✅ Import des données du compteur terminé avec succès.")
+        logger.info("✅ Extraction des données de compteur terminé avec succès.")
         exit(0)
     else:
-        logger.warning("❌ Import des données du compteur en échec.")
+        logger.warning("❌ ImpExtraction des données de compteur en échec.")
         exit(1)
 
 

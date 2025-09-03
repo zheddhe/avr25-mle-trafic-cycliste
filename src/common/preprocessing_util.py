@@ -1,52 +1,10 @@
 import pandas as pd
 import numpy as np
-from typing import Tuple
 import logging
 from sklearn.base import BaseEstimator, TransformerMixin
 import pytz
 
 logger = logging.getLogger(__name__)
-
-
-def train_test_split_time_aware(
-    df: pd.DataFrame,
-    timestamp_cols: list,
-    target_col: str,
-    test_size: float = 0.2,
-) -> Tuple[pd.DataFrame, pd.DataFrame,
-           pd.DataFrame, pd.DataFrame,
-           pd.Series, pd.Series]:
-    """
-    Chronological train/test split, preserving datetime columns for visualization.
-
-    Args:
-        df: DataFrame containing all data.
-        timestamp_cols: list of columns related to time (e.g., ['_utc', '_local']).
-        target_col: Name of the target column.
-        test_size: Fraction of data to use for testing.
-
-    Returns:
-        X_train, X_train_dates, X_test, X_test_dates, y_train, y_test
-    """
-    df = df.copy()
-
-    # Extract specifically datetime cols for later usage in time series
-    features_dates = df[timestamp_cols].copy()
-
-    # Features/target split
-    features = df.drop(columns=timestamp_cols + [target_col])
-    target = df[target_col]
-
-    # Chronological split
-    n_test = int(len(df) * test_size)
-    X_train = features[:-n_test]
-    X_train_dates = features_dates[:-n_test]
-    X_test = features[-n_test:]
-    X_test_dates = features_dates[-n_test:]
-    y_train = target[:-n_test]
-    y_test = target[-n_test:]
-
-    return X_train, X_train_dates, X_test, X_test_dates, y_train, y_test
 
 
 def apply_percent_range_selection(df: pd.DataFrame,
@@ -73,27 +31,6 @@ def apply_percent_range_selection(df: pd.DataFrame,
     end_idx = int(n * (end_pct / 100))
 
     return df.iloc[start_idx:end_idx].copy()
-
-
-class ColumnFilterTransformer(BaseEstimator, TransformerMixin):
-    """
-    Transformer to select a predefined subset of columns from a DataFrame.
-
-    Parameters:
-        columns_to_keep (list of str): list of column names to retain.
-    """
-
-    def __init__(self, columns_to_keep: list[str]):
-        self.columns_to_keep = columns_to_keep
-
-    def fit(self, X: pd.DataFrame, y=None):
-        return self
-
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        missing_cols = [col for col in self.columns_to_keep if col not in X.columns]
-        if missing_cols:
-            raise ValueError(f"Missing expected columns in input: {missing_cols}")
-        return X[self.columns_to_keep]
 
 
 def extract_datetime_periodic_features(

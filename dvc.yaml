@@ -1,5 +1,5 @@
 stages:
-  extract_compteur:
+  import_raw_data:
     cmd: python src/data/import_raw_data.py
     deps:
       - src/data/import_raw_data.py
@@ -7,37 +7,25 @@ stages:
     outs:
       - data/interim/df_compteur.csv
 
-  make_dataset:
-    cmd: python src/data/make_dataset.py
+  build_features:
+    cmd: python src/features/build_features.py
     deps:
-      - src/data/make_dataset.py
+      - src/features/build_features.py
       - data/interim/df_compteur.csv
     outs:
-      - data/processed/X_train.csv
-      - data/processed/X_test.csv
-      - data/processed/X_train_dates.csv
-      - data/processed/X_test_dates.csv
-      - data/processed/y_train.csv
-      - data/processed/y_test.csv
+      - data/processed/df_compteur_processed.csv
 
-  # gridsearch:
-  #   cmd: python src/models/gridsearch.py
+  # train_and_predict:
+  #   cmd: python src/models/train_and_predict.py
   #   deps:
-  #     - src/models/gridsearch.py
-  #     - src/models/params.yaml
+  #     - src/models/train_and_predict.py
   #     - data/processed/X_train.csv
   #     - data/processed/X_train_dates.csv
   #     - data/processed/y_train.csv
+  #     - data/processed/y_train_pred.csv
+  #     - data/processed/X_test.csv
+  #     - data/processed/X_test_dates.csv
+  #     - data/processed/y_test.csv
+  #     - data/processed/y_test_pred.csv
   #   outs:
-  #     - models/best_params.pkl
-
-  # training:
-  #   cmd: python src/models/train_model.py
-  #   deps:
-  #     - src/models/train_model.py
-  #     - models/best_params.pkl
-  #     - data/processed/X_train.csv
-  #     - data/processed/X_train_dates.csv
-  #     - data/processed/y_train.csv
-  #   outs:
-  #     - models/gbr_model.pkl
+  #     - models/pipeline_model.pkl
