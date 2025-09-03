@@ -106,9 +106,6 @@ source .nox/build/bin/activate # cmd shell Mac/Linux only
 
 # Optional: cleanall (project generated file and virtual envs)
 nox -s cleanall
-
-# Optional: trigger packaging construction
-nox -s package
 ```
 
 ---
