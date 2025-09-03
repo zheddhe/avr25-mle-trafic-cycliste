@@ -113,18 +113,11 @@ def build(session):
     # Point uv to the Nox-managed venv (instead of creating .venv)
     session.env["UV_PROJECT_ENVIRONMENT"] = str(session.virtualenv.location)
     # Sync locked deps + extras into the Nox venv
-    session.run("uv", "sync", "--extra", "test", "--extra", "dev",
+    session.run("uv", "sync",
+                "--extra", "test",
+                "--extra", "dev",
+                "--extra", "py312",
                 external=True)
     session.run("flake8")
     session.run("pytest")
     session.log("Build session complete. Coverage report in htmlcov/index.html")
-
-
-@nox.session(python=PYTHON_VERSION, venv_backend="uv",
-             name=f"package-{PYTHON_VERSION}")
-def package(session):
-    """Package the project (sdist + wheel)."""
-    session.run("python", "-m", "pip", "install", "--upgrade", "pip", silent=True)
-    session.install("build")
-    session.run("python", "-m", "build")
-    session.log("Package session complete.")
