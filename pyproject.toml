@@ -12,7 +12,7 @@ authors = [
     { name = "Koldé HOUESSOU", email = "dummy@mail.com" }
 ]
 license = "MIT"
-requires-python = ">=3.9,<3.13"
+requires-python = "==3.12"
 
 # NOTE: no direct dependencies — all handled through optional profiles
 dependencies = []

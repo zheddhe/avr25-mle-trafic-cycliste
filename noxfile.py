@@ -40,7 +40,12 @@ def clean_project(session):
              reuse_venv=True)
 def build(session):
     """Run code linting and full test suite with coverage and HTML report."""
-    session.install("-e", ".[py312, test, dev]", silent=False)
+    # Synchronisation de l'environnement avec uv.lock
+    # Point uv to the Nox-managed venv (instead of creating .venv)
+    session.env["UV_PROJECT_ENVIRONMENT"] = str(session.virtualenv.location)
+    # Sync locked deps + extras into the Nox venv
+    session.run("uv", "sync", "--extra", "test", "--extra", "dev",
+                external=True)
     session.run("flake8")
     session.run("pytest")
     session.log("Build session complete. Coverage report in htmlcov/index.html")
