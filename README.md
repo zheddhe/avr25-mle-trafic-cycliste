@@ -21,13 +21,15 @@ This project implements a full machine learning and MLOps pipeline in three main
 
 - Data collection and preprocessing
 - Model development and evaluation
-- Prediction
+- Time series prediction
 
 ### 3. ⚙️ MLOps
 
-- Code packaging and automation
 - Reproducibility and continuous testing
-- Containerization of services
+- Containerization with micro services
+- Security awareness
+- Monitoring and orchestration
+- Scalability
 
 ---
 
@@ -70,8 +72,7 @@ avr25-mle-trafic-cycliste/
 │   │   └── build_features.py
 │   ├── models         <- Scripts to train models and then use trained models to make predictions
 │   │   ├── __init__.py
-│   │   ├── train_and predict.py
-│   │   └── config.txt <- Describe the parameters used in train_and predict
+│   │   └── train_and predict.py
 │   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
 │   │   └── visualize.py
 ├── tests/             <- Unit tests (pytest for src source code)
@@ -129,4 +130,4 @@ CI workflows are handled by GitHub Actions:
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
-- Koladé Houessou
+- Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
