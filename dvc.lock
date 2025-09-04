@@ -10,26 +10,43 @@ stages:
       size: 149464819
     - path: src/data/import_raw_data.py
       hash: md5
-      md5: 6e163aebc6ad8a630916fdd46e18ce8f
-      size: 2937
+      md5: c02b91459bbea71021c2e0b9d40f3f22
+      size: 2941
     outs:
-    - path: data/interim/df_compteur.csv
+    - path: data/interim/df_Sebastopol_N-S.csv
       hash: md5
-      md5: 1b29ca239f9fd0bad92c1b26c2026e4a
-      size: 1638382
+      md5: 5988a662d149d6f2a3ba1727458b1186
+      size: 1231100
   build_features:
     cmd: python src/features/build_features.py
     deps:
-    - path: data/interim/df_compteur.csv
+    - path: data/interim/df_Sebastopol_N-S.csv
       hash: md5
-      md5: 1b29ca239f9fd0bad92c1b26c2026e4a
-      size: 1638382
+      md5: 5988a662d149d6f2a3ba1727458b1186
+      size: 1231100
     - path: src/features/build_features.py
       hash: md5
-      md5: 0c72110c3f139e29df34be2f619cce2c
-      size: 2871
+      md5: 81e806484ee4f58f6eca64d83f92dfc0
+      size: 3680
     outs:
-    - path: data/processed/df_compteur_processed.csv
+    - path: data/processed/df_Sebastopol_N-S_processed.csv
       hash: md5
-      md5: eed2f33ff1c06921c2a82f96bb673178
-      size: 2482928
+      md5: 55fb9f7967af4aa2ee4ba9ba65eb7ed3
+      size: 1351519
+  train_and_predict:
+    cmd: python src/models/train_and_predict.py
+    deps:
+    - path: data/processed/df_Sebastopol_N-S_processed.csv
+      hash: md5
+      md5: 55fb9f7967af4aa2ee4ba9ba65eb7ed3
+      size: 1351519
+    - path: src/models/train_and_predict.py
+      hash: md5
+      md5: 25ecc704a45903f1fcd8d1af3fab2ad2
+      size: 5494
+    outs:
+    - path: models/Sebastopol_N-S/
+      hash: md5
+      md5: cb564410b1aa00689d713137c48d990a.dir
+      size: 2273175
+      nfiles: 10

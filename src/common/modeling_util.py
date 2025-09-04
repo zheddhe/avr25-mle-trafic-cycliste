@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any
 from skopt.space import Integer, Categorical, Real
 from skopt import BayesSearchCV
 from xgboost import XGBRegressor
@@ -266,57 +266,74 @@ def recursive_forecast_model(
 
 
 def train_timeseries_model(
-    df_compteur: pd.DataFrame,
+    df_counter: pd.DataFrame,
     target_col: str = "comptage_horaire",
-    timestamp_col: str = "date_et_heure_de_comptage",
-    drop_columns: Optional[list[str]] = None,
+    timestamp_cols: List[str] = ["date_et_heure_de_comptage_local"],
     temp_feats: list[int] = [0, 0, 1],
     test_ratio: float = 0.2,
-    forecast: bool = True,
     iter_grid_search: int = 0,
 ) -> dict:
     """
-    Full training logic on a single counter, with optional AR features.
+    This function search for the best model using a bayesian gridsearch
+    It prepares and split the data between train and test applying the AR/MA features on train
+    it predicts on test by using a strict iterative forecast by propagating the predictions
+    to apply the AR/MA features on the test part (starting from a window including the train data
+    and calculating on a horizon on the full test data provided
 
-    Returns a dict containing trained model, train/test data, and predictions.
+    Arguments:
+        df_counter: pd.DataFrame, full train and test data to train and then predict upon
+        target_col: str, target column of the prediction
+        timestamp_cols: List[str], list of timestamp colons to extract from the features
+        temp_feats: list[int], temporal autoregressive features and mobile averages to construct
+            - 1) nb of AR (exemple if 7 : AR-1/AR-2/.../AR-7 are constructed)
+            - 2) nb of MA (exemple if 1 : MA-1 is constructed)
+            - 3) size of MA window (exemple : if 24 : MA-X are constructed with multiple of 24 lags)
+        test_ratio: float,
+        iter_grid_search: int, number of iteration to use to find the best model by gridsearch
+
+    Returns:
+        Dict with trained pipeline, train/test refactored data including AR and predictions.
     """
-    logger.info(f"Train timeseries with [df_len={len(df_compteur)}"
-                f" | drop_columns={drop_columns}]"
-                f" | temp_feats={temp_feats}]"
-                f" | test_ratio={test_ratio}]"
-                f" | forecast={forecast}]")
+    logger.info(
+        f"Train and predict timeseries with [df_len={len(df_counter)}"
+        f" | temp_feats={temp_feats}"
+        f" | test_ratio={test_ratio}"
+        f" | iter_grid_search={iter_grid_search}]"
+    )
 
-    df = df_compteur.copy()
+    # initial copy
+    df = df_counter.copy()
 
-    df = df.sort_values(timestamp_col)
-
+    # split between train and test keeping the dates as well
     X_train, X_train_dates, X_test, X_test_dates, y_train, y_test = (
         train_test_split_time_aware(
             df,
-            timestamp_cols=[timestamp_col],
+            timestamp_cols=timestamp_cols,
             target_col=target_col,
             test_size=test_ratio,
         )
     )
 
-    ar_transformer = None
-    if temp_feats[:2] != [0, 0]:
-        ar_transformer = AutoregressiveFeaturesTransformer(
-            nb_ar=temp_feats[0],
-            nb_mm=temp_feats[1],
-            roll_wind=temp_feats[2],
-        )
-        X_train, X_train_dates, y_train = ar_transformer.fit_transform(
-            X_train, X_train_dates, y_train
-        )
-        logger.info(f"AR({temp_feats[0]}) et MM({temp_feats[1]}[{temp_feats[2]}h])"
-                    " features are applied on train data")
+    # Apply autoregressive features (AR/MA) on train data
+    ar_transformer = AutoregressiveFeaturesTransformer(
+        nb_ar=temp_feats[0],  # number of AR
+        nb_mm=temp_feats[1],  # number of MA
+        roll_wind=temp_feats[2],  # lag per MA
+    )
+    X_train, X_train_dates, y_train = ar_transformer.fit_transform(
+        X_train, X_train_dates, y_train
+    )
+    logger.info(
+        f"AR({temp_feats[0]}) et MM({temp_feats[1]}[{temp_feats[2]}h])"
+        " features are applied on train data"
+    )
 
+    # Set up the preprocessing transformers
     numeric_cols = X_train.select_dtypes(include="number").columns.tolist()
+    logger.info(f"List of numerical columns : {numeric_cols}")
     categorical_cols = X_train.select_dtypes(include='object').columns.tolist()
-
+    logger.info(f"List of categorical columns : {categorical_cols}")
     scaler = StandardScaler()
-
     preprocessing = ColumnTransformer([
         ("num", scaler, numeric_cols),
         ("cat", OneHotEncoder(
@@ -326,6 +343,7 @@ def train_timeseries_model(
          ), categorical_cols)
     ])
 
+    # Set up the model and initiale gridsearch if iteration are foreseen
     model = XGBRegressor(random_state=1)
     search_spaces = SEARCH_SPACES_XGB
     if iter_grid_search > 0:
@@ -342,15 +360,18 @@ def train_timeseries_model(
     else:
         final_model = model
 
+    # Define the full preprocessing and model pipeline
     pipe_model = Pipeline([
         ("prep", preprocessing),
         ("reg", final_model)
     ])
     logger.debug(f"Pipeline Model specs used: {pipe_model}")
 
+    # Train the model with that pipeline
     pipe_model.fit(X_train, y_train)
-    logger.debug("Model training achieved")
+    logger.info("Model training achieved")
 
+    # Collect the best model parameters
     params = None
     if iter_grid_search > 0:
         fitted_model = pipe_model.named_steps['reg']
@@ -361,45 +382,35 @@ def train_timeseries_model(
             **_extract_param_ranges(search_spaces)
         }
     y_train_pred = pipe_model.predict(X_train)
-    logger.debug("Predictions on Train data achieved")
+    logger.info("Predictions on train data achieved")
 
-    if ar_transformer:
-        # Assemble full prediction base:
-        # - all train rows with y known
-        # - all test rows with y unknown (NaN), but features known
-        X_full = pd.concat(
-            [X_train, X_test],
-            ignore_index=True
-        )
-        y_full = pd.concat(
-            [y_train, pd.Series([np.nan] * len(y_test))],
-            ignore_index=True
-        )
-        dates_full = pd.concat(
-            [X_train_dates, X_test_dates],
-            ignore_index=True
-        )
-        last_window_df = X_full.copy()
-        last_window_df[target_col] = y_full
-        last_window_df[timestamp_col] = dates_full
-        logger.info(f"recursive predict on an horizon of {len(y_test)} hour(s)")
-        y_test_pred = recursive_forecast_model(
-            pipe_model,
-            ar_transformer,
-            last_window_df=last_window_df,
-            horizon=len(y_test),
-            target_col=target_col
-        )
-    else:
-        y_test_pred = pipe_model.predict(X_test)
+    # Assemble full prediction window and trigger the prediction in forecast mode
+    # - last X_train features and y_train target known
+    # - all X_test features and not using y_test (left with NaN)
+    X_full = pd.concat(
+        [X_train, X_test],
+        ignore_index=True
+    )
+    y_full = pd.concat(
+        [y_train, pd.Series([np.nan] * len(y_test))],
+        ignore_index=True
+    )
+    last_window_df = X_full.copy()
+    last_window_df[target_col] = y_full
+    logger.info(f"Recursive predict on an horizon of {len(y_test)} hour(s)")
+    y_test_pred = recursive_forecast_model(
+        pipe_model,
+        ar_transformer,
+        last_window_df=last_window_df,
+        horizon=len(y_test),
+        target_col=target_col
+    )
+    logger.info("Predictions on test data achieved")
 
-    logger.debug("Predictions on Test data achieved")
-
+    # provide all generated item in a dictionnary
     return {
-        "timestamp_col": timestamp_col,
-        "target_col": target_col,
         "ar_transformer": ar_transformer,
-        "pipe": pipe_model,
+        "pipe_model": pipe_model,
         "params": params,
         "X_train": X_train,
         "X_train_dates": X_train_dates,

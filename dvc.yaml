@@ -5,27 +5,21 @@ stages:
       - src/data/import_raw_data.py
       - data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
     outs:
-      - data/interim/df_compteur.csv
+      - data/interim/df_Sebastopol_N-S.csv
 
   build_features:
     cmd: python src/features/build_features.py
     deps:
       - src/features/build_features.py
-      - data/interim/df_compteur.csv
+      - data/interim/df_Sebastopol_N-S.csv
     outs:
-      - data/processed/df_compteur_processed.csv
+      - data/processed/df_Sebastopol_N-S_processed.csv
 
-  # train_and_predict:
-  #   cmd: python src/models/train_and_predict.py
-  #   deps:
-  #     - src/models/train_and_predict.py
-  #     - data/processed/X_train.csv
-  #     - data/processed/X_train_dates.csv
-  #     - data/processed/y_train.csv
-  #     - data/processed/y_train_pred.csv
-  #     - data/processed/X_test.csv
-  #     - data/processed/X_test_dates.csv
-  #     - data/processed/y_test.csv
-  #     - data/processed/y_test_pred.csv
-  #   outs:
-  #     - models/pipeline_model.pkl
+  train_and_predict:
+    cmd: python src/models/train_and_predict.py
+    deps:
+      - src/models/train_and_predict.py
+      - data/processed/df_Sebastopol_N-S_processed.csv
+    outs:
+      - models/Sebastopol_N-S/
+

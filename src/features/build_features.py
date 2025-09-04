@@ -3,8 +3,25 @@ import logging
 import pandas as pd
 from src.common.preprocessing_util import DatetimePeriodicsTransformer
 
+SITE_TEST = {
+    ('Totem 73 boulevard de Sébastopol', 'N-S'): {
+        "short_name": "Sebastopol_N-S",
+        "range": (0.0, 75.0),  # a portion of the original range TODO : use exact timestamp ?
+    }
+}
+
 COLUMNS_TO_DROP = [
+    "nom_du_site_de_comptage",
+    "orientation_compteur",
     "weather_code_wmo_code",
+    "temperature_2m_c",
+    "rain_mm",
+    "snowfall_cm",
+    "weather_code_wmo_code_category",
+    "latitude",
+    "longitude",
+    "arrondissement",
+    "elevation",
     "date_et_heure_de_comptage_hour",
     "date_et_heure_de_comptage_day",
     "date_et_heure_de_comptage_day_of_year",
@@ -12,10 +29,6 @@ COLUMNS_TO_DROP = [
     "date_et_heure_de_comptage_week",
     "date_et_heure_de_comptage_month",
     "date_et_heure_de_comptage_year",
-    "latitude",
-    "longitude",
-    "arrondissement",
-    "elevation",
     "date_et_heure_de_comptage_sin_week",
     "date_et_heure_de_comptage_cos_week",
     "date_et_heure_de_comptage_cos_day_of_year",
@@ -26,7 +39,7 @@ COLUMNS_TO_DROP = [
 # Configuration des logs
 # -------------------------------------------------------------------
 os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "make_dataset.log")
+log_path = os.path.join("logs", "build_features.log")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,40 +58,45 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 def main():
     '''
-    This script construct the expected features and apply a customizable filtering
-    of columns to drop
+    This script construct the expected features and apply a drop unwanted columns
     Arguments:
         None (from dictionnary of configuration)
     Returns:
         exit 1 if error during feature engineering refinement
         exit 0 if OK
     '''
-    # working paths
-    interim_path = os.path.join("data", "interim",
-                                "df_compteur.csv")
-    processed_dir = os.path.join("data", "processed")
-    os.makedirs(processed_dir, exist_ok=True)
+    for counter_id in SITE_TEST.keys():
+        # working paths
+        input_file_name = f"df_{SITE_TEST[counter_id]["short_name"]}.csv"
+        interim_path = os.path.join("data", "interim",
+                                    input_file_name)
+        processed_dir = os.path.join("data", "processed")
+        os.makedirs(processed_dir, exist_ok=True)
 
-    # data load
-    logging.info(f"Chargement des données intermédiaires du compteur depuis {interim_path}")
-    df = pd.read_csv(interim_path, index_col=0)
+        # data load
+        logging.info(f"Interim data load for counter [{counter_id}] from [{interim_path}]")
+        df = pd.read_csv(interim_path, index_col=0)
 
-    # enrich periodic features
-    timestamp_col = "date_et_heure_de_comptage"
-    tr_date = DatetimePeriodicsTransformer(timestamp_col)
-    df = tr_date.transform(df)
-    timestamp_col = timestamp_col+"_local"
+        # enrich periodic features
+        logging.info("Processing periodic temporal data feature engineering")
+        timestamp_col = "date_et_heure_de_comptage"
+        tr_date = DatetimePeriodicsTransformer(timestamp_col)
+        df = tr_date.transform(df)
+        timestamp_col = timestamp_col+"_local"
+        # sort by local date and reindex the file
+        df = df.sort_values(timestamp_col).reset_index().drop(columns=["index"])
 
-    # filter unwanted features
-    logging.info(f"Filtrage des features suivantes : {COLUMNS_TO_DROP}")
-    df = df.drop(columns=[col for col in COLUMNS_TO_DROP if col in df.columns])
+        # filter unwanted features
+        logging.info(f"Filtering columns to drop : [{COLUMNS_TO_DROP}]")
+        df = df.drop(columns=[col for col in COLUMNS_TO_DROP if col in df.columns])
 
-    # save the processed data
-    logging.info("Sauvegarde du fichier df_compteur_processed.csv dans data/processed")
-    df.to_csv(os.path.join(processed_dir, "df_compteur_processed.csv"), index=True)
+        # save the processed data
+        output_file_name = f"df_{SITE_TEST[counter_id]["short_name"]}_processed.csv"
+        logging.info(f"Saving file [{output_file_name}] at path [{processed_dir}]")
+        df.to_csv(os.path.join(processed_dir, output_file_name), index=True)
 
-    logging.info("✅ Dataset pour le machine learning enrichi avec succès.")
-    exit(0)
+        logging.info("✅ Feature engineering processed successfully.")
+        exit(0)
 
 
 if __name__ == "__main__":

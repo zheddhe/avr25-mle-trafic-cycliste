@@ -6,12 +6,12 @@ from src.common.preprocessing_util import apply_percent_range_selection
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
         "short_name": "Sebastopol_N-S",
-        "range": (0.0, 100.0),  # a portion of the original range TODO : use exact timestamp ?
+        "range": (0.0, 75.0),  # a portion of the original range TODO : use exact timestamp ?
     }
 }
 
 # -------------------------------------------------------------------
-# Configuration des logs
+# Logs configuration
 # -------------------------------------------------------------------
 os.makedirs("logs", exist_ok=True)
 log_path = os.path.join("logs", "import_raw_data.log")
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------
-# Script principal
+# Main script
 # -------------------------------------------------------------------
 def main():
     '''
@@ -42,38 +42,43 @@ def main():
         exit 0 if OK
     '''
     # working paths
-    raw_path = os.path.join("data", "raw",
-                            "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv")
+    raw_path = os.path.join(
+        "data", "raw",
+        "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
+    )
     interim_dir = os.path.join("data", "interim")
     os.makedirs(interim_dir, exist_ok=True)
 
     # data load
-    logger.info(f"Chargement des données brutes depuis {raw_path}")
+    logger.info(f"Raw data load from {raw_path}")
     df = pd.read_csv(raw_path, index_col=0)
 
     # extract data for choosen counter
-    logger.info(f"récupération des données de comptage avec filtrage : {SITE_TEST}")
+    logger.info(f"Context [{SITE_TEST}]")
     grouped = df.groupby(["nom_du_site_de_comptage", "orientation_compteur"])
-    compteur_trouve = False
-    for compteur_id, df_compteur in grouped:
-        logger.info(f"compteur : {compteur_id}")
-        if compteur_id in SITE_TEST:
-            logger.info(f"range conservé : {SITE_TEST[compteur_id]["range"]}")
-            df_compteur = apply_percent_range_selection(
-                df_compteur,
-                SITE_TEST[compteur_id]["range"],
+    counter_found = False
+    for counter_id, df_counter in grouped:
+        if counter_id in SITE_TEST:
+            logger.info(f"Counter [{counter_id}] found")
+            logger.info(f"Range for this counter [{SITE_TEST[counter_id]["range"]}(percentile)]")
+            df_counter = apply_percent_range_selection(
+                df_counter,
+                SITE_TEST[counter_id]["range"],
             )
             # save extracted data
-            logger.info("Sauvegarde du fichier df_compteur.csv dans data/interim")
-            df_compteur.to_csv(os.path.join(interim_dir, "df_compteur.csv"),
-                               index=True)
-            compteur_trouve = True
+            save_file_name = f"df_{SITE_TEST[counter_id]["short_name"]}.csv"
+            logger.info(f"Saving dile [{save_file_name}] at path [{interim_dir}]")
+            df_counter.to_csv(
+                os.path.join(interim_dir, save_file_name),
+                index=True
+            )
+            counter_found = True
             break
-    if compteur_trouve:
-        logger.info("✅ Extraction des données de compteur terminé avec succès.")
+    if counter_found:
+        logger.info("✅ Raw counters data extraction is successfull.")
         exit(0)
     else:
-        logger.warning("❌ ImpExtraction des données de compteur en échec.")
+        logger.warning("❌ Raw counters data extraction have failed.")
         exit(1)
 
 
