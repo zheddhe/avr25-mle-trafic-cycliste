@@ -58,18 +58,20 @@ avr25-mle-trafic-cycliste/
 │       └──...
 ├── src                <- Source code for use in this project.
 │   ├── __init__.py    <- Makes src a Python module
+│   ├── common         <- common functions reusable between each stage
+│   │   ├── __init__.py
+│   │   ├── modeling_util.py 
+│   │   └── preprocessing_util.py
 │   ├── data           <- Scripts to download or generate data
 │   │   ├── __init__.py
 │   │   ├── import_raw_data.py 
-│   │   └── make_dataset.py
 │   ├── features       <- Scripts to turn raw data into features for modeling
 │   │   ├── __init__.py
 │   │   └── build_features.py
 │   ├── models         <- Scripts to train models and then use trained models to make predictions
 │   │   ├── __init__.py
-│   │   ├── predict_model.py
-│   │   ├── train_model.py
-│   │   └── config.txt <- Describe the parameters used in train_model.py and predict_model.py
+│   │   ├── train_and predict.py
+│   │   └── config.txt <- Describe the parameters used in train_and predict
 │   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
 │   │   └── visualize.py
 ├── tests/             <- Unit tests (pytest for src source code)
