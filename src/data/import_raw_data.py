@@ -5,9 +5,13 @@ from src.common.preprocessing_util import apply_percent_range_selection
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "short_name": "Sebastopol_N-S",
+        "processed_file_name": "initial_Sebastopol_N-S.csv",
         "range": (0.0, 75.0),  # a portion of the original range TODO : use exact timestamp ?
-    }
+    },
+    # ('Totem 73 boulevard de Sébastopol', 'N-S'): {
+    #     "processed_file_name": "daily_1_Sebastopol_N-S.csv",
+    #     "range": (0.1, 75.1),  # a portion of the original range TODO : use exact timestamp ?
+    # }
 }
 
 # -------------------------------------------------------------------
@@ -42,16 +46,16 @@ def main():
         exit 0 if OK
     '''
     # working paths
-    raw_path = os.path.join(
+    raw_data_path = os.path.join(
         "data", "raw",
         "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
     )
-    interim_dir = os.path.join("data", "interim")
-    os.makedirs(interim_dir, exist_ok=True)
+    processed_dir = os.path.join("data", "processed")
+    os.makedirs(processed_dir, exist_ok=True)
 
     # data load
-    logger.info(f"Raw data load from {raw_path}")
-    df = pd.read_csv(raw_path, index_col=0)
+    logger.info(f"Raw data load from {raw_data_path}")
+    df = pd.read_csv(raw_data_path, index_col=0)
 
     # extract data for choosen counter
     logger.info(f"Context [{SITE_TEST}]")
@@ -59,17 +63,28 @@ def main():
     counter_found = False
     for counter_id, df_counter in grouped:
         if counter_id in SITE_TEST:
+            df = df_counter.copy()
             logger.info(f"Counter [{counter_id}] found")
-            logger.info(f"Range for this counter [{SITE_TEST[counter_id]["range"]}(percentile)]")
-            df_counter = apply_percent_range_selection(
-                df_counter,
+            # convert date column, sort by date and reindex the file
+            logger.info("Sorting the counter data by date")
+            timestamp_col = "date_et_heure_de_comptage"
+            df[timestamp_col] = pd.to_datetime(
+                df[timestamp_col],
+                format="%Y-%m-%dT%H:%M:%S%z",
+                utc=True
+            )
+            df = df.sort_values(timestamp_col).reset_index().drop(columns=["index"])
+            # restrict the data to the selected range (simulate production data collection)
+            logger.info(f"Range for this counter [{SITE_TEST[counter_id]["range"]} (in percent)]")
+            df = apply_percent_range_selection(
+                df,
                 SITE_TEST[counter_id]["range"],
             )
-            # save extracted data
-            save_file_name = f"df_{SITE_TEST[counter_id]["short_name"]}.csv"
-            logger.info(f"Saving dile [{save_file_name}] at path [{interim_dir}]")
-            df_counter.to_csv(
-                os.path.join(interim_dir, save_file_name),
+            # save processed data
+            processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
+            logger.info(f"Saving dile [{processed_file_name}] at path [{processed_dir}]")
+            df.to_csv(
+                os.path.join(processed_dir, processed_file_name),
                 index=True
             )
             counter_found = True

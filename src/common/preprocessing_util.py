@@ -54,7 +54,7 @@ def extract_datetime_periodic_features(
     try:
         df[f"{timestamp_col}_utc"] = pd.to_datetime(
             df[timestamp_col],
-            format="%Y-%m-%dT%H:%M:%S%z",
+            format="%Y-%m-%d %H:%M:%S%z",
             utc=True
         )
         df[f"{timestamp_col}_local"] = (

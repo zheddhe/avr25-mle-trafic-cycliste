@@ -7,7 +7,8 @@ from src.common.modeling_util import train_timeseries_model
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "short_name": "Sebastopol_N-S",
+        "save_sub_dir": "Sebastopol_N-S",
+        "input_file_name": "initial_Sebastopol_N-S_with_feats.csv",
         "range": (0.0, 100.0),  # a portion of the original range TODO : use exact timestamp ?
         "temp_feats": [7, 1, 24],
         "test_ratio": 0.2,
@@ -48,16 +49,16 @@ def main():
     '''
     for counter_id in SITE_TEST.keys():
         # working paths
-        input_file_name = f"df_{SITE_TEST[counter_id]["short_name"]}_processed.csv"
+        input_file_name = SITE_TEST[counter_id]["input_file_name"]
         # working paths
-        processed_file_path = os.path.join("data", "processed", input_file_name)
+        input_file_path = os.path.join("data", "processed", input_file_name)
         processed_dir = os.path.join("data", "processed")
         os.makedirs(processed_dir, exist_ok=True)
 
         # data load
-        logging.info(f"Processed data load from [{processed_file_path}]")
+        logging.info(f"Processed data load from [{input_file_path}]")
         df_counter = pd.read_csv(
-            processed_file_path,
+            input_file_path,
             index_col=0,
         )
         # date format conversions
@@ -83,22 +84,19 @@ def main():
             iter_grid_search=SITE_TEST[counter_id]["iter_grid_search"],
         )
 
-        # save the results and the model pipeline data
-        save_path = os.path.join("models", SITE_TEST[counter_id]["short_name"])
-        os.makedirs(save_path, exist_ok=True)
-        logging.info(f"Saving results in {save_path}")
-        X_train_path = os.path.join(save_path, "X_train.csv")
-        X_test_path = os.path.join(save_path, "X_test.csv")
-        X_train_dates_path = os.path.join(save_path, "X_train_dates.csv")
-        X_test_dates_path = os.path.join(save_path, "X_test_dates.csv")
-        y_train_path = os.path.join(save_path, "y_train.csv")
-        y_test_path = os.path.join(save_path, "y_test.csv")
-        y_train_pred_path = os.path.join(save_path, "y_train_pred.csv")
-        y_test_pred_path = os.path.join(save_path, "y_test_pred.csv")
-        model_path = os.path.join(save_path, "pipe_model.pkl")
-        ar_transformer_path = os.path.join(save_path, "ar_transformer.pkl")
+        # save final training/test/predictions data from the results :
+        save_data_path = os.path.join("data", "final", SITE_TEST[counter_id]["save_sub_dir"])
+        os.makedirs(save_data_path, exist_ok=True)
+        X_train_path = os.path.join(save_data_path, "X_train.csv")
+        X_test_path = os.path.join(save_data_path, "X_test.csv")
+        X_train_dates_path = os.path.join(save_data_path, "X_train_dates.csv")
+        X_test_dates_path = os.path.join(save_data_path, "X_test_dates.csv")
+        y_train_path = os.path.join(save_data_path, "y_train.csv")
+        y_test_path = os.path.join(save_data_path, "y_test.csv")
+        y_train_pred_path = os.path.join(save_data_path, "y_train_pred.csv")
+        y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
         logging.info(
-            "Final refined data files : \n"
+            "Final refined data CSV files saved in {save_data_path}:\n"
             f"{X_train_path}\n"
             f"{X_test_path}\n"
             f"{X_train_dates_path}\n"
@@ -107,11 +105,6 @@ def main():
             f"{y_test_path}\n"
             f"{y_train_pred_path}\n"
             f"{y_test_pred_path}"
-        )
-        logging.info(
-            "Pipeline and AR transformer dumps : \n"
-            f"{model_path}\n"
-            f"{ar_transformer_path}"
         )
         report["X_test_dates"].to_csv(X_test_dates_path, index=True)
         report["X_train"].to_csv(X_train_path, index=True)
@@ -127,7 +120,21 @@ def main():
             report["y_test_pred"],
             columns=["comptage_horaire_predit"],
         ).to_csv(y_test_pred_path, index=True)
+
+        # save pipeline model/params/transformer from the result
+        save_model_path = os.path.join("models", SITE_TEST[counter_id]["save_sub_dir"])
+        os.makedirs(save_model_path, exist_ok=True)
+        model_path = os.path.join(save_model_path, "pipe_model.pkl")
+        params_path = os.path.join(save_model_path, "params.pkl")
+        ar_transformer_path = os.path.join(save_model_path, "ar_transformer.pkl")
+        logging.info(
+            f"Pipeline, Params and AR transformer PKL dumps saved in {save_data_path}:\n"
+            f"{model_path}\n"
+            f"{params_path}\n"
+            f"{ar_transformer_path}"
+        )
         joblib.dump(report["pipe_model"], model_path)
+        joblib.dump(report["params"], params_path)
         joblib.dump(report["ar_transformer"], ar_transformer_path)
 
         logging.info("✅ Training and forecasting ended successfully.")

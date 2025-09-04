@@ -42,13 +42,12 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml     <- The environment context for reproducing the project environment (with UV)
 ├── flake8             <- Linter configuration rules
 ├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
+│   ├── processed      <- Intermediate data that has been transformed.
+│   ├── final          <- Final transformed data and predictions used by model training and forecasting.
 │   └── raw            <- The original, immutable data dump.
 ├── logs               <- Logs from training and predicting
 │   └──...
-├── models             <- Trained and serialized models, model predictions, or model summaries
+├── models             <- Trained and serialized models including their best params and transformers
 │   └──...
 ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
 │   └──...                the creator's initials, and a short `-` delimited description, e.g.
