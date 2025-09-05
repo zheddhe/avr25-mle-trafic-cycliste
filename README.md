@@ -125,6 +125,17 @@ CI workflows are handled by GitHub Actions:
 
 ---
 
+## 👥 Collaborative branch workflow
+
+Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
+
+- Create branch per story/bugfix and merge them with pull requests afterward
+- Tag stable versions ideally after each story/bugfix successfull merge
+
+![Collaborative branch workflow](reports/figures/collaborative_branch_workflow.drawio.png)
+
+---
+
 ## 👥 Contributors
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
