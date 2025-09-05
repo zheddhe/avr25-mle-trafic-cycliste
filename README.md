@@ -132,7 +132,7 @@ Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/e
 - Create branch per story/bugfix and merge them with pull requests afterward
 - Tag stable versions ideally after each story/bugfix successfull merge
 
-![Collaborative branch workflow](reports/figures/collaborative_branch_workflow.drawio.png)
+![Collaborative branch workflow](references/collaborative_branch_workflow.drawio.png)
 
 ---
 
