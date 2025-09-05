@@ -95,7 +95,27 @@ pipx ensurepath # propagate pipx temporary bootstrap virtual env to PATH if not 
 pipx install nox uv # set up NOX (session manager like a MAKE multi OS) and UV (fast virtual env back end)
 ```
 
-### 🚀 Day-to-day Usage
+### 🔧 Repository cloning and DVC setup (One-time init)
+
+Please refer to the Dagshub remote setup actions depending on your preference to collect:
+
+- Git cloning actions (for example)
+
+```bash
+git clone https://github.com/zheddhe/avr25-mle-trafic-cycliste.git
+```
+
+- DVC setup actions (for example)
+
+```bash
+dvc remote add origin s3://dvc
+dvc remote modify origin endpointurl https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
+
+dvc remote modify origin --local access_key_id [...]
+dvc remote modify origin --local secret_access_key [...]
+```
+
+## 🚀 Day-to-day Usage
 
 ```bash
 # Rebuild and complete virtual env for standard streamlit application and notebooks with pytorch (+ trigger test/flake8)
