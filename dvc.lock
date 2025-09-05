@@ -1,0 +1,57 @@
+schema: '2.0'
+stages:
+  import_raw_data:
+    cmd: python src/data/import_raw_data.py
+    deps:
+    - path: 
+        data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
+      hash: md5
+      md5: e38aee22570ad4ab0b92d72dba3690cf
+      size: 149464819
+    - path: src/data/import_raw_data.py
+      hash: md5
+      md5: a9b321dad1b09dae1aeb70ce1b075cf4
+      size: 3778
+    outs:
+    - path: data/processed/initial_Sebastopol_N-S.csv
+      hash: md5
+      md5: d2f941e6ec135ef1d187b41350e6b56e
+      size: 1216943
+  build_features:
+    cmd: python src/features/build_features.py
+    deps:
+    - path: data/processed/initial_Sebastopol_N-S.csv
+      hash: md5
+      md5: d2f941e6ec135ef1d187b41350e6b56e
+      size: 1216943
+    - path: src/features/build_features.py
+      hash: md5
+      md5: 1f1930f59399a9dae73f77c8e625ac20
+      size: 3593
+    outs:
+    - path: data/processed/initial_Sebastopol_N-S_with_feats.csv
+      hash: md5
+      md5: c7b56402c881b06dbf5d209b07c70915
+      size: 1350050
+  train_and_predict:
+    cmd: python src/models/train_and_predict.py
+    deps:
+    - path: data/processed/initial_Sebastopol_N-S_with_feats.csv
+      hash: md5
+      md5: c7b56402c881b06dbf5d209b07c70915
+      size: 1350050
+    - path: src/models/train_and_predict.py
+      hash: md5
+      md5: 2673d8f5bfbb467bb5cd9eeff77da75b
+      size: 5993
+    outs:
+    - path: data/final/Sebastopol_N-S/
+      hash: md5
+      md5: 088e5e4de9f44afe5c8d7b2fb5d80a60.dir
+      size: 1855431
+      nfiles: 8
+    - path: models/Sebastopol_N-S/
+      hash: md5
+      md5: a1e4f0ccfad56fe0a538c3a959e89cdf.dir
+      size: 420417
+      nfiles: 3

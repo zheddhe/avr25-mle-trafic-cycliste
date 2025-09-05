@@ -21,13 +21,15 @@ This project implements a full machine learning and MLOps pipeline in three main
 
 - Data collection and preprocessing
 - Model development and evaluation
-- Prediction
+- Time series prediction
 
 ### 3. ⚙️ MLOps
 
-- Code packaging and automation
 - Reproducibility and continuous testing
-- Containerization of services
+- Containerization with micro services
+- Security awareness
+- Monitoring and orchestration
+- Scalability
 
 ---
 
@@ -40,13 +42,12 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml     <- The environment context for reproducing the project environment (with UV)
 ├── flake8             <- Linter configuration rules
 ├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
+│   ├── processed      <- Intermediate data that has been transformed.
+│   ├── final          <- Final transformed data and predictions used by model training and forecasting.
 │   └── raw            <- The original, immutable data dump.
 ├── logs               <- Logs from training and predicting
 │   └──...
-├── models             <- Trained and serialized models, model predictions, or model summaries
+├── models             <- Trained and serialized models including their best params and transformers
 │   └──...
 ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
 │   └──...                the creator's initials, and a short `-` delimited description, e.g.
@@ -58,18 +59,19 @@ avr25-mle-trafic-cycliste/
 │       └──...
 ├── src                <- Source code for use in this project.
 │   ├── __init__.py    <- Makes src a Python module
+│   ├── common         <- common functions reusable between each stage
+│   │   ├── __init__.py
+│   │   ├── modeling_util.py 
+│   │   └── preprocessing_util.py
 │   ├── data           <- Scripts to download or generate data
 │   │   ├── __init__.py
 │   │   ├── import_raw_data.py 
-│   │   └── make_dataset.py
 │   ├── features       <- Scripts to turn raw data into features for modeling
 │   │   ├── __init__.py
 │   │   └── build_features.py
 │   ├── models         <- Scripts to train models and then use trained models to make predictions
 │   │   ├── __init__.py
-│   │   ├── predict_model.py
-│   │   ├── train_model.py
-│   │   └── config.txt <- Describe the parameters used in train_model.py and predict_model.py
+│   │   └── train_and predict.py
 │   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
 │   │   └── visualize.py
 ├── tests/             <- Unit tests (pytest for src source code)
@@ -127,4 +129,4 @@ CI workflows are handled by GitHub Actions:
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
-- Koladé Houessou
+- Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)

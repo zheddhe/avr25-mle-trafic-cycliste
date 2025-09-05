@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "avr25-mle-trafic-cycliste"
-version = "0.1.0"
+version = "0.2.0"
 description = "bike trafic science project for MLE April 2025 promotion"
 authors = [
     { name = "Rémy CANAL", email = "remy.canal@live.fr" },
@@ -24,6 +24,7 @@ py312 = [
     "scikit-learn==1.5.0",
     "xgboost==3.0.2",
     "pyproj==3.7.1",
+    "scikit-optimize==0.10.2",
 ]
 
 test = [
