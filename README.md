@@ -75,6 +75,16 @@ avr25-mle-trafic-cycliste/
 │   │   │   └── train_and_predict.py
 │   └── shared/         <- Shared services
 │       └── logger.py
+├── docker/             <- container architecture
+│   ├── dev/            <- dev architecture
+│   │   ├── api/
+│   │   │   ├── requirements.txt
+│   │   │   └── Dockerfile
+│   │   └── ml/
+│   │   │   ├── requirements.txt
+│   │   │   └── Dockerfile
+│   ├── prod/           <- production architecture
+│   │   └──...       
 ├── tests/             <- Unit tests (pytest for src source code)
 ├── LICENSE                 # MIT license
 ├── pyproject.toml          # Python project configuration
