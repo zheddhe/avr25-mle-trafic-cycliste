@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  api_dev:
+    build:
+      context: .
+      dockerfile: docker/dev/api/Dockerfile
+    container_name: api_dev_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ml
+    environment:
+      - DATA_PATH=/data/
+    volumes:
+      - ./data:/data
+
+  ml_dev:
+    build:
+      context: .
+      dockerfile: docker/dev/ml/Dockerfile
+    container_name: ml_dev_pipeline
+    volumes:
+      - ./models:/models
+      - ./data:/data

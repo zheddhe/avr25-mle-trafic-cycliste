@@ -272,12 +272,13 @@ source = { editable = "." }
 
 [package.optional-dependencies]
 dev = [
-    { name = "dvc", extra = ["s3"] },
+    { name = "dvc-s3" },
     { name = "notebook" },
     { name = "nox" },
     { name = "uv" },
 ]
 py312 = [
+    { name = "fastapi" },
     { name = "pandas" },
     { name = "pyproj" },
     { name = "scikit-learn" },
@@ -289,22 +290,25 @@ test = [
     { name = "flake8" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "coverage", marker = "extra == 'test'", specifier = "==7.8.2" },
-    { name = "dvc", extras = ["s3"], marker = "extra == 'dev'" },
+    { name = "dvc-s3", marker = "extra == 'dev'", specifier = "==3.2.2" },
+    { name = "fastapi", marker = "extra == 'py312'", specifier = "==0.116.1" },
     { name = "flake8", marker = "extra == 'test'", specifier = "==7.2.0" },
     { name = "notebook", marker = "extra == 'dev'", specifier = "==7.4.3" },
-    { name = "nox", marker = "extra == 'dev'" },
+    { name = "nox", marker = "extra == 'dev'", specifier = "==2025.5.1" },
     { name = "pandas", marker = "extra == 'py312'", specifier = "==2.2.3" },
     { name = "pyproj", marker = "extra == 'py312'", specifier = "==3.7.1" },
     { name = "pytest", marker = "extra == 'test'", specifier = "==8.3.5" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = "==6.1.1" },
     { name = "scikit-learn", marker = "extra == 'py312'", specifier = "==1.5.0" },
     { name = "scikit-optimize", marker = "extra == 'py312'", specifier = "==0.10.2" },
-    { name = "uv", marker = "extra == 'dev'" },
+    { name = "uv", marker = "extra == 'dev'", specifier = "==0.8.14" },
+    { name = "uvicorn", marker = "extra == 'test'", specifier = "==0.35.0" },
     { name = "xgboost", marker = "extra == 'py312'", specifier = "==3.0.2" },
 ]
 provides-extras = ["py312", "test", "dev"]
@@ -756,11 +760,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/35/15/15e4d0c4872b3a55c7a0b94c3f31df6bf28a6610d977ad96f1872e36034c/dvc-3.63.0-py3-none-any.whl", hash = "sha256:14e2cf206ee1f65a2afddf2b756bbc25816b32177c56067e1ccce2c65fbdb89f", size = 466193, upload-time = "2025-09-02T13:35:33.001Z" },
 ]
 
-[package.optional-dependencies]
-s3 = [
-    { name = "dvc-s3" },
-]
-
 [[package]]
 name = "dvc-data"
 version = "3.16.12"
@@ -876,6 +875,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044f34a13aab6859bbf40456d37d23aa286ac24cfd9a5d/executing-2.2.1.tar.gz", hash = "sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4", size = 1129488, upload-time = "2025-09-01T09:48:10.866Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
+]
+
+[[package]]
+name = "fastapi"
+version = "0.116.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/d7/6c8b3bfe33eeffa208183ec037fee0cce9f7f024089ab1c5d12ef04bd27c/fastapi-0.116.1.tar.gz", hash = "sha256:ed52cbf946abfd70c5a0dccb24673f0670deeb517a88b3544d03c2a6bf283143", size = 296485, upload-time = "2025-07-11T16:22:32.057Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/47/d63c60f59a59467fda0f93f46335c9d18526d7071f025cb5b89d5353ea42/fastapi-0.116.1-py3-none-any.whl", hash = "sha256:c46ac7c312df840f0c9e220f7964bada936781bc4e2e6eb71f1c4d7553786565", size = 95631, upload-time = "2025-07-11T16:22:30.485Z" },
 ]
 
 [[package]]
@@ -2547,6 +2560,19 @@ wheels = [
 ]
 
 [[package]]
+name = "starlette"
+version = "0.47.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/15/b9/cc3017f9a9c9b6e27c5106cc10cc7904653c3eec0729793aec10479dd669/starlette-0.47.3.tar.gz", hash = "sha256:6bc94f839cc176c4858894f1f8908f0ab79dfec1a6b8402f6da9be26ebea52e9", size = 2584144, upload-time = "2025-08-24T13:36:42.122Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/fd/901cfa59aaa5b30a99e16876f11abe38b59a1a2c51ffb3d7142bb6089069/starlette-0.47.3-py3-none-any.whl", hash = "sha256:89c0778ca62a76b826101e7c709e70680a1699ca7da6b44d38eb0a7e61fe4b51", size = 72991, upload-time = "2025-08-24T13:36:40.887Z" },
+]
+
+[[package]]
 name = "tabulate"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2735,6 +2761,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/e9/0cdeed22e6c540db493ea364040b17af09fabaa7a56c8ff02b9152819442/uv-0.8.14-py3-none-win32.whl", hash = "sha256:0a4abb2a327e3709ef02765dc392ee10e204275bdb107b492977f88633a1e6b0", size = 18630132, upload-time = "2025-08-28T21:55:51.988Z" },
     { url = "https://files.pythonhosted.org/packages/45/5e/9bf7004bd53e9279265d73a131fe2a6c7d74c1125c53e805b5e9f4047f37/uv-0.8.14-py3-none-win_amd64.whl", hash = "sha256:5091d588753bbbd1f120f13311ede2ae113d7ec2760e149fc502a237f2516075", size = 20672637, upload-time = "2025-08-28T21:55:55.341Z" },
     { url = "https://files.pythonhosted.org/packages/d8/7f/41074c81faa36a34d44524997c345a857bd82d7f73ea60e24dca606306ec/uv-0.8.14-py3-none-win_arm64.whl", hash = "sha256:7c424fd4561f4528d8b52fc8c16991d0ad0000d3ad12c82e01e722f314b2669d", size = 19171656, upload-time = "2025-08-28T21:55:57.799Z" },
+]
+
+[[package]]
+name = "uvicorn"
+version = "0.35.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/42/e0e305207bb88c6b8d3061399c6a961ffe5fbb7e2aa63c9234df7259e9cd/uvicorn-0.35.0.tar.gz", hash = "sha256:bc662f087f7cf2ce11a1d7fd70b90c9f98ef2e2831556dd078d131b96cc94a01", size = 78473, upload-time = "2025-06-28T16:15:46.058Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/e2/dc81b1bd1dcfe91735810265e9d26bc8ec5da45b4c0f6237e286819194c3/uvicorn-0.35.0-py3-none-any.whl", hash = "sha256:197535216b25ff9b785e29a0b79199f55222193d47f820816e7da751e9bc8d4a", size = 66406, upload-time = "2025-06-28T16:15:44.816Z" },
 ]
 
 [[package]]

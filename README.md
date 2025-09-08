@@ -37,47 +37,57 @@ This project implements a full machine learning and MLOps pipeline in three main
 
 ``` text
 avr25-mle-trafic-cycliste/
-├── LICENSE            <- MIT license
-├── README.md          <- The top-level README for developers using this project.
-├── pyproject.toml     <- The environment context for reproducing the project environment (with UV)
-├── flake8             <- Linter configuration rules
-├── data
-│   ├── processed      <- Intermediate data that has been transformed.
-│   ├── final          <- Final transformed data and predictions used by model training and forecasting.
-│   └── raw            <- The original, immutable data dump.
-├── logs               <- Logs from training and predicting
+├── LICENSE             <- MIT license
+├── README.md           <- This top-level README for developers using this project
+├── flake8              <- Linter configuration rules
+├── pyproject.toml      <- Python dev project configuration
+├── uv.lock             <- UV frozen configuration of the dev env
+├── noxfile.py          <- NOX dev session (build/clean)
+├── data                <- Data storage
+│   ├── raw             <- The original, immutable data dump (e.g. from external sources)
+│   ├── processed       <- Intermediate data that has been transformed (e.g. enriched)
+│   └── final           <- data in final stage (e.g. predictions)
+├── logs                <- Logs from training and predicting
 │   └──...
-├── models             <- Trained and serialized models including their best params and transformers
+├── models              <- Trained and serialized models including their best params and transformers
 │   └──...
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│   └──...                the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
+├── notebooks           <- Jupyter notebooks. Naming convention : number, author initials, short
+│   └──...                 description with `-` delimitor (e.g. `1.0-jqp-initial-data-exploration`)
+├── references          <- Data dictionaries, manuals, and all other explanatory materials
 │   └──...
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
+├── reports             <- Generated analysis as HTML, PDF, LaTeX, etc...
+│   └── figures         <- Generated graphics and figures to be used in reporting
 │       └──...
-├── src                <- Source code for use in this project.
-│   ├── __init__.py    <- Makes src a Python module
-│   ├── common         <- common functions reusable between each stage
-│   │   ├── __init__.py
-│   │   ├── modeling_util.py 
-│   │   └── preprocessing_util.py
-│   ├── data           <- Scripts to download or generate data
-│   │   ├── __init__.py
-│   │   ├── import_raw_data.py 
-│   ├── features       <- Scripts to turn raw data into features for modeling
-│   │   ├── __init__.py
-│   │   └── build_features.py
-│   ├── models         <- Scripts to train models and then use trained models to make predictions
-│   │   ├── __init__.py
-│   │   └── train_and predict.py
-│   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
-│   │   └── visualize.py
-├── tests/             <- Unit tests (pytest for src source code)
-├── LICENSE                 # MIT license
-├── pyproject.toml          # Python project configuration
-└── noxfile.py              # NOX session configuration
+├── src/                <- All Source code used in this project
+│   ├── api/            <- Service FastAPI (lecture des prédictions)
+│   │   ├── main.py
+│   │   ├── routes/
+│   │   │   └── predictions.py
+│   │   └── schemas/
+│   │       └── prediction.py
+│   ├── ml/             <- machine learning pipeline
+│   │   ├── data        <- Scripts to collect intial raw data or generate new daily one
+│   │   │   ├── utils.py
+│   │   │   └── import_raw_data.py
+│   │   ├── features    <- Scripts to turn raw data into modeling ready data
+│   │   │   ├── utils.py
+│   │   │   └── build_features.py
+│   │   ├── models      <- Scripts to train models and calculate predictions in batch
+│   │   │   ├── utils.py
+│   │   │   └── train_and_predict.py
+│   └── shared/         <- Shared services
+│       └── logger.py
+├── docker/             <- container architecture
+│   ├── dev/            <- dev architecture
+│   │   ├── api/
+│   │   │   ├── requirements.txt
+│   │   │   └── Dockerfile
+│   │   └── ml/
+│   │   │   ├── requirements.txt
+│   │   │   └── Dockerfile
+│   ├── prod/           <- production architecture
+│   │   └──...       
+└── tests/              <- Unit tests (pytest for src source code)
 ```
 
 ---
@@ -86,13 +96,17 @@ avr25-mle-trafic-cycliste/
 
 ### 🔧 Initial Setup (One-time bootstrap)
 
+The build environment initialization requires python, pipx, NOX, UV as a Bootstrap.
+
 ```bash
-# The build env initialization requires python, pipx, nox, uv as a bootstrap
-python --version # check python is here if not install it manually depending on your OS
+# check python is here (if not install it manually depending on your OS)
+python --version 
+# install pipx and publish it into the PATH  
 python -m pip install --upgrade pip
 python -m pip install --user pipx
-pipx ensurepath # propagate pipx temporary bootstrap virtual env to PATH if not already done
-pipx install nox uv # set up NOX (session manager like a MAKE multi OS) and UV (fast virtual env back end)
+pipx ensurepath
+# install NOX (session manager like a MAKE multi OS) and UV (fast virtual env back end)
+pipx install nox uv
 ```
 
 ### 🔧 Repository cloning and DVC setup (One-time init)
@@ -118,16 +132,23 @@ dvc remote modify origin --local secret_access_key [...]
 ## 🚀 Day-to-day Usage
 
 ```bash
-# Rebuild and complete virtual env for standard streamlit application and notebooks with pytorch (+ trigger test/flake8)
+# Rebuild a complete virtual dev env (and trigger flake8 and pytest)
 nox -s build
 
-# Activate the virtual env in command line based on your OS (and preferrably add it in your IDE as the interpreter)
+# Activate the virtual env in command line (based on your OS)
 .nox\build\Scripts\activate.bat # cmd shell windows only
 # or
 source .nox/build/bin/activate # cmd shell Mac/Linux only
 
-# Optional: cleanall (project generated file and virtual envs)
+# [Optional] Clean all project generated file and all virtual envs (build included)
 nox -s cleanall
+
+# [Dev without container only] execute the dvc pipeline
+dvc repro
+
+# [Dev without container only] launch the data API (find a free port on your system)
+uvicorn src.api.main:app --reload --port 10000
+# the API will be available at http://localhost:10000/docs
 ```
 
 ---
@@ -136,7 +157,7 @@ nox -s cleanall
 
 Tests are executed using `pytest`, including:
 
-- ✅ Unit tests for each modules (`trafic/`)  
+- ✅ Unit tests for each modules (in `tests/`)  
 
 CI workflows are handled by GitHub Actions:
 

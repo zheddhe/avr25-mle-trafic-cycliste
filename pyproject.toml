@@ -25,6 +25,7 @@ py312 = [
     "xgboost==3.0.2",
     "pyproj==3.7.1",
     "scikit-optimize==0.10.2",
+    "fastapi==0.116.1",
 ]
 
 test = [
@@ -32,13 +33,14 @@ test = [
     "coverage==7.8.2",
     "pytest-cov==6.1.1",
     "flake8==7.2.0",
+    "uvicorn==0.35.0",
 ]
 
 dev = [
-    "dvc[s3]",
+    "dvc-s3==3.2.2",
     "notebook==7.4.3",
-    "nox",
-    "uv",
+    "nox==2025.5.1",
+    "uv==0.8.14",
 ]
 
 [project.readme]
