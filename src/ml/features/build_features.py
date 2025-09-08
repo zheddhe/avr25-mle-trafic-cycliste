@@ -61,8 +61,10 @@ logger = logging.getLogger(__name__)
 def main():
     '''
     This script construct the expected features and apply a drop unwanted columns
+
     Arguments:
         None (from dictionnary of configuration)
+
     Returns:
         exit 1 if error during feature engineering refinement
         exit 0 if OK

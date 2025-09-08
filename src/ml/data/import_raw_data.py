@@ -39,8 +39,10 @@ def main():
     '''
     This script extract the raw information based on the SITE_TEST dictionnary
     for this particular counter and in between the mentionned range
+
     Arguments:
         None (from dictionnary directly)
+
     Returns:
         exit 1 if error during processing
         exit 0 if OK
