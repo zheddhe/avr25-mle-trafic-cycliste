@@ -1,24 +1,24 @@
 stages:
   import_raw_data:
-    cmd: python src/data/import_raw_data.py
+    cmd: python src/ml/data/import_raw_data.py
     deps:
-      - src/data/import_raw_data.py
+      - src/ml/data/import_raw_data.py
       - data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
     outs:
       - data/processed/initial_Sebastopol_N-S.csv
 
   build_features:
-    cmd: python src/features/build_features.py
+    cmd: python src/ml/features/build_features.py
     deps:
-      - src/features/build_features.py
+      - src/ml/features/build_features.py
       - data/processed/initial_Sebastopol_N-S.csv
     outs:
       - data/processed/initial_Sebastopol_N-S_with_feats.csv
 
   train_and_predict:
-    cmd: python src/models/train_and_predict.py
+    cmd: python src/ml/models/train_and_predict.py
     deps:
-      - src/models/train_and_predict.py
+      - src/ml/models/train_and_predict.py
       - data/processed/initial_Sebastopol_N-S_with_feats.csv
     outs:
       - models/Sebastopol_N-S/

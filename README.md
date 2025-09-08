@@ -37,43 +37,44 @@ This project implements a full machine learning and MLOps pipeline in three main
 
 ``` text
 avr25-mle-trafic-cycliste/
-├── LICENSE            <- MIT license
-├── README.md          <- The top-level README for developers using this project.
-├── pyproject.toml     <- The environment context for reproducing the project environment (with UV)
-├── flake8             <- Linter configuration rules
-├── data
-│   ├── processed      <- Intermediate data that has been transformed.
-│   ├── final          <- Final transformed data and predictions used by model training and forecasting.
-│   └── raw            <- The original, immutable data dump.
-├── logs               <- Logs from training and predicting
+├── LICENSE                         # MIT license
+├── README.md                       # The top-level README for developers using this project.
+├── pyproject.toml                  # The environment context for reproducing a dev environment (with UV)
+├── flake8                          # Linter configuration rules
+├── data                <- Data storage
+│   ├── raw                         # The original, immutable data dump (e.g. from external sources)
+│   ├── processed                   # Intermediate data that has been transformed (e.g. enriched)
+│   └── final                       # data in final stage (e.g. predictions).
+├── logs                <- Logs from training and predicting
 │   └──...
-├── models             <- Trained and serialized models including their best params and transformers
+├── models              <- Trained and serialized models including their best params and transformers
 │   └──...
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│   └──...                the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
+├── notebooks           <- Jupyter notebooks. Naming convention is a number (for ordering), the creator's initials, 
+│   └──...                 and a short `-` delimited description (e.g. `1.0-jqp-initial-data-exploration`).
+├── references          <- Data dictionaries, manuals, and all other explanatory materials.
 │   └──...
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
+├── reports             <- Generated analysis as HTML, PDF, LaTeX, etc.
+│   └── figures         <- Generated graphics and figures to be used in reporting
 │       └──...
-├── src                <- Source code for use in this project.
-│   ├── __init__.py    <- Makes src a Python module
-│   ├── common         <- common functions reusable between each stage
-│   │   ├── __init__.py
-│   │   ├── modeling_util.py 
-│   │   └── preprocessing_util.py
-│   ├── data           <- Scripts to download or generate data
-│   │   ├── __init__.py
-│   │   ├── import_raw_data.py 
-│   ├── features       <- Scripts to turn raw data into features for modeling
-│   │   ├── __init__.py
-│   │   └── build_features.py
-│   ├── models         <- Scripts to train models and then use trained models to make predictions
-│   │   ├── __init__.py
-│   │   └── train_and predict.py
-│   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
-│   │   └── visualize.py
+├── src/                <- All Source code used in this project
+│   ├── api/            <- Service FastAPI (lecture des prédictions)
+│   │   ├── main.py
+│   │   ├── routes/
+│   │   │   └── predictions.py
+│   │   └── schemas/
+│   │       └── prediction.py
+│   ├── ml/             <- machine learning pipeline
+│   │   ├── data        <- Scripts to collect intial raw data or generate new daily one
+│   │   │   ├── utils.py
+│   │   │   └── import_raw_data.py
+│   │   ├── features    <- Scripts to turn raw data into modeling ready data
+│   │   │   ├── utils.py
+│   │   │   └── build_features.py
+│   │   ├── models      <- Scripts to train models and calculate predictions in batch
+│   │   │   ├── utils.py
+│   │   │   └── train_and_predict.py
+│   └── shared/         <- Shared services
+│       └── logger.py
 ├── tests/             <- Unit tests (pytest for src source code)
 ├── LICENSE                 # MIT license
 ├── pyproject.toml          # Python project configuration

@@ -1,7 +1,7 @@
 import os
 import logging
 import pandas as pd
-from src.common.preprocessing_util import DatetimePeriodicsTransformer
+from utils import DatetimePeriodicsTransformer
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {

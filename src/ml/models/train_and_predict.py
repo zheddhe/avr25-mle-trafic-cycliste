@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 import pytz
 import joblib
-from src.common.modeling_util import train_timeseries_model
+from utils import train_timeseries_model
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {

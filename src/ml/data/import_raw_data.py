@@ -1,7 +1,7 @@
 import os
 import logging
 import pandas as pd
-from src.common.preprocessing_util import apply_percent_range_selection
+from utils import apply_percent_range_selection
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
