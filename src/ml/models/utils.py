@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
+import os
 import logging
+import joblib
+import json
 from typing import List, Tuple, Dict, Any
 from skopt.space import Integer, Categorical, Real
 from skopt import BayesSearchCV
@@ -421,3 +424,62 @@ def train_timeseries_model(
         "y_test": y_test,
         "y_test_pred": y_test_pred,
     }
+
+
+def save_artefacts(report: Dict, save_dir):
+    # save final training/test/predictions data from the results :
+    save_data_path = os.path.join("data", "final", save_dir)
+    os.makedirs(save_data_path, exist_ok=True)
+    X_train_path = os.path.join(save_data_path, "X_train.csv")
+    X_test_path = os.path.join(save_data_path, "X_test.csv")
+    X_train_dates_path = os.path.join(save_data_path, "X_train_dates.csv")
+    X_test_dates_path = os.path.join(save_data_path, "X_test_dates.csv")
+    y_train_path = os.path.join(save_data_path, "y_train.csv")
+    y_test_path = os.path.join(save_data_path, "y_test.csv")
+    y_train_pred_path = os.path.join(save_data_path, "y_train_pred.csv")
+    y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
+    logging.info(
+        "Final refined data CSV files saved in {save_data_path}:\n"
+        f"{X_train_path}\n"
+        f"{X_test_path}\n"
+        f"{X_train_dates_path}\n"
+        f"{X_test_dates_path}\n"
+        f"{y_train_path}\n"
+        f"{y_test_path}\n"
+        f"{y_train_pred_path}\n"
+        f"{y_test_pred_path}"
+    )
+    report["X_test_dates"].to_csv(X_test_dates_path, index=True)
+    report["X_train"].to_csv(X_train_path, index=True)
+    report["X_test"].to_csv(X_test_path, index=True)
+    report["X_train_dates"].to_csv(X_train_dates_path, index=True)
+    report["y_train"].to_csv(y_train_path, index=True)
+    report["y_test"].to_csv(y_test_path, index=True)
+    pd.DataFrame(
+        report["y_train_pred"],
+        columns=["comptage_horaire_predit"],
+    ).to_csv(y_train_pred_path, index=True)
+    pd.DataFrame(
+        report["y_test_pred"],
+        columns=["comptage_horaire_predit"],
+    ).to_csv(y_test_pred_path, index=True)
+
+    # save pipeline model/params/transformer from the result
+    save_model_path = os.path.join("models", save_dir)
+    os.makedirs(save_model_path, exist_ok=True)
+    pipe_model_path = os.path.join(save_model_path, "pipe_model.pkl")
+    ar_transformer_path = os.path.join(save_model_path, "ar_transformer.pkl")
+    params_path = os.path.join(save_model_path, "hyperparams.json")
+    metrics_path = os.path.join(save_model_path, "metrics.json")
+    logging.info(
+        f"Pipeline, Params, Metrics and AR transformer are saved in {save_model_path}:\n"
+        f"{pipe_model_path}\n"
+        f"{params_path}\n"
+        f"{ar_transformer_path}"
+    )
+    joblib.dump(report["pipe_model"], pipe_model_path)
+    joblib.dump(report["ar_transformer"], ar_transformer_path)
+    with open(params_path, "w", encoding="utf-8") as f:
+        json.dump(report["params"], f, indent=4, ensure_ascii=False)
+    with open(metrics_path, "w", encoding="utf-8") as f:
+        json.dump(report["metrics"], f, indent=4, ensure_ascii=False)
