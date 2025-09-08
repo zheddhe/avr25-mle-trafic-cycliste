@@ -142,6 +142,13 @@ source .nox/build/bin/activate # cmd shell Mac/Linux only
 
 # [Optional] Clean all project generated file and all virtual envs (build included)
 nox -s cleanall
+
+# [Dev without container only] execute the dvc pipeline
+dvc repro
+
+# [Dev without container only] launch the data API (find a free port on your system)
+uvicorn src.api.main:app --reload --port 10000
+# the API will be available at http://localhost:10000/docs
 ```
 
 ---
@@ -150,7 +157,7 @@ nox -s cleanall
 
 Tests are executed using `pytest`, including:
 
-- ✅ Unit tests for each modules (`trafic/`)  
+- ✅ Unit tests for each modules (in `tests/`)  
 
 CI workflows are handled by GitHub Actions:
 
