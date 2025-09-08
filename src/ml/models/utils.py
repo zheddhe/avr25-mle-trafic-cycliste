@@ -12,6 +12,11 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
+from sklearn.metrics import (
+    mean_absolute_error,
+    root_mean_squared_error,
+    r2_score,
+)
 
 SEARCH_SPACES_XGB = {
     'n_estimators': Integer(100, 1000),
@@ -410,6 +415,31 @@ def train_timeseries_model(
     )
     logger.info("Predictions on test data achieved")
 
+    # Assemble a full prediction dataset based on y_true\y_pred\dates (from train and test)
+    y_true = pd.Series(y_train).reset_index(drop=True)
+    y_pred = pd.Series(y_train_pred).reset_index(drop=True)
+    train_df = pd.DataFrame({
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "forecast_mode": False,
+    })
+    train_df = pd.concat([X_train_dates.reset_index(drop=True), train_df], axis=1)
+    y_true = pd.Series(y_test).reset_index(drop=True)
+    y_pred = pd.Series(y_test_pred).reset_index(drop=True)
+    test_df = pd.DataFrame({
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "forecast_mode": True,
+    })
+    test_df = pd.concat([X_test_dates.reset_index(drop=True), test_df], axis=1)
+    y_full = pd.concat([train_df, test_df], axis=0, ignore_index=True)
+
+    # Compute train metrics
+    metrics = {
+        "train": compute_metrics(pd.Series(y_train_pred), y_train),
+        "test": compute_metrics(pd.Series(y_test_pred), y_test),
+    }
+
     # provide all generated item in a dictionnary
     return {
         "ar_transformer": ar_transformer,
@@ -423,6 +453,8 @@ def train_timeseries_model(
         "y_train_pred": y_train_pred,
         "y_test": y_test,
         "y_test_pred": y_test_pred,
+        "y_full": y_full,
+        "metrics": metrics,
     }
 
 
@@ -438,6 +470,7 @@ def save_artefacts(report: Dict, save_dir):
     y_test_path = os.path.join(save_data_path, "y_test.csv")
     y_train_pred_path = os.path.join(save_data_path, "y_train_pred.csv")
     y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
+    y_full_path = os.path.join(save_data_path, "y_full.csv")
     logging.info(
         "Final refined data CSV files saved in {save_data_path}:\n"
         f"{X_train_path}\n"
@@ -463,6 +496,7 @@ def save_artefacts(report: Dict, save_dir):
         report["y_test_pred"],
         columns=["comptage_horaire_predit"],
     ).to_csv(y_test_pred_path, index=True)
+    report["y_full"].to_csv(y_full_path, index=True)
 
     # save pipeline model/params/transformer from the result
     save_model_path = os.path.join("models", save_dir)
@@ -483,3 +517,15 @@ def save_artefacts(report: Dict, save_dir):
         json.dump(report["params"], f, indent=4, ensure_ascii=False)
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(report["metrics"], f, indent=4, ensure_ascii=False)
+
+
+def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
+    yt = np.array(pd.Series(y_true).to_numpy(copy=False),
+                  dtype=np.float64, copy=True, order="C")
+    yp = np.array(pd.Series(y_pred).to_numpy(copy=False),
+                  dtype=np.float64, copy=True, order="C")
+    return {
+        "R2": r2_score(yt, yp),
+        "RMSE": root_mean_squared_error(yt, yp),
+        "MAE": mean_absolute_error(yt, yp),
+    }

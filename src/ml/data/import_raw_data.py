@@ -6,7 +6,7 @@ from utils import apply_percent_range_selection
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
         "processed_file_name": "initial_Sebastopol_N-S.csv",
-        "range": (0.0, 75.0),  # a portion of the original range TODO : use exact timestamp ?
+        "range": (0.0, 100.0),  # a portion of the original range TODO : use exact timestamp ?
     },
     # ('Totem 73 boulevard de Sébastopol', 'N-S'): {
     #     "processed_file_name": "daily_1_Sebastopol_N-S.csv",

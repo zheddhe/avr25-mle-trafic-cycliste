@@ -10,48 +10,48 @@ stages:
       size: 149464819
     - path: src/ml/data/import_raw_data.py
       hash: md5
-      md5: 2e6dc591715d893687b019a604e7b728
-      size: 3754
+      md5: eb4b99a605ee14837df5ad74b233fb1a
+      size: 3759
     outs:
     - path: data/processed/initial_Sebastopol_N-S.csv
       hash: md5
-      md5: d2f941e6ec135ef1d187b41350e6b56e
-      size: 1216943
+      md5: dfff0ca86bba4c8b58d97e1fc55dc534
+      size: 1617604
   build_features:
     cmd: python src/ml/features/build_features.py
     deps:
     - path: data/processed/initial_Sebastopol_N-S.csv
       hash: md5
-      md5: d2f941e6ec135ef1d187b41350e6b56e
-      size: 1216943
+      md5: dfff0ca86bba4c8b58d97e1fc55dc534
+      size: 1617604
     - path: src/ml/features/build_features.py
       hash: md5
-      md5: 87a65e862285d5b8255e70e18f8e99f2
-      size: 3569
+      md5: b0ccf0a2d959c5f26f38f3c366229a1d
+      size: 3573
     outs:
     - path: data/processed/initial_Sebastopol_N-S_with_feats.csv
       hash: md5
-      md5: c7b56402c881b06dbf5d209b07c70915
-      size: 1350050
+      md5: 317dcdd4c83a9993e3fd19f96aed7d0a
+      size: 1795744
   train_and_predict:
     cmd: python src/ml/models/train_and_predict.py
     deps:
     - path: data/processed/initial_Sebastopol_N-S_with_feats.csv
       hash: md5
-      md5: c7b56402c881b06dbf5d209b07c70915
-      size: 1350050
+      md5: 317dcdd4c83a9993e3fd19f96aed7d0a
+      size: 1795744
     - path: src/ml/models/train_and_predict.py
       hash: md5
-      md5: 6deb0737ed3c6769a0146471ac04b61b
-      size: 5974
+      md5: 11affb016ba8aca965573e1bf92d47fd
+      size: 3587
     outs:
     - path: data/final/Sebastopol_N-S/
       hash: md5
-      md5: 088e5e4de9f44afe5c8d7b2fb5d80a60.dir
-      size: 1855431
-      nfiles: 8
+      md5: 21b25dc0db6b65a7d947509159b4e99c.dir
+      size: 3228948
+      nfiles: 9
     - path: models/Sebastopol_N-S/
       hash: md5
-      md5: 4d9d0238d5910f5e90522dd8b065a5b4.dir
-      size: 420398
-      nfiles: 3
+      md5: 9f5371249137e628d67b8775464c0d76.dir
+      size: 8218260
+      nfiles: 4
