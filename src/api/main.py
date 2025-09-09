@@ -13,8 +13,22 @@ SITE_TEST = {
     "Sebastopol_N-S": "y_full.csv",
 }
 
-# redirect logs on uvicorn directly for exposure in the console
-logger = logging.getLogger("uvicorn.error")
+# -------------------------------------------------------------------
+# Logs configuration
+# -------------------------------------------------------------------
+os.makedirs("logs", exist_ok=True)
+log_path = os.path.join("logs", "api_main.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(log_path, mode="a", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # dataset load in a dictionnary of dataframe with key = counter name
 df_predictions = {}
@@ -55,8 +69,8 @@ tags_metadata = [
 app = FastAPI(
     title="API du trafic cycliste",
     description=(
-        "Expose les prediction du trafic cycliste pour les compteurs installés dans la ville"
-        " de paris"
+        "Expose les prédictions du trafic cycliste pour les compteurs installés dans la ville"
+        " de Paris"
     ),
     version="1.0.0",
     openapi_tags=tags_metadata,
@@ -189,7 +203,7 @@ def get_all_predictions(
     summary="Afficher les predictions d'un compteur",
     description=(
         "Affiche l'ensemble des prédictions horodatées calculées pour ce compteur.\n"
-        "Limite l'affichage aux 50 derniers enregistrements si aucune limite donnée"
+        "Limite l'affichage à maximum 100 prédictions (et de manière paginée)"
     ),
     responses=generic_responses,
 )
