@@ -65,7 +65,7 @@ avr25-mle-trafic-cycliste/
 │       └──...
 ├── src/                <- All Source code used in this project
 │   ├── api/            <- Service FastAPI (lecture des prédictions)
-│   │   ├── main.py
+│   │   └── main.py
 │   ├── ml/             <- machine learning pipeline
 │   │   ├── data        <- Scripts to collect intial raw data or generate new daily one
 │   │   │   ├── data_utils.py
