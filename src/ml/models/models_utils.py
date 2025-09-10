@@ -19,15 +19,15 @@ from sklearn.metrics import (
 )
 
 SEARCH_SPACES_XGB = {
-    'n_estimators': Integer(100, 1000),
-    'max_depth': Integer(3, 15),
-    'learning_rate': Real(1e-3, 0.3, prior='log-uniform'),
-    'subsample': Real(0.5, 1.0),
-    'colsample_bytree': Real(0.5, 1.0),
-    'gamma': Real(0, 10.0),
-    'reg_alpha': Real(1e-4, 10.0, prior='log-uniform'),  # L1
-    'reg_lambda': Real(1e-4, 10.0, prior='log-uniform'),  # L2
-    'min_child_weight': Integer(1, 20),
+    'n_estimators': Integer(300, 800),
+    'max_depth': Integer(3, 10),
+    'learning_rate': Real(0.01, 0.2, prior='log-uniform'),
+    'subsample': Real(0.7, 1.0),
+    'colsample_bytree': Real(0.7, 1.0),
+    'gamma': Real(0, 5.0),
+    'reg_alpha': Real(1e-4, 1.0, prior='log-uniform'),  # L1
+    'reg_lambda': Real(0.1, 5, prior='log-uniform'),  # L2
+    'min_child_weight': Integer(1, 10),
 }
 
 logger = logging.getLogger(__name__)
@@ -352,7 +352,7 @@ def train_timeseries_model(
     ])
 
     # Set up the model and initiale gridsearch if iteration are foreseen
-    model = XGBRegressor(random_state=1)
+    model = XGBRegressor(random_state=1, n_jobs=-1)
     search_spaces = SEARCH_SPACES_XGB
     if iter_grid_search > 0:
         tscv = TimeSeriesSplit(n_splits=5)
@@ -380,15 +380,22 @@ def train_timeseries_model(
     logger.info("Model training achieved")
 
     # Collect the best model parameters
-    params = None
+    fitted_model = pipe_model.named_steps['reg']
     if iter_grid_search > 0:
-        fitted_model = pipe_model.named_steps['reg']
         best_params = fitted_model.best_params_
         logger.info(f"Bayesian grid search best params [{best_params}]")
-        params = {
-            "best_params": best_params,
-            **_extract_param_ranges(search_spaces)
-        }
+        best_estimator = fitted_model.best_estimator_
+        fitted_model_params = best_estimator.get_params()
+        logger.info(f"fitted model params [{fitted_model_params}]")
+    else:
+        best_params = "Not Applicable (no grid search)"
+        fitted_model_params = fitted_model.get_params()
+        logger.info(f"fitted model params [{fitted_model_params}]")
+    params = {
+        "best_params": best_params,
+        **_extract_param_ranges(search_spaces),
+        **fitted_model_params,
+    }
     y_train_pred = pipe_model.predict(X_train)
     logger.info("Predictions on train data achieved")
 
