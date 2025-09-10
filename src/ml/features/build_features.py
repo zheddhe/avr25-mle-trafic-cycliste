@@ -5,10 +5,8 @@ from utils import DatetimePeriodicsTransformer
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "input_file_name": "initial_Sebastopol_N-S.csv",
-        "processed_file_name": "initial_Sebastopol_N-S_with_feats.csv",
-        "short_name": "Sebastopol_N-S",
-        "range": (0.0, 75.0),  # a portion of the original range TODO : use exact timestamp ?
+        "input_file_name": "Sebastopol_N-S_initial.csv",
+        "processed_file_name": "Sebastopol_N-S_initial_with_feats.csv",
     }
 }
 
