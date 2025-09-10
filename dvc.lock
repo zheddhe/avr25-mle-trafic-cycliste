@@ -58,16 +58,16 @@ stages:
       size: 20091
     - path: src/ml/models/train_and_predict.py
       hash: md5
-      md5: 4f801065a2f5479985b2fde59a10a833
-      size: 4911
+      md5: 7b46bf0dc5f5b7b12bb8e577936b5c07
+      size: 4910
     outs:
     - path: data/final/Sebastopol_N-S/
       hash: md5
-      md5: 9aabd5b5f37dd2f4ed872612f1926e09.dir
-      size: 2454385
+      md5: 06eae80f7c9e086e38db32f7bec611b5.dir
+      size: 2454573
       nfiles: 9
     - path: models/Sebastopol_N-S/
       hash: md5
-      md5: 6fd097146fa89d7f11e1bf7e9601375f.dir
-      size: 1976097
+      md5: 1990da3b4c2bca92057984da43c56866.dir
+      size: 424861
       nfiles: 4
