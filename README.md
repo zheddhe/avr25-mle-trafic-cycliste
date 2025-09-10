@@ -29,17 +29,33 @@ This project implements a full machine learning and MLOps pipeline in three main
 - Monitoring and orchestration
 - Scalability
 
-## 📖 Project documentation & GitHub Project Dashboards
+The MLOps architecture we've designed focus on interactions between components in order to achieve our main business case where an external user
+access daily refreshed predictions of the biking trafic.
+
+[![MLOps Architecture v2](references/Architecture_MLOps_v2.drawio.png)](https://drive.google.com/file/d/12olpeXpeOF2-UgBSf1h_LhjRVfG8t3KB/view?usp=drive_link)
+
+## 🧭 Project organization
+
+### 1. 📖 External Documentation
 
 - [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
 - [Data processing and modelization report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
 
-## 🗺️ Project GitHub Dashboards
+### 2. 🗺️ GitHub Dashboards
 
 - [Roadmap](https://github.com/users/zheddhe/projects/6/views/2)
 - [Current Iteration](https://github.com/users/zheddhe/projects/6/views/3)
 
-## 🧱 Project Structure
+### 3. 👥 Branch Workflow
+
+Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
+
+- Create branch per story/bugfix and merge them with pull requests afterward
+- Tag stable versions ideally after each story/bugfix successfull merge
+
+[![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
+
+### 4. 🧱 Project Structure
 
 ``` text
 avr25-mle-trafic-cycliste/
@@ -57,13 +73,8 @@ avr25-mle-trafic-cycliste/
 │   └──...
 ├── models              <- Trained and serialized models including their best params and transformers
 │   └──...
-├── notebooks           <- Jupyter notebooks. Naming convention : number, author initials, short
-│   └──...                 description with `-` delimitor (e.g. `1.0-jqp-initial-data-exploration`)
 ├── references          <- Data dictionaries, manuals, and all other explanatory materials
 │   └──...
-├── reports             <- Generated analysis as HTML, PDF, LaTeX, etc...
-│   └── figures         <- Generated graphics and figures to be used in reporting
-│       └──...
 ├── src/                <- All Source code used in this project
 │   ├── api/            <- Service FastAPI (lecture des prédictions)
 │   │   └── main.py
@@ -161,15 +172,6 @@ CI workflows are handled by GitHub Actions:
 
 - `ci_main.yml`: runs on every push or pull request to the `main` branch  
 - `ci_branch.yml`: runs on every push to any other branch
-
-## 👥 Collaborative branch workflow
-
-Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
-
-- Create branch per story/bugfix and merge them with pull requests afterward
-- Tag stable versions ideally after each story/bugfix successfull merge
-
-![Collaborative branch workflow](references/collaborative_branch_workflow.drawio.png)
 
 ## 👥 Contributors
 
