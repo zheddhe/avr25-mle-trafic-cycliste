@@ -13,16 +13,7 @@ from mlflow_tracking import (
     log_model_with_signature,
     log_local_artifacts,
 )
-
-SITE_TEST = {
-    ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "sub_dir": "Sebastopol_N-S",
-        "input_file_name": "initial_with_feats.csv",
-        "temp_feats": [7, 1, 24],
-        "test_ratio": 0.25,
-        "iter_grid_search": 0,
-    }
-}
+from src.ml.test_config import SITE_TEST
 
 # -------------------------------------------------------------------
 # Configuration des logs
@@ -68,16 +59,16 @@ def main():
     for counter_id in SITE_TEST.keys():
         # working paths
         sub_dir = SITE_TEST[counter_id]["sub_dir"]
-        input_file_name = SITE_TEST[counter_id]["input_file_name"]
+        processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
         data_dir = os.path.join("data", "processed", sub_dir)
         model_dir = os.path.join("models", sub_dir)
-        input_file_path = os.path.join(data_dir, input_file_name)
+        processed_file_path = os.path.join(data_dir, processed_file_name)
         os.makedirs(model_dir, exist_ok=True)
 
         # data load
-        logging.info(f"Processed data load from [{input_file_path}]")
+        logging.info(f"Processed data load from [{processed_file_path}]")
         df_counter = pd.read_csv(
-            input_file_path,
+            processed_file_path,
             index_col=0,
         )
         # date format conversions
@@ -109,7 +100,7 @@ def main():
             "counter.orientation": str(counter_id[1]),
             "model.family": "XGBRegressor",
         }
-        with start_run(experiment_name=sub_dir, run_name=input_file_name, tags=tags):
+        with start_run(experiment_name=sub_dir, run_name=processed_file_name, tags=tags):
             # log report content (metrics, shapes, params)
             log_report_content(report, target_col="comptage_horaire")
             # persist artefacts locally (unchanged)
@@ -120,7 +111,7 @@ def main():
                 pipe_model=report["pipe_model"],
                 sample_input_df=x_sample,
                 artifact_path="model_pipeline",
-                registered_name="cyclist-traffic-model"
+                registered_name=f"{sub_dir}-model"
             )
             # log all produced files/dirs as MLflow artifacts
             log_local_artifacts(sub_dir)
