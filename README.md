@@ -67,13 +67,13 @@ avr25-mle-trafic-cycliste/
 │   │       └── prediction.py
 │   ├── ml/             <- machine learning pipeline
 │   │   ├── data        <- Scripts to collect intial raw data or generate new daily one
-│   │   │   ├── utils.py
+│   │   │   ├── data_utils.py
 │   │   │   └── import_raw_data.py
 │   │   ├── features    <- Scripts to turn raw data into modeling ready data
-│   │   │   ├── utils.py
+│   │   │   ├── features_utils.py
 │   │   │   └── build_features.py
 │   │   ├── models      <- Scripts to train models and calculate predictions in batch
-│   │   │   ├── utils.py
+│   │   │   ├── models_utils.py
 │   │   │   └── train_and_predict.py
 │   └── shared/         <- Shared services
 │       └── logger.py

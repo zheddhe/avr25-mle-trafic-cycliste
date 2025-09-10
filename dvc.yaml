@@ -3,7 +3,7 @@ stages:
     cmd: python src/ml/data/import_raw_data.py
     deps:
       - src/ml/data/import_raw_data.py
-      - src/ml/data/utils.py
+      - src/ml/data/data_utils.py
       - data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
     outs:
       - data/processed/Sebastopol_N-S_initial.csv
@@ -12,7 +12,7 @@ stages:
     cmd: python src/ml/features/build_features.py
     deps:
       - src/ml/features/build_features.py
-      - src/ml/features/utils.py
+      - src/ml/features/features_utils.py
       - data/processed/Sebastopol_N-S_initial.csv
     outs:
       - data/processed/Sebastopol_N-S_initial_with_feats.csv
@@ -21,7 +21,7 @@ stages:
     cmd: python src/ml/models/train_and_predict.py
     deps:
       - src/ml/models/train_and_predict.py
-      - src/ml/models/utils.py
+      - src/ml/models/models_utils.py
       - data/processed/Sebastopol_N-S_initial_with_feats.csv
     outs:
       - models/Sebastopol_N-S/

@@ -2,7 +2,7 @@ import os
 import logging
 import pandas as pd
 import pytz
-from utils import (
+from models_utils import (
     train_timeseries_model,
     save_artefacts,
 )
