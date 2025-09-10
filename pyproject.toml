@@ -26,7 +26,8 @@ py312 = [
     "pyproj==3.7.1",
     "scikit-optimize==0.10.2",
     "fastapi==0.116.1",
-    "mlflow==2.12"
+    "setuptools==67.8.0",
+    "mlflow==2.14.1",
 ]
 
 test = [
@@ -39,9 +40,9 @@ test = [
 
 dev = [
     "dvc-s3==3.2.2",
-    "notebook==7.4.3",
     "nox==2025.5.1",
     "uv==0.8.14",
+    "pip==25.2",
 ]
 
 [project.readme]

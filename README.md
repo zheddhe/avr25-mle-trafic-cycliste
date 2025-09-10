@@ -55,7 +55,13 @@ Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/e
 
 [![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
 
-### 4. 🧱 Project Structure
+### 4. 📊 MLflow
+
+This project keep a registry of **metrics**, **params** and training and prediction **artefacts**
+(sklearn pipeline, auto-regressive transformer, splits train test and prédictions, metrics and hyperparams)
+in **MLflow**.
+
+### 5. 🧱 Project Structure
 
 ``` text
 avr25-mle-trafic-cycliste/
@@ -145,9 +151,10 @@ dvc remote modify origin --local secret_access_key [...]
 nox -s build
 
 # Activate the virtual env in command line (based on your OS)
-.nox\build\Scripts\activate.bat # cmd shell windows only
-# or
-source .nox/build/bin/activate # cmd shell Mac/Linux only
+# Windows cmd
+.nox\build\Scripts\activate.bat 
+# Mac/Linux shell
+source .nox/build/bin/activate
 
 # [Optional] Clean all project generated file and all virtual envs (build included)
 nox -s cleanall
@@ -158,6 +165,39 @@ dvc repro
 # [Dev without container only] launch the data API (find a free port on your system)
 uvicorn src.api.main:app --reload --port 10000
 # the API will be available at http://localhost:10000/docs
+
+# Configure Dagshub MLflow serveur through environment variable (based on your OS)
+# Windows cmd
+set MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow 
+set MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
+set MLFLOW_TRACKING_PASSWORD=<DagHhub TOKEN (preferrably over a personnal password...)>
+# Mac/Linux shell
+export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
+export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
+export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferrably over a personnal password...)>
+
+# Configure Local MLflow dockerized server through environment variables (based on your OS)
+# Windows cmd
+set MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+set MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
+# Mac/Linux shell
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
+
+```
+
+In fully dockerized MLOps local environment, we'll switch an .env.local file configuration with the following content:
+
+```text
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
+```
+
+Then the docker composition will assemble all dockers with the .env.local context:
+
+```bash
+# init and launch all the dockers containers
+docker compose --env-file .env.local up -d --force-recreate
 ```
 
 ## 🧪 Testing and Continuous Integration

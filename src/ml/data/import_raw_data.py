@@ -6,7 +6,7 @@ from data_utils import apply_percent_range_selection
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
         "processed_file_name": "Sebastopol_N-S_initial.csv",
-        "range": (0.0, 75.0),  # a portion of the original range TODO : use exact timestamp ?
+        "range": (0.0, 76.0),  # a portion of the original range TODO : use exact timestamp ?
     },
     # ('Totem 73 boulevard de Sébastopol', 'N-S'): {
     #     "processed_file_name": "Sebastopol_N-S_daily_1_Sebastopol.csv",
@@ -17,14 +17,15 @@ SITE_TEST = {
 # -------------------------------------------------------------------
 # Logs configuration
 # -------------------------------------------------------------------
-os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "import_raw_data.log")
+log_dir = os.path.join("logs", "ml")
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, "import_raw_data.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(log_path, mode="a", encoding="utf-8"),
+        logging.FileHandler(log_path, mode="w", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -77,7 +78,9 @@ def main():
             )
             df = df.sort_values(timestamp_col).reset_index().drop(columns=["index"])
             # restrict the data to the selected range (simulate production data collection)
-            logger.info(f"Range for this counter [{SITE_TEST[counter_id]["range"]} (in percent)]")
+            logger.info(
+                f"Range for this counter [{SITE_TEST[counter_id]["range"]} (in percent)]"
+            )
             df = apply_percent_range_selection(
                 df,
                 SITE_TEST[counter_id]["range"],
@@ -91,12 +94,12 @@ def main():
             )
             counter_found = True
             break
-    if counter_found:
-        logger.info("✅ Raw counters data extraction is successfull.")
-        exit(0)
-    else:
-        logger.warning("❌ Raw counters data extraction have failed.")
+    if not counter_found:
+        logger.warning("⚠️ Raw counters data extraction hasn't detected any counter.")
         exit(1)
+
+    logger.info("✅ Raw counters data extraction is successfull.")
+    exit(0)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ stages:
     deps:
       - src/ml/models/train_and_predict.py
       - src/ml/models/models_utils.py
+      - src/ml/models/mlflow_tracking.py
       - data/processed/Sebastopol_N-S_initial_with_feats.csv
     outs:
       - models/Sebastopol_N-S/

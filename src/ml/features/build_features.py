@@ -38,14 +38,15 @@ COLUMNS_TO_DROP = [
 # -------------------------------------------------------------------
 # Configuration des logs
 # -------------------------------------------------------------------
-os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "build_features.log")
+log_dir = os.path.join("logs", "ml")
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, "build_features.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(log_path, mode="a", encoding="utf-8"),
+        logging.FileHandler(log_path, mode="w", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -93,8 +94,8 @@ def main():
         logging.info(f"Saving file [{processed_file_name}] at path [{processed_dir}]")
         df.to_csv(os.path.join(processed_dir, processed_file_name), index=True)
 
-        logging.info("✅ Feature engineering processed successfully.")
-        exit(0)
+    logging.info("✅ Feature engineering processed successfully.")
+    exit(0)
 
 
 if __name__ == "__main__":
