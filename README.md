@@ -31,6 +31,11 @@ This project implements a full machine learning and MLOps pipeline in three main
 - Monitoring and orchestration
 - Scalability
 
+## 📖 Project documentation
+
+- [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
+- [Data processing and modelization report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
+
 ---
 
 ## 🧱 Project Structure
@@ -61,10 +66,6 @@ avr25-mle-trafic-cycliste/
 ├── src/                <- All Source code used in this project
 │   ├── api/            <- Service FastAPI (lecture des prédictions)
 │   │   ├── main.py
-│   │   ├── routes/
-│   │   │   └── predictions.py
-│   │   └── schemas/
-│   │       └── prediction.py
 │   ├── ml/             <- machine learning pipeline
 │   │   ├── data        <- Scripts to collect intial raw data or generate new daily one
 │   │   │   ├── data_utils.py
