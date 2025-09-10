@@ -6,28 +6,27 @@ from models_utils import (
     train_timeseries_model,
     save_artefacts,
 )
-
-SITE_TEST = {
-    ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "save_sub_dir": "Sebastopol_N-S",
-        "input_file_name": "Sebastopol_N-S_initial_with_feats.csv",
-        "temp_feats": [7, 1, 24],
-        "test_ratio": 0.2,
-        "iter_grid_search": 25,
-    }
-}
+from mlflow_tracking import (
+    configure_mlflow_from_env,
+    start_run,
+    log_report_content,
+    log_model_with_signature,
+    log_local_artifacts,
+)
+from src.ml.test_config import SITE_TEST
 
 # -------------------------------------------------------------------
 # Configuration des logs
 # -------------------------------------------------------------------
-os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "train_and_predict.log")
+log_dir = os.path.join("logs", "ml")
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, "train_and_predict.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(log_path, mode="a", encoding="utf-8"),
+        logging.FileHandler(log_path, mode="w", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -54,17 +53,22 @@ def main():
         exit 1 if error during traning and prediction
         exit 0 if OK
     '''
+    # set MLflow tracking URI from env if provided
+    configure_mlflow_from_env()
+
     for counter_id in SITE_TEST.keys():
         # working paths
-        input_file_name = SITE_TEST[counter_id]["input_file_name"]
-        input_file_path = os.path.join("data", "processed", input_file_name)
-        processed_dir = os.path.join("data", "processed")
-        os.makedirs(processed_dir, exist_ok=True)
+        sub_dir = SITE_TEST[counter_id]["sub_dir"]
+        processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
+        data_dir = os.path.join("data", "processed", sub_dir)
+        model_dir = os.path.join("models", sub_dir)
+        processed_file_path = os.path.join(data_dir, processed_file_name)
+        os.makedirs(model_dir, exist_ok=True)
 
         # data load
-        logging.info(f"Processed data load from [{input_file_path}]")
+        logging.info(f"Processed data load from [{processed_file_path}]")
         df_counter = pd.read_csv(
-            input_file_path,
+            processed_file_path,
             index_col=0,
         )
         # date format conversions
@@ -91,10 +95,29 @@ def main():
         )
 
         # save all artefacts with standard filenames in specific counter subdir
-        save_artefacts(report, SITE_TEST[counter_id]["save_sub_dir"])
+        tags = {
+            "counter.name": str(counter_id[0]),
+            "counter.orientation": str(counter_id[1]),
+            "model.family": "XGBRegressor",
+        }
+        with start_run(experiment_name=sub_dir, run_name=processed_file_name, tags=tags):
+            # log report content (metrics, shapes, params)
+            log_report_content(report, target_col="comptage_horaire")
+            # persist artefacts locally (unchanged)
+            save_artefacts(report, sub_dir)
+            # log model with signature (use one real train row)
+            x_sample = report["X_train"].head(1)
+            log_model_with_signature(
+                pipe_model=report["pipe_model"],
+                sample_input_df=x_sample,
+                artifact_path="model_pipeline",
+                registered_name=f"{sub_dir}-model"
+            )
+            # log all produced files/dirs as MLflow artifacts
+            log_local_artifacts(sub_dir)
 
-        logging.info("✅ Training and forecasting ended successfully.")
-        exit(0)
+    logging.info("✅ Training and forecasting ended successfully.")
+    exit(0)
 
 
 if __name__ == "__main__":

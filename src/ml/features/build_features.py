@@ -2,13 +2,7 @@ import os
 import logging
 import pandas as pd
 from features_utils import DatetimePeriodicsTransformer
-
-SITE_TEST = {
-    ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "input_file_name": "Sebastopol_N-S_initial.csv",
-        "processed_file_name": "Sebastopol_N-S_initial_with_feats.csv",
-    }
-}
+from src.ml.test_config import SITE_TEST
 
 COLUMNS_TO_DROP = [
     "nom_du_site_de_comptage",
@@ -38,14 +32,15 @@ COLUMNS_TO_DROP = [
 # -------------------------------------------------------------------
 # Configuration des logs
 # -------------------------------------------------------------------
-os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "build_features.log")
+log_dir = os.path.join("logs", "ml")
+os.makedirs(log_dir, exist_ok=True)
+log_path = os.path.join(log_dir, "build_features.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(log_path, mode="a", encoding="utf-8"),
+        logging.FileHandler(log_path, mode="w", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -69,14 +64,17 @@ def main():
     '''
     for counter_id in SITE_TEST.keys():
         # working paths
-        input_file_name = SITE_TEST[counter_id]["input_file_name"]
-        input_file_path = os.path.join("data", "processed", input_file_name)
-        processed_dir = os.path.join("data", "processed")
+        sub_dir = SITE_TEST[counter_id]["sub_dir"]
+        interim_dir = os.path.join("data", "interim", sub_dir)
+        interim_file_name = SITE_TEST[counter_id]["interim_file_name"]
+        processed_dir = os.path.join("data", "processed", sub_dir)
         os.makedirs(processed_dir, exist_ok=True)
+        processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
 
         # data load
-        logging.info(f"Interim data load for counter [{counter_id}] from [{input_file_path}]")
-        df = pd.read_csv(input_file_path, index_col=0)
+        interim_file_path = os.path.join(interim_dir, interim_file_name)
+        logging.info(f"Interim data load for counter [{counter_id}] from [{interim_file_path}]")
+        df = pd.read_csv(interim_file_path, index_col=0)
 
         # enrich periodic features
         logging.info("Processing periodic temporal data feature engineering")
@@ -89,12 +87,11 @@ def main():
         df = df.drop(columns=[col for col in COLUMNS_TO_DROP if col in df.columns])
 
         # save the processed data
-        processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
         logging.info(f"Saving file [{processed_file_name}] at path [{processed_dir}]")
         df.to_csv(os.path.join(processed_dir, processed_file_name), index=True)
 
-        logging.info("✅ Feature engineering processed successfully.")
-        exit(0)
+    logging.info("✅ Feature engineering processed successfully.")
+    exit(0)
 
 
 if __name__ == "__main__":
