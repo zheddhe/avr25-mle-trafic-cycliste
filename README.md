@@ -6,8 +6,6 @@
 > A machine learning pipeline to provide bike traffic prediction in Paris.  
 > Developed as part of the April 2025 Machine Learning Engineering (MLE) full training program.
 
----
-
 ## 🧭 Overview
 
 This project implements a full machine learning and MLOps pipeline in three main stages:
@@ -31,12 +29,15 @@ This project implements a full machine learning and MLOps pipeline in three main
 - Monitoring and orchestration
 - Scalability
 
-## 📖 Project documentation
+## 📖 Project documentation & GitHub Project Dashboards
 
 - [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
 - [Data processing and modelization report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
 
----
+## 🗺️ Project GitHub Dashboards
+
+- [Roadmap](https://github.com/users/zheddhe/projects/6/views/2)
+- [Current Iteration](https://github.com/users/zheddhe/projects/6/views/3)
 
 ## 🧱 Project Structure
 
@@ -90,8 +91,6 @@ avr25-mle-trafic-cycliste/
 │   │   └──...       
 └── tests/              <- Unit tests (pytest for src source code)
 ```
-
----
 
 ## ⚙️ Installation
 
@@ -152,8 +151,6 @@ uvicorn src.api.main:app --reload --port 10000
 # the API will be available at http://localhost:10000/docs
 ```
 
----
-
 ## 🧪 Testing and Continuous Integration
 
 Tests are executed using `pytest`, including:
@@ -165,8 +162,6 @@ CI workflows are handled by GitHub Actions:
 - `ci_main.yml`: runs on every push or pull request to the `main` branch  
 - `ci_branch.yml`: runs on every push to any other branch
 
----
-
 ## 👥 Collaborative branch workflow
 
 Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
@@ -175,8 +170,6 @@ Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/e
 - Tag stable versions ideally after each story/bugfix successfull merge
 
 ![Collaborative branch workflow](references/collaborative_branch_workflow.drawio.png)
-
----
 
 ## 👥 Contributors
 
