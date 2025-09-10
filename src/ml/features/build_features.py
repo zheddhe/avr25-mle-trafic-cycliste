@@ -5,8 +5,9 @@ from features_utils import DatetimePeriodicsTransformer
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "input_file_name": "Sebastopol_N-S_initial.csv",
-        "processed_file_name": "Sebastopol_N-S_initial_with_feats.csv",
+        "sub_dir": "Sebastopol_N-S",
+        "input_file_name": "initial.csv",
+        "output_file_name": "initial_with_feats.csv",
     }
 }
 
@@ -70,12 +71,15 @@ def main():
     '''
     for counter_id in SITE_TEST.keys():
         # working paths
+        sub_dir = SITE_TEST[counter_id]["sub_dir"]
+        input_dir = os.path.join("data", "interim", sub_dir)
         input_file_name = SITE_TEST[counter_id]["input_file_name"]
-        input_file_path = os.path.join("data", "processed", input_file_name)
-        processed_dir = os.path.join("data", "processed")
-        os.makedirs(processed_dir, exist_ok=True)
+        output_dir = os.path.join("data", "processed", sub_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        output_file_name = SITE_TEST[counter_id]["output_file_name"]
 
         # data load
+        input_file_path = os.path.join(input_dir, input_file_name)
         logging.info(f"Interim data load for counter [{counter_id}] from [{input_file_path}]")
         df = pd.read_csv(input_file_path, index_col=0)
 
@@ -90,9 +94,8 @@ def main():
         df = df.drop(columns=[col for col in COLUMNS_TO_DROP if col in df.columns])
 
         # save the processed data
-        processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
-        logging.info(f"Saving file [{processed_file_name}] at path [{processed_dir}]")
-        df.to_csv(os.path.join(processed_dir, processed_file_name), index=True)
+        logging.info(f"Saving file [{output_file_name}] at path [{output_dir}]")
+        df.to_csv(os.path.join(output_dir, output_file_name), index=True)
 
     logging.info("✅ Feature engineering processed successfully.")
     exit(0)

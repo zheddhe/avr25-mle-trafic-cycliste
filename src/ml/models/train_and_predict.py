@@ -16,8 +16,8 @@ from mlflow_tracking import (
 
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "save_sub_dir": "Sebastopol_N-S",
-        "input_file_name": "Sebastopol_N-S_initial_with_feats.csv",
+        "sub_dir": "Sebastopol_N-S",
+        "input_file_name": "initial_with_feats.csv",
         "temp_feats": [7, 1, 24],
         "test_ratio": 0.25,
         "iter_grid_search": 0,
@@ -67,10 +67,12 @@ def main():
 
     for counter_id in SITE_TEST.keys():
         # working paths
+        sub_dir = SITE_TEST[counter_id]["sub_dir"]
         input_file_name = SITE_TEST[counter_id]["input_file_name"]
-        input_file_path = os.path.join("data", "processed", input_file_name)
-        processed_dir = os.path.join("data", "processed")
-        os.makedirs(processed_dir, exist_ok=True)
+        data_dir = os.path.join("data", "processed", sub_dir)
+        model_dir = os.path.join("models", sub_dir)
+        input_file_path = os.path.join(data_dir, input_file_name)
+        os.makedirs(model_dir, exist_ok=True)
 
         # data load
         logging.info(f"Processed data load from [{input_file_path}]")
@@ -102,19 +104,16 @@ def main():
         )
 
         # save all artefacts with standard filenames in specific counter subdir
-        save_sub_dir = SITE_TEST[counter_id]["save_sub_dir"]
-        exp_name = "cyclist-traffic-timeseries"
-        run_name = f"{save_sub_dir}"
         tags = {
             "counter.name": str(counter_id[0]),
             "counter.orientation": str(counter_id[1]),
             "model.family": "XGBRegressor",
         }
-        with start_run(exp_name, run_name=run_name, tags=tags):
+        with start_run(experiment_name=sub_dir, run_name=input_file_name, tags=tags):
             # log report content (metrics, shapes, params)
             log_report_content(report, target_col="comptage_horaire")
             # persist artefacts locally (unchanged)
-            save_artefacts(report, save_sub_dir)
+            save_artefacts(report, sub_dir)
             # log model with signature (use one real train row)
             x_sample = report["X_train"].head(1)
             log_model_with_signature(
@@ -124,7 +123,7 @@ def main():
                 registered_name="cyclist-traffic-model"
             )
             # log all produced files/dirs as MLflow artifacts
-            log_local_artifacts(save_sub_dir)
+            log_local_artifacts(sub_dir)
 
     logging.info("✅ Training and forecasting ended successfully.")
     exit(0)

@@ -3,13 +3,17 @@ import logging
 import pandas as pd
 from data_utils import apply_percent_range_selection
 
+RAW_FILE_NAME = "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
+
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-        "processed_file_name": "Sebastopol_N-S_initial.csv",
+        "sub_dir": "Sebastopol_N-S",
+        "output_file_name": "initial.csv",
         "range": (0.0, 76.0),  # a portion of the original range TODO : use exact timestamp ?
     },
     # ('Totem 73 boulevard de Sébastopol', 'N-S'): {
-    #     "processed_file_name": "Sebastopol_N-S_daily_1_Sebastopol.csv",
+    #     "sub_dir": "Sebastopol_N-S",
+    #     "output_file_name": "daily_1.csv",
     #     "range": (0.1, 75.1),  # a portion of the original range TODO : use exact timestamp ?
     # }
 }
@@ -49,12 +53,7 @@ def main():
         exit 0 if OK
     '''
     # working paths
-    raw_data_path = os.path.join(
-        "data", "raw",
-        "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
-    )
-    processed_dir = os.path.join("data", "processed")
-    os.makedirs(processed_dir, exist_ok=True)
+    raw_data_path = os.path.join("data", "raw", RAW_FILE_NAME)
 
     # data load
     logger.info(f"Raw data load from {raw_data_path}")
@@ -66,6 +65,8 @@ def main():
     counter_found = False
     for counter_id, df_counter in grouped:
         if counter_id in SITE_TEST:
+            output_dir = os.path.join("data", "interim", SITE_TEST[counter_id]["sub_dir"])
+            os.makedirs(output_dir, exist_ok=True)
             df = df_counter.copy()
             logger.info(f"Counter [{counter_id}] found")
             # convert date column, sort by date and reindex the file
@@ -85,11 +86,11 @@ def main():
                 df,
                 SITE_TEST[counter_id]["range"],
             )
-            # save processed data
-            processed_file_name = SITE_TEST[counter_id]["processed_file_name"]
-            logger.info(f"Saving dile [{processed_file_name}] at path [{processed_dir}]")
+            # save intermediate data
+            output_file_name = SITE_TEST[counter_id]["output_file_name"]
+            logger.info(f"Saving file [{output_file_name}] at path [{output_dir}]")
             df.to_csv(
-                os.path.join(processed_dir, processed_file_name),
+                os.path.join(output_dir, output_file_name),
                 index=True
             )
             counter_found = True

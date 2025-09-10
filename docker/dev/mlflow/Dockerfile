@@ -1,5 +1,5 @@
 # Image légère Python
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Variables d'environnement pour limiter les warnings Python
 ENV PYTHONUNBUFFERED=1 \
@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip && \
     pip install "setuptools<81" && \
     pip install \
-      "mlflow[extras]==2.14.1" \
+      "mlflow[extras]==2.22.1" \
       psycopg2-binary \
       boto3
 

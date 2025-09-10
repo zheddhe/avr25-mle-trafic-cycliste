@@ -73,8 +73,9 @@ avr25-mle-trafic-cycliste/
 ├── noxfile.py          <- NOX dev session (build/clean)
 ├── data                <- Data storage
 │   ├── raw             <- The original, immutable data dump (e.g. from external sources)
-│   ├── processed       <- Intermediate data that has been transformed (e.g. enriched)
-│   └── final           <- data in final stage (e.g. predictions)
+│   ├── interim         <- Intermediate data extracted from raw (e.g. specialized for a goal)
+│   ├── processed       <- Processed data that has been transformed (e.g. enriched with feats)
+│   └── final           <- Final stage data (e.g. train/test and predictions)
 ├── logs                <- Logs from training and predicting
 │   └──...
 ├── models              <- Trained and serialized models including their best params and transformers

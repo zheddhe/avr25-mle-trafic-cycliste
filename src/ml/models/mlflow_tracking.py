@@ -121,9 +121,9 @@ def log_model_with_signature(
 
 def log_local_artifacts(
     save_subdir: str,
-    final_rel_dir: str = "data/final",
-    models_rel_dir: str = "models",
-    logs_rel_dir: str = "logs/ml",
+    final_rel_dir: str = os.path.join("data", "final"),
+    models_rel_dir: str = os.path.join("models"),
+    logs_rel_dir: str = os.path.join("logs", "ml"),
 ) -> None:
     """
     Log all produced files/directories as MLflow artifacts.
