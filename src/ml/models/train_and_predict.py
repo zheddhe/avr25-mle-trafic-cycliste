@@ -20,7 +20,7 @@ SITE_TEST = {
         "input_file_name": "Sebastopol_N-S_initial_with_feats.csv",
         "temp_feats": [7, 1, 24],
         "test_ratio": 0.2,
-        "iter_grid_search": 50,
+        "iter_grid_search": 0,
     }
 }
 
