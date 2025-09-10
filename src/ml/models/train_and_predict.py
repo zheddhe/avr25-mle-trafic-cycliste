@@ -10,7 +10,7 @@ from utils import (
 SITE_TEST = {
     ('Totem 73 boulevard de Sébastopol', 'N-S'): {
         "save_sub_dir": "Sebastopol_N-S",
-        "input_file_name": "initial_Sebastopol_N-S_with_feats.csv",
+        "input_file_name": "Sebastopol_N-S_initial_with_feats.csv",
         "temp_feats": [7, 1, 24],
         "test_ratio": 0.2,
         "iter_grid_search": 25,
