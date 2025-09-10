@@ -78,18 +78,16 @@ avr25-mle-trafic-cycliste/
 ├── src/                <- All Source code used in this project
 │   ├── api/            <- Service FastAPI (lecture des prédictions)
 │   │   └── main.py
-│   ├── ml/             <- machine learning pipeline
-│   │   ├── data        <- Scripts to collect intial raw data or generate new daily one
-│   │   │   ├── data_utils.py
-│   │   │   └── import_raw_data.py
-│   │   ├── features    <- Scripts to turn raw data into modeling ready data
-│   │   │   ├── features_utils.py
-│   │   │   └── build_features.py
-│   │   ├── models      <- Scripts to train models and calculate predictions in batch
-│   │   │   ├── models_utils.py
-│   │   │   └── train_and_predict.py
-│   └── shared/         <- Shared services
-│       └── logger.py
+│   └── ml/             <- machine learning pipeline
+│       ├── data        <- Scripts to collect intial raw data or generate new daily one
+│       │   ├── data_utils.py
+│       │   └── import_raw_data.py
+│       ├── features    <- Scripts to turn raw data into modeling ready data
+│       │   ├── features_utils.py
+│       │   └── build_features.py
+│       └── models      <- Scripts to train models and calculate predictions in batch
+│           ├── models_utils.py
+│           └── train_and_predict.py
 ├── docker/             <- container architecture
 │   ├── dev/            <- dev architecture
 │   │   ├── api/
@@ -98,8 +96,8 @@ avr25-mle-trafic-cycliste/
 │   │   └── ml/
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
-│   ├── prod/           <- production architecture
-│   │   └──...       
+│   └── prod/           <- production architecture
+│       └──...       
 └── tests/              <- Unit tests (pytest for src source code)
 ```
 
