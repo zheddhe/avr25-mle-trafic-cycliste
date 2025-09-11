@@ -2,7 +2,7 @@ import os
 import logging
 import pandas as pd
 from features_utils import DatetimePeriodicsTransformer
-from src.ml.test_config import SITE_TEST
+from src.test_config import SITE_TEST
 
 COLUMNS_TO_DROP = [
     "nom_du_site_de_comptage",

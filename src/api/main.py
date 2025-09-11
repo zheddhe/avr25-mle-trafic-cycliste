@@ -4,14 +4,11 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Union, Optional
+from typing import Any, Dict, Union, List, Optional
 import pandas as pd
 import logging
 import os
-
-SITE_TEST = {
-    "Sebastopol_N-S": "y_full.csv",
-}
+from src.test_config import SITE_TEST
 
 # -------------------------------------------------------------------
 # Logs configuration
@@ -34,15 +31,14 @@ logger = logging.getLogger(__name__)
 df_predictions = {}
 for counter_name in SITE_TEST.keys():
     # working paths
-    input_file_name = SITE_TEST[counter_name]
-    input_sub_dir = counter_name
-    input_file_path = os.path.join("data", "final", input_sub_dir, input_file_name)
+    sub_dir = SITE_TEST[counter_name]["sub_dir"]
+    input_file_path = os.path.join("data", "final", sub_dir, "y_full.csv")
     df = pd.read_csv(input_file_path, index_col=0)
     logger.info(
-        f"Dataframe chargé pour [{counter_name}]. "
+        f"Fichier de prédictions chargé pour [{counter_name}]. "
         f"Il contient {df.shape[0]} lignes et {df.shape[1]} colonnes"
     )
-    df_predictions[input_sub_dir] = df
+    df_predictions[sub_dir] = df
 
 # Simple security database... (a clear dictionnary in the API :p)
 dict_credentials = {
@@ -86,9 +82,25 @@ class ErrorResponse(BaseModel):
     date: str = Field(..., description="2025-08-26 14:08:19.431291")
 
 
-class Prediction(BaseModel):
-    date: datetime = Field(..., description="Horodatage (time zone Paris) du comptage")
-    forecasted_count: int = Field(..., description="Valeur prédite du comptage")
+class PredictionItem(BaseModel):
+    date_et_heure_de_comptage_local: datetime = Field(
+        ...,
+        description="Horodatage local (tz Paris)"
+    )
+    date_et_heure_de_comptage_utc: datetime = Field(..., description="Horodatage UTC")
+    y_true: int = Field(..., description="Valeur réelle observée")
+    y_pred: float = Field(..., description="Valeur prédite")
+    forecast_mode: bool = Field(
+        ...,
+        description="Indique si la valeur prédite est sur des données futures"
+    )
+
+
+class PredictionList(BaseModel):
+    total: int = Field(..., description="Nombre total de prédictions disponibles pour ce compteur")
+    limit: int = Field(..., description="Nombre max renvoyé")
+    offset: int = Field(..., description="Index de départ de la pagination")
+    item: List[PredictionItem] = Field(..., description="Liste paginée des prédictions")
 
 
 class Counter(BaseModel):
@@ -182,6 +194,7 @@ def get_verify():
     tags=["Predictions"],
     summary="Lister les compteurs disponibles",
     description="Affiche l'ensemble des compteurs pour lesquels des prédictions ont été calculées",
+    response_model=List[Counter],
     responses=generic_responses,
 )
 def get_all_predictions(
@@ -205,6 +218,7 @@ def get_all_predictions(
         "Affiche l'ensemble des prédictions horodatées calculées pour ce compteur.\n"
         "Limite l'affichage à maximum 100 prédictions (et de manière paginée)"
     ),
+    response_model=PredictionList,
     responses=generic_responses,
 )
 def get_predictions_by_counter(
@@ -228,9 +242,11 @@ def get_predictions_by_counter(
         )
     df_paginated = df_predictions[counter_id].iloc[offset: offset + limit]
 
-    return {
-        "total": len(df_predictions[counter_id]),
-        "limit": limit,
-        "offset": offset,
-        "item": df_paginated.to_dict(orient="records"),
-    }
+    return PredictionList(
+        total=len(df_predictions[counter_id]),
+        limit=limit,
+        offset=offset,
+        item=[
+            PredictionItem(**row) for row in df_paginated.to_dict(orient="records")
+        ],
+    )

@@ -2,7 +2,7 @@ import os
 import logging
 import pandas as pd
 from data_utils import apply_percent_range_selection
-from src.ml.test_config import RAW_FILE_NAME, SITE_TEST
+from src.test_config import RAW_FILE_NAME, SITE_TEST
 
 # -------------------------------------------------------------------
 # Logs configuration

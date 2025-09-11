@@ -13,7 +13,7 @@ from mlflow_tracking import (
     log_model_with_signature,
     log_local_artifacts,
 )
-from src.ml.test_config import SITE_TEST
+from src.test_config import SITE_TEST
 
 # -------------------------------------------------------------------
 # Configuration des logs
