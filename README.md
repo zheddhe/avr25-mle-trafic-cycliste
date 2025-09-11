@@ -181,24 +181,16 @@ export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferrably over a personnal pas
 # Windows cmd
 set MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 set MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
+set AWS_ACCESS_KEY_ID=minio
+set AWS_SECRET_ACCESS_KEY=minio123
 # Mac/Linux shell
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
+export AWS_ACCESS_KEY_ID=minio
+export AWS_SECRET_ACCESS_KEY=minio123
 
-```
-
-In fully dockerized MLOps local environment, we'll switch an .env.local file configuration with the following content:
-
-```text
-MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
-```
-
-Then the docker composition will assemble all dockers with the .env.local context:
-
-```bash
 # init and launch all the dockers containers
-docker compose --env-file .env.local up -d --force-recreate
+docker compose up -d --force-recreate
 ```
 
 ## 🧪 Testing and Continuous Integration
