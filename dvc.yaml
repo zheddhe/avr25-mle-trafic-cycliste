@@ -4,7 +4,7 @@ stages:
     deps:
       - src/ml/data/import_raw_data.py
       - src/ml/data/data_utils.py
-      - src/ml/test_config.py
+      - src/test_config.py
       - data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
     outs:
       - data/interim/Sebastopol_N-S_v2/
