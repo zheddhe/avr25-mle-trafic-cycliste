@@ -487,7 +487,8 @@ def save_artefacts(report: Dict, save_dir):
         f"{y_train_path}\n"
         f"{y_test_path}\n"
         f"{y_train_pred_path}\n"
-        f"{y_test_pred_path}"
+        f"{y_test_pred_path}\n"
+        f"{y_full_path}"
     )
     report["X_test_dates"].to_csv(X_test_dates_path, index=True)
     report["X_train"].to_csv(X_train_path, index=True)
@@ -516,7 +517,8 @@ def save_artefacts(report: Dict, save_dir):
         f"Pipeline, Params, Metrics and AR transformer are saved in {save_model_path}:\n"
         f"{pipe_model_path}\n"
         f"{params_path}\n"
-        f"{ar_transformer_path}"
+        f"{ar_transformer_path}\n"
+        f"{metrics_path}"
     )
     joblib.dump(report["pipe_model"], pipe_model_path)
     joblib.dump(report["ar_transformer"], ar_transformer_path)
