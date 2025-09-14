@@ -8,8 +8,8 @@ version = "0.4.0"
 description = "bike trafic science project for MLE April 2025 promotion"
 authors = [
     { name = "Rémy CANAL", email = "remy.canal@live.fr" },
-    { name = "Elias DJOUADI", email = "dummy@mail.com" },
-    { name = "Koldé HOUESSOU", email = "dummy@mail.com" }
+    { name = "Elias DJOUADI", email = "elias.djouadi@gmail.com" },
+    { name = "Koldé HOUESSOU", email = "koladehouessou@gmail.com" }
 ]
 license = "MIT"
 requires-python = "==3.12.*"
