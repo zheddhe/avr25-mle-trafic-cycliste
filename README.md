@@ -8,7 +8,7 @@
 
 ## 🧭 Overview
 
-This project implements a full machine learning and MLOps pipeline in three main stages:
+This project implements a full machine learning and MLOps architecture in three main stages:
 
 ### 1. 📐 Data Product Management
 
@@ -34,34 +34,7 @@ access daily refreshed predictions of the biking trafic.
 
 [![MLOps Architecture v2](references/Architecture_MLOps_v2.drawio.png)](https://drive.google.com/file/d/12olpeXpeOF2-UgBSf1h_LhjRVfG8t3KB/view?usp=drive_link)
 
-## 🧭 Project organization
-
-### 1. 📖 External Documentation
-
-- [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
-- [Data processing and modelization report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
-
-### 2. 🗺️ GitHub Dashboards
-
-- [Roadmap](https://github.com/users/zheddhe/projects/6/views/2)
-- [Current Iteration](https://github.com/users/zheddhe/projects/6/views/3)
-
-### 3. 👥 Branch Workflow
-
-Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
-
-- Create branch per story/bugfix and merge them with pull requests afterward
-- Tag stable versions ideally after each story/bugfix successfull merge
-
-[![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
-
-### 4. 📊 MLflow
-
-This project keep a registry of **metrics**, **params** and training and prediction **artefacts**
-(sklearn pipeline, auto-regressive transformer, splits train test and prédictions, metrics and hyperparams)
-in **MLflow**.
-
-### 5. 🧱 Project Structure
+## 🧱 GitHub Structure
 
 ``` text
 avr25-mle-trafic-cycliste/
@@ -110,7 +83,7 @@ avr25-mle-trafic-cycliste/
 
 ## ⚙️ Installation
 
-### 🔧 Initial Setup (One-time bootstrap)
+### 🔧 Prerequisites
 
 The build environment initialization requires python, pipx, NOX, UV as a Bootstrap.
 
@@ -145,29 +118,63 @@ dvc remote modify origin --local access_key_id [...]
 dvc remote modify origin --local secret_access_key [...]
 ```
 
-## 🚀 Day-to-day Usage
+## 🚀 DevOps setup
+
+This section covers the project seen as a monolithic architecture
 
 ```bash
-# Rebuild a complete virtual dev env (and trigger flake8 and pytest)
+### Rebuild a complete virtual dev env (and trigger flake8 and pytest)
 nox -s build
 
-# Activate the virtual env in command line (based on your OS)
+### Activate the virtual env in command line (based on your OS)
 # Windows cmd
 .nox\build\Scripts\activate.bat 
 # Mac/Linux shell
 source .nox/build/bin/activate
 
-# [Optional] Clean all project generated file and all virtual envs (build included)
+### [Optional] Clean all project generated file and all virtual envs (build included)
 nox -s cleanall
 
-# [Dev without container only] execute the dvc pipeline
+### Execute the dvc pipeline
 dvc repro
 
-# [Dev without container only] launch the data API (find a free port on your system)
-uvicorn src.api.main:app --reload --port 10000
+### Launch the data API (find a free port on your system)
 # the API will be available at http://localhost:10000/docs
+uvicorn src.api.main:app --reload --port 10000
+```
 
-# Configure Dagshub MLflow serveur through environment variable (based on your OS)
+### MLOps setup
+
+This section covers the project seen as containerized service architecture, it can be launched with the following command
+
+```bash
+docker compose up -d --force-recreate
+```
+
+### 1. 📊 Container manager
+
+We use **Docker Desktop** for a local simulation of a dev and production environment (we foresee to use cloud deployment as well)
+
+#### Local Docker Desktop with a supervisor to activate
+
+Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
+
+```bash
+### Check and activation of the supervisor for docker desktop locally
+# Windows
+Set-Service -Name WSLService -StartupType Automatic
+Start-Service -Name WSLService
+Get-Service WSLService
+```
+
+### 2. 📊 Experience tracker
+
+We use **MLFlow** to keep a registry of **metrics**, **params** and training and prediction **artefacts** (sklearn pipeline, auto-regressive transformer, splits train test and prédictions, metrics and hyperparams).
+
+#### Dagshub remote service
+
+```bash
+### Configure environment variable (based on your OS)
 # Windows cmd
 set MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow 
 set MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
@@ -176,8 +183,12 @@ set MLFLOW_TRACKING_PASSWORD=<DagHhub TOKEN (preferrably over a personnal passwo
 export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
 export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferrably over a personnal password...)>
+```
 
-# Configure Local MLflow dockerized server through environment variables (based on your OS)
+#### Local service
+
+```bash
+### Configure environment variables (based on your OS)
 # Windows cmd
 set MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 set MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
@@ -188,23 +199,42 @@ export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_ACCESS_KEY_ID=minio
 export AWS_SECRET_ACCESS_KEY=minio123
-
-# init and launch all the dockers containers
-docker compose up -d --force-recreate
 ```
 
-## 🧪 Testing and Continuous Integration
+## 🧭 Team collaboration
+
+### 1. 📖 External Documentation
+
+- [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
+- [Data processing and modelization report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
+
+### 2. 🗺️ GitHub Dashboards
+
+- [Roadmap](https://github.com/users/zheddhe/projects/6/views/2)
+- [Current Iteration](https://github.com/users/zheddhe/projects/6/views/3)
+
+### 3. 🔀 Branch Workflow
+
+Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
+
+- Create branch per story/bugfix and merge them with pull requests afterward
+- Tag stable versions ideally after each story/bugfix successfull merge
+
+[![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
+
+### 4. 🧪 Testing and Continuous Integration
 
 Tests are executed using `pytest`, including:
 
-- ✅ Unit tests for each modules (in `tests/`)  
+- ✅ Unit tests for each service separately (in `tests/[service name]/`)  
+- ✅ Transversal Integration tests for the system combining the various services (in `tests/integration/`)  
 
-CI workflows are handled by GitHub Actions:
+Continuous Integration workflows are handled with GitHub Actions:
 
 - `ci_main.yml`: runs on every push or pull request to the `main` branch  
 - `ci_branch.yml`: runs on every push to any other branch
 
-## 👥 Contributors
+### 5. 👥 Contributors
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
