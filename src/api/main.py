@@ -1,129 +1,230 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from datetime import datetime
-from pydantic import BaseModel, Field
-from typing import Any, Dict, Union, List, Optional
-import pandas as pd
-import logging
+# src/api/main.py
+from __future__ import annotations
+
 import os
-from tests.integration.test_scenario import SITE_TEST
+import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+
+import pandas as pd
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+)
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel, Field
 
 # -------------------------------------------------------------------
 # Logs configuration
 # -------------------------------------------------------------------
-os.makedirs("logs", exist_ok=True)
-log_path = os.path.join("logs", "api_main.log")
+log_dir = os.path.join("logs", "api")
+os.makedirs(log_dir, exist_ok=True)
+LOG_PATH = os.path.join(log_dir, "main.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(log_path, mode="a", encoding="utf-8"),
-        logging.StreamHandler()
-    ]
+        logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
-
 logger = logging.getLogger(__name__)
 
-# dataset load in a dictionnary of dataframe with key = counter name
-df_predictions = {}
-for counter_name in SITE_TEST.keys():
-    # working paths
-    sub_dir = SITE_TEST[counter_name]["sub_dir"]
-    input_file_path = os.path.join("data", "final", sub_dir, "y_full.csv")
-    df = pd.read_csv(input_file_path, index_col=0)
-    logger.info(
-        f"Fichier de prédictions chargé pour [{counter_name}]. "
-        f"Il contient {df.shape[0]} lignes et {df.shape[1]} colonnes"
-    )
-    df_predictions[sub_dir] = df
+# -------------------------------------------------------------------
+# Data root and in-memory store
+# -------------------------------------------------------------------
+DATA_FINAL_ROOT = os.getenv("DATA_FINAL_ROOT", os.path.join("data", "final"))
 
-# Simple security database... (a clear dictionnary in the API :p)
+# df_predictions: key = subdir (counter id), value = DataFrame loaded from
+# <DATA_FINAL_ROOT>/<subdir>/y_full.csv
+df_predictions: Dict[str, pd.DataFrame] = {}
+
+REQUIRED_COLUMNS = {
+    "date_et_heure_de_comptage_local",
+    "date_et_heure_de_comptage_utc",
+    "y_true",
+    "y_pred",
+    "forecast_mode",
+}
+
+
+def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
+    """
+    Read a CSV with index_col=0 and validate required columns.
+    Returns None if the file is invalid or unreadable.
+    """
+    try:
+        df = pd.read_csv(path, index_col=0)
+    except Exception as exc:
+        logger.warning(f"Failed to read CSV [{path}]: {exc}")
+        return None
+
+    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        logger.warning(
+            f"CSV [{path}] ignored, missing required columns: {missing}"
+        )
+        return None
+
+    return df
+
+
+def load_predictions_from_final(root_dir: str) -> Dict[str, pd.DataFrame]:
+    """
+    Explore <root_dir> to find all subdirs containing a y_full.csv.
+    Return a mapping {subdir_name: dataframe}.
+    """
+    mapping: Dict[str, pd.DataFrame] = {}
+    if not os.path.isdir(root_dir):
+        logger.warning(f"Final data root not found: [{root_dir}]")
+        return mapping
+
+    for entry in os.scandir(root_dir):
+        if not entry.is_dir():
+            continue
+        subdir = entry.name
+        csv_path = os.path.join(entry.path, "y_full.csv")
+        if not os.path.isfile(csv_path):
+            logger.debug(f"No y_full.csv in [{entry.path}], skipping.")
+            continue
+
+        df = _safe_read_csv(csv_path)
+        if df is None:
+            continue
+
+        mapping[subdir] = df
+        logger.info(
+            f"Loaded predictions for counter [{subdir}]: {df.shape[0]} rows x [{df.shape[1]}] cols"
+        )
+    return mapping
+
+
+def refresh_store() -> Dict[str, pd.DataFrame]:
+    """
+    Rescan the filesystem and refresh the in-memory store.
+    """
+    global df_predictions
+    mapping = load_predictions_from_final(DATA_FINAL_ROOT)
+    df_predictions = mapping
+    logger.info(f"Store refreshed: {len(df_predictions)} counters available.")
+    return df_predictions
+
+
+# -------------------------------------------------------------------
+# Simple security (Basic Auth)
+# -------------------------------------------------------------------
 dict_credentials = {
-  "remy": "remy",
-  "elias": "elias",
-  "kolade": "kolade"
+    "remy": "remy",
+    "elias": "elias",
+    "kolade": "kolade",
 }
 security = HTTPBasic()
 
-# ---------------------------------------------------------------------------
+
+def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    """
+    Validate Basic Auth credentials for docs (/docs, /redoc) and endpoints.
+    """
+    if credentials.username not in dict_credentials:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Unknown user [{credentials.username}]",
+        )
+    if dict_credentials[credentials.username] != credentials.password:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid password.",
+        )
+    # Do not return secrets; just allow the request to proceed.
+
+
+# -------------------------------------------------------------------
 # OpenAPI / tags
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
 tags_metadata = [
-    {
-        "name": "Admin",
-        "description": "Section de vérification du service.",
-    },
+    {"name": "Admin", "description": "Service health and maintenance."},
     {
         "name": "Predictions",
-        "description": "Section de gestion des prédictions",
+        "description": "Access cyclist traffic predictions.",
     },
 ]
 
 app = FastAPI(
     title="API du trafic cycliste",
     description=(
-        "Expose les prédictions du trafic cycliste pour les compteurs installés dans la ville"
-        " de Paris"
+        "Expose les prédictions du trafic cycliste pour les compteurs "
+        "installés dans la ville de Paris."
     ),
-    version="1.0.0",
+    version="1.1.0",
     openapi_tags=tags_metadata,
 )
 
 
-# ---------------------------------------------------------------------------
-# Modèles (avec description des champs intégrée)
-# ---------------------------------------------------------------------------
+@app.on_event("startup")
+def on_startup() -> None:
+    """
+    Load all counters at service startup.
+    """
+    refresh_store()
+
+
+# -------------------------------------------------------------------
+# Models
+# -------------------------------------------------------------------
 class ErrorResponse(BaseModel):
-    type: str = Field(..., description="type d'erreur métier")
-    message: Optional[str] = Field(..., description="contenu précisant l'erreur le cas échéant")
-    date: str = Field(..., description="2025-08-26 14:08:19.431291")
+    type: str = Field(..., description="Business error type.")
+    message: Optional[str] = Field(
+        ..., description="Optional detailed error message."
+    )
+    date: str = Field(..., description="Server-side timestamp.")
 
 
 class PredictionItem(BaseModel):
     date_et_heure_de_comptage_local: datetime = Field(
-        ...,
-        description="Horodatage local (tz Paris)"
+        ..., description="Local timestamp (Europe/Paris)."
     )
-    date_et_heure_de_comptage_utc: datetime = Field(..., description="Horodatage UTC")
-    y_true: int = Field(..., description="Valeur réelle observée")
-    y_pred: float = Field(..., description="Valeur prédite")
+    date_et_heure_de_comptage_utc: datetime = Field(
+        ..., description="UTC timestamp."
+    )
+    y_true: int = Field(..., description="Observed value.")
+    y_pred: float = Field(..., description="Predicted value.")
     forecast_mode: bool = Field(
-        ...,
-        description="Indique si la valeur prédite est sur des données futures"
+        ..., description="True if predicted on future timestamps."
     )
 
 
 class PredictionList(BaseModel):
-    total: int = Field(..., description="Nombre total de prédictions disponibles pour ce compteur")
-    limit: int = Field(..., description="Nombre max renvoyé")
-    offset: int = Field(..., description="Index de départ de la pagination")
-    item: List[PredictionItem] = Field(..., description="Liste paginée des prédictions")
+    total: int = Field(..., description="Total available predictions.")
+    limit: int = Field(..., description="Max returned.")
+    offset: int = Field(..., description="Pagination offset.")
+    item: List[PredictionItem] = Field(
+        ..., description="Paginated list of predictions."
+    )
 
 
 class Counter(BaseModel):
-    id: str = Field(..., description="Identifiant du compteur")
+    id: str = Field(..., description="Counter identifier (subdir name).")
 
 
-# ---------------------------------------------------------------------------
-# Exception métier personalisée + son handler
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Custom exception + handler
+# -------------------------------------------------------------------
 class CustomException(Exception):
-    def __init__(self,
-                 type: str,
-                 date: str,
-                 message: str):
+    def __init__(self, type: str, date: str, message: str):
         self.type = type
         self.date = date
         self.message = message
 
 
 @app.exception_handler(CustomException)
-def CustomExceptionHandler(
-    _request: Request,  # non utilisé
-    exception: CustomException
+def custom_exception_handler(
+    _request: Request,
+    exception: CustomException,
 ):
     return JSONResponse(
         status_code=418,
@@ -131,122 +232,133 @@ def CustomExceptionHandler(
             type=exception.type,
             message=exception.message,
             date=exception.date,
-        ).model_dump()
+        ).model_dump(),
     )
 
 
-# ---------------------------------------------------------------------------
-# Documentation (globale) des réponses
-# ---------------------------------------------------------------------------
-# on type correctement le dictionnaire des réponses attendu par le décorateur
+# -------------------------------------------------------------------
+# Common responses
+# -------------------------------------------------------------------
 ResponsesDict = Dict[Union[int, str], Dict[str, Any]]
 generic_responses: ResponsesDict = {
-    200: {"description": "Succès"},
-    400: {"description": "Erreur de valeur dans le contenu de la requête"},
-    403: {"description": "Echec lors de l'authentification"},
-    404: {"description": "La route demandée est inconnue"},
-    418: {
-        "description": "Erreur métier détectée",
-        "model": ErrorResponse,
-    },
-    422: {"description": "Erreur de validation des données"},
-    500: {"description": "Erreur côté serveur"},
+    200: {"description": "Success"},
+    400: {"description": "Bad request content."},
+    403: {"description": "Authentication failed."},
+    404: {"description": "Unknown route."},
+    418: {"description": "Business error.", "model": ErrorResponse},
+    422: {"description": "Validation error."},
+    500: {"description": "Server error."},
 }
 
 
-# ---------------------------------------------------------------------------
-# Fonctions utilitaires
-# ---------------------------------------------------------------------------
-def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    """
-    Verification des identifiants en base 64 native pour fastAPI (+ docs/redoc)
-    """
-    if credentials.username not in dict_credentials.keys():
-        raise HTTPException(
-            status_code=403,
-            detail=f"Utilisateur [{credentials.username}] inconnu"
-        )
-    if dict_credentials[credentials.username] != credentials.password:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Mot de passe incorrect pour l'utilisateur [{credentials.username}]"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Définition des Routes
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Routes
+# -------------------------------------------------------------------
 @app.get(
     "/verify",
     tags=["Admin"],
-    summary="Vérifier le service",
-    description="Vérifie que l'API est fonctionnelle.",
-    responses={},  # réponses par défaut (200 seulement ici)
+    summary="Verify service health",
+    description="Simple service health check.",
+    responses={},
 )
 def get_verify():
+    return {"message": "API is healthy."}
+
+
+@app.post(
+    "/admin/refresh",
+    tags=["Admin"],
+    summary="Refresh in-memory store",
+    description=(
+        "Rescan the filesystem (DATA_FINAL_ROOT) and reload all counters."
+    ),
+    responses=generic_responses,
+)
+def post_refresh(user: str = Depends(_check_credentials)):
+    before = len(df_predictions)
+    refresh_store()
+    after = len(df_predictions)
     return {
-        "message": "L'API est fonctionnelle."
+        "message": "Store refreshed.",
+        "counters_before": before,
+        "counters_after": after,
+        "data_root": os.path.abspath(DATA_FINAL_ROOT),
     }
 
 
 @app.get(
     "/counters",
     tags=["Predictions"],
-    summary="Lister les compteurs disponibles",
-    description="Affiche l'ensemble des compteurs pour lesquels des prédictions ont été calculées",
+    summary="List available counters",
+    description=(
+        "List all counters detected under data/final/<subdir>/y_full.csv "
+        "(or under DATA_FINAL_ROOT)."
+    ),
     response_model=List[Counter],
     responses=generic_responses,
 )
-def get_all_predictions(
-    user: str = Depends(_check_credentials)
-):
-    """Return all available counters"""
+def get_all_counters(user: str = Depends(_check_credentials)):
     if not df_predictions:
         raise CustomException(
-            type="Dictionnaire des prédictions non chargé",
-            message=f"contenu de df_predictions: {df_predictions}",
+            type="PredictionsNotLoaded",
+            message=f"df_predictions content: {df_predictions}",
             date=str(datetime.now()),
         )
-    return [Counter(id=name) for name in df_predictions.keys()]
+    return [Counter(id=name) for name in sorted(df_predictions.keys())]
 
 
 @app.get(
     "/predictions/{counter_id}",
     tags=["Predictions"],
-    summary="Afficher les predictions d'un compteur",
+    summary="Get predictions for a counter",
     description=(
-        "Affiche l'ensemble des prédictions horodatées calculées pour ce compteur.\n"
-        "Limite l'affichage à maximum 100 prédictions (et de manière paginée)"
+        "Return a paginated list of predictions for the given counter id "
+        "(subdir name). Max 100 per page."
     ),
     response_model=PredictionList,
     responses=generic_responses,
 )
 def get_predictions_by_counter(
     counter_id: str,
-    limit: int = Query(10, ge=1, le=100, description="Nombre de prédictions à retourner"),
-    offset: int = Query(0, ge=0, description="Nombre de prédictions à passer"),
-    user: str = Depends(_check_credentials)
+    limit: int = Query(
+        10,
+        ge=1,
+        le=100,
+        description="Max number of predictions to return.",
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of predictions to skip (pagination).",
+    ),
+    user: str = Depends(_check_credentials),
 ):
-    """Return predictions for a specific counter"""
     if not df_predictions:
         raise CustomException(
-            type="Dictionnaire des prédictions non chargé",
-            message=f"contenu de df_predictions: {df_predictions}",
+            type="PredictionsNotLoaded",
+            message=f"df_predictions content: {df_predictions}",
             date=str(datetime.now()),
         )
+
     if counter_id not in df_predictions:
         raise CustomException(
-            type="Compteur non disponible",
-            message=f"Liste des compteur disponibles: {list(df_predictions.keys())}",
+            type="CounterUnavailable",
+            message=(
+                "Available counters: "
+                f"{sorted(list(df_predictions.keys()))}"
+            ),
             date=str(datetime.now()),
         )
-    df_paginated = df_predictions[counter_id].iloc[offset: offset + limit]
+
+    df = df_predictions[counter_id]
+    df_page = df.iloc[offset:offset + limit]
 
     return PredictionList(
-        total=len(df_predictions[counter_id]),
-        limit=limit,
-        offset=offset,
+        total=int(len(df)),
+        limit=int(limit),
+        offset=int(offset),
         item=[
-            PredictionItem(**row) for row in df_paginated.to_dict(orient="records")
+            PredictionItem(**row)  # type: ignore
+            for row in df_page.to_dict(orient="records")
         ],
     )

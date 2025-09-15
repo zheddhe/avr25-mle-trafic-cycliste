@@ -1,3 +1,6 @@
+# src/ml/models/train_and_predict.py
+from __future__ import annotations
+
 import os
 import logging
 from typing import Optional
