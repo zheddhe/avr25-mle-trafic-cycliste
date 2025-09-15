@@ -1,14 +1,15 @@
 name: Workflow CI on feature branch
 
 on:
-  push: # Full Feedback on Push on feature branch
+  push:
     branches-ignore:
       - main
-      
+
 jobs:
   ci-checks:
-    name: 🔍 Tests & Coverage
+    name: "🔍 Tests & Coverage"
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -16,25 +17,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Set up UV
         uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
-      - name: Install dependencies
-        run: uv sync --locked --extra dev --extra test --extra py312
-
-      - name: Check code style with flake8
+      - name: Run Nox build session (unit tests only)
+        env:
+          # Exclude integration test
+          PYTEST_ADDOPTS: -m "not integration"
         run: |
-          uv run flake8
+          uvx nox -s build
 
-      - name: Run tests with coverage
-        run: |
-          uv run pytest
-
-      - name: Upload HTML coverage report locally
+      - name: Upload HTML coverage report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: htmlcov

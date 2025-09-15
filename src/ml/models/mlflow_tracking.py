@@ -1,3 +1,4 @@
+# src/ml/models/mlflow_tracking.py
 from __future__ import annotations
 
 import os
@@ -7,6 +8,7 @@ from typing import Any, Dict, Optional
 import mlflow
 import mlflow.sklearn
 from mlflow.models.signature import infer_signature
+from mlflow.exceptions import MlflowException
 
 logger = logging.getLogger(__name__)
 
@@ -99,24 +101,43 @@ def log_model_with_signature(
 ) -> None:
     """
     Log the sklearn Pipeline with signature inferred from a sample row.
+
+    If the current MLflow tracking backend does not support a Model Registry
+    (e.g. file:// tracking URI), we gracefully fall back to logging without
+    `registered_model_name`.
     """
     df = sample_input_df.copy()
     try:
         for col in sample_input_df.select_dtypes(include="int").columns:
             df[col] = df[col].astype("float64")
-        signature = infer_signature(df, pipe_model.predict(
-            df
-        ))
+        signature = infer_signature(df, pipe_model.predict(df))
     except Exception as exc:  # pragma: no cover (safety)
         logger.warning("Signature inference failed: %s", exc)
         signature = None
 
-    mlflow.sklearn.log_model(
-        sk_model=pipe_model,
-        artifact_path=artifact_path,
-        signature=signature,  # type: ignore
-        registered_model_name=registered_name,
-    )
+    # Heuristic: only try to register if a registry URI is configured
+    reg_enabled = bool(os.getenv("MLFLOW_REGISTRY_URI"))
+    reg_name = registered_name if reg_enabled else None
+
+    try:
+        mlflow.sklearn.log_model(
+            sk_model=pipe_model,
+            artifact_path=artifact_path,
+            signature=signature,  # type: ignore
+            registered_model_name=reg_name,
+        )
+    except MlflowException as exc:
+        # FileStore or registry not available → retry without registration
+        logger.warning(
+            "Model registry not available, fallback to artifact-only: %s",
+            exc,
+        )
+        mlflow.sklearn.log_model(
+            sk_model=pipe_model,
+            artifact_path=artifact_path,
+            signature=signature,  # type: ignore
+            registered_model_name=None,
+        )
 
 
 def log_local_artifacts(

@@ -223,6 +223,7 @@ dev = [
     { name = "uv" },
 ]
 py312 = [
+    { name = "click" },
     { name = "fastapi" },
     { name = "mlflow" },
     { name = "pandas" },
@@ -242,6 +243,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", marker = "extra == 'py312'", specifier = "==8.2.1" },
     { name = "coverage", marker = "extra == 'test'", specifier = "==7.8.2" },
     { name = "dvc-s3", marker = "extra == 'dev'", specifier = "==3.2.2" },
     { name = "fastapi", marker = "extra == 'py312'", specifier = "==0.116.1" },

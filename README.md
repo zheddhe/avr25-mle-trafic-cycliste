@@ -79,7 +79,11 @@ avr25-mle-trafic-cycliste/
 │   │   │   └── Dockerfile
 │   └── prod/           <- Production setup
 │       └── ...
-└── tests/              <- Unit tests (pytest for src source code)
+└── tests/              
+    ├── unitary/        <- Unit tests (pytest for source code coverage)
+    │   └── ...
+    └── integration/    <- integration tests (pytest for integration test)
+        └── ...
 ```
 
 ## ⚙️ Installation
@@ -231,7 +235,7 @@ Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/e
 
 Tests are executed using `pytest`, including:
 
-- ✅ Unit tests for each service separately (`tests/[service name]/`)  
+- ✅ Unit tests for each service separately (`tests/unitary/`)  
 - ✅ Cross-service integration tests (`tests/integration/`)
 
 Continuous Integration workflows are handled with GitHub Actions:
