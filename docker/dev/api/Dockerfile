@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-COPY docker/api/requirements.txt .
+COPY docker/dev/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # TODO: préferer inclure les fichiers unitairement un à un (liste blanche)

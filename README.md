@@ -153,10 +153,20 @@ uvicorn src.api.main:app --reload --port 10000
 ## MLOps setup
 
 > This section covers the project setup as a containerized microservices architecture from an MLOps point of view.
+>
+> - NB : custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
+> - NB2 : use **--build** extra option in the following commands to rebuild docker images prior to an execution
 
 ```bash
-# Launch the full environment
-docker compose up -d --force-recreate
+# 1) Start all the backend in background (mlflow + postgres + minio)
+docker compose up -d postgres minio mc_init mlflow
+
+# 2) Start the pipeline interactively
+docker compose up ml_models_dev
+
+# 3) Launch the prediction API in background
+docker compose up -d api_dev
+# Docs: http://localhost:8000/docs (Basic Auth requis)
 ```
 
 ### 1. 🐳 Container manager
