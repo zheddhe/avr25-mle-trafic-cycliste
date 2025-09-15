@@ -1,31 +1,26 @@
+# -------------------- anchors (reuse blocks) --------------------
+x-mlflow-job-env: &mlflow_job_env
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+  AWS_ACCESS_KEY_ID: minio
+  AWS_SECRET_ACCESS_KEY: minio123
+  AWS_DEFAULT_REGION: us-east-1
+  GIT_PYTHON_REFRESH: quiet
+
+x-binds: &binds
+  - ./data:/app/data
+  - ./models:/app/models
+  - ./logs:/app/logs
+
+networks:
+  dev_net: { driver: bridge }
+
+volumes:
+  postgres_data:
+  minio_data:
+
 services:
-  # api_dev:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/dev/api/Dockerfile
-  #   container_name: api_dev_api
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     - ml
-  #   environment:
-  #     - DATA_PATH=/data/
-  #   volumes:
-  #     - ./data:/data
-
-  # ml_dev:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/dev/ml/Dockerfile
-  #   container_name: ml_dev_pipeline
-  #   volumes:
-  #     - ./models:/models
-  #     - ./data:/data
-  #   environment:
-  #     - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
-  #     - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
-  #     - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
-
+  # ======================= Storage & Tracking =======================
   postgres:
     image: postgres:15
     container_name: mlflow_postgres
@@ -34,51 +29,63 @@ services:
       POSTGRES_USER: mlflow
       POSTGRES_PASSWORD: mlflow
       POSTGRES_DB: mlflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - dev_net
+    networks: [dev_net]
 
   minio:
     image: minio/minio:latest
     container_name: mlflow_minio
-    restart: unless-stopped
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
-    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     ports:
-      - "9000:9000"  # API S3
-      - "9001:9001"  # Console UI
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Console UI
     volumes:
       - minio_data:/data
-    networks:
-      - dev_net
+    networks: [dev_net]
 
-  createbuckets:
-    image: minio/mc
+  mc_init:
+    image: minio/mc:latest
+    container_name: mlflow_minio_mc
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      sleep 5;
-      mc alias set local http://minio:9000 minio minio123;
-      mc mb local/mlflow;
-      mc policy set public local/mlflow;
-      exit 0;
+      mc alias set minio http://minio:9000 minio minio123 &&
+      mc mb -p minio/mlflow || true &&
+      mc anonymous set download minio/mlflow || true &&
+      touch /tmp/ok && sleep 1
       "
-    networks:
-      - dev_net
+    networks: [dev_net]
 
   mlflow:
     build:
       context: .
       dockerfile: docker/dev/mlflow/Dockerfile
+    image: trafic-cycliste-mlflow:dev
     container_name: mlflow_server
     restart: unless-stopped
     depends_on:
-      - postgres
-      - minio
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mc_init:
+        condition: service_completed_successfully
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@postgres:5432/mlflow
       MLFLOW_ARTIFACT_ROOT: s3://mlflow/
@@ -86,21 +93,135 @@ services:
       AWS_SECRET_ACCESS_KEY: minio123
       AWS_DEFAULT_REGION: us-east-1
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    command:
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - postgresql://mlflow:mlflow@postgres:5432/mlflow
+      - --default-artifact-root
+      - s3://mlflow/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
     ports:
       - "5000:5000"
-    command: >
-      server
-      --host 0.0.0.0
-      --port 5000
-      --backend-store-uri postgresql://mlflow:mlflow@postgres:5432/mlflow
-      --default-artifact-root s3://mlflow/
-    networks:
-      - dev_net
+    networks: [dev_net]
 
-volumes:
-  postgres_data:
-  minio_data:
+  # ======================== Batch one-shot jobs ========================
+  ml_data_dev:
+    build:
+      context: .
+      dockerfile: docker/dev/ml/data/Dockerfile
+    image: trafic-cycliste-data:dev
+    container_name: ml_data_dev
+    restart: "no"
+    environment: {}
+    working_dir: /app
+    command:
+      - --raw-path
+      - /app/data/raw/${RAW_FILE_NAME}
+      - --site
+      - ${SITE}
+      - --orientation
+      - ${ORIENTATION}
+      - --range-start
+      - "${RANGE_START}"
+      - --range-end
+      - "${RANGE_END}"
+      - --timestamp-col
+      - date_et_heure_de_comptage
+      - --sub-dir
+      - ${SUB_DIR}
+      - --interim-name
+      - ${INTERIM_NAME}
+    volumes: *binds
+    networks: [dev_net]
 
-networks:
-  dev_net:
-    driver: bridge
+  ml_features_dev:
+    build:
+      context: .
+      dockerfile: docker/dev/ml/features/Dockerfile
+    image: trafic-cycliste-features:dev
+    container_name: ml_features_dev
+    restart: "no"
+    depends_on:
+      ml_data_dev:
+        condition: service_completed_successfully
+    working_dir: /app
+    command:
+      - --interim-path
+      - /app/data/interim/${SUB_DIR}/${INTERIM_NAME}
+      - --sub-dir
+      - ${SUB_DIR}
+      - --processed-name
+      - ${PROCESSED_NAME}
+      - --timestamp-col
+      - date_et_heure_de_comptage
+    volumes: *binds
+    networks: [dev_net]
+
+  ml_models_dev:
+    build:
+      context: .
+      dockerfile: docker/dev/ml/models/Dockerfile
+    image: trafic-cycliste-models:dev
+    container_name: ml_models_dev
+    restart: "no"
+    depends_on:
+      ml_features_dev:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+    environment: *mlflow_job_env
+    working_dir: /app
+    command:
+      - --processed-path
+      - /app/data/processed/${SUB_DIR}/${PROCESSED_NAME}
+      - --sub-dir
+      - ${SUB_DIR}
+      - --target-col
+      - comptage_horaire
+      - --ts-col-utc
+      - date_et_heure_de_comptage_utc
+      - --ts-col-local
+      - date_et_heure_de_comptage_local
+      - --ar
+      - "${AR}"
+      - --mm
+      - "${MM}"
+      - --roll
+      - "${ROLL}"
+      - --test-ratio
+      - "${TEST_RATIO}"
+      - --grid-iter
+      - "${GRID_ITER}"
+    volumes: *binds
+    networks: [dev_net]
+
+  # ============================== API ==============================
+  api_dev:
+    build:
+      context: .
+      dockerfile: docker/dev/api/Dockerfile
+    image: trafic-cycliste-api:dev
+    container_name: api_dev
+    restart: unless-stopped
+    depends_on:
+      ml_models_dev:
+        condition: service_completed_successfully
+    environment:
+      DATA_FINAL_ROOT: /app/data/final
+    ports:
+      - "8000:8000"
+    volumes: *binds
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [dev_net]
