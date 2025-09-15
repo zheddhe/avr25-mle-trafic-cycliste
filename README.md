@@ -154,9 +154,8 @@ uvicorn src.api.main:app --reload --port 10000
 
 > This section covers the project setup as a containerized microservices architecture from an MLOps point of view.
 >
-> NB : custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
->
-> NB2 : use **--build** extra option in the following commands to rebuild docker images prior to an execution
+> - NB : custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
+> - NB2 : use **--build** extra option in the following commands to rebuild docker images prior to an execution
 
 ```bash
 # 1) Start all the backend in background (mlflow + postgres + minio)
