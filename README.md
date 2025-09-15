@@ -8,7 +8,7 @@
 
 ## 🧭 Overview
 
-This project implements a full machine learning and MLOps architecture in three main stages:
+This project implements a complete machine learning and MLOps architecture in three main stages:
 
 ### 1. 📐 Data Product Management
 
@@ -24,60 +24,61 @@ This project implements a full machine learning and MLOps architecture in three 
 ### 3. ⚙️ MLOps
 
 - Reproducibility and continuous testing
-- Containerization with micro services
+- Containerization with microservices
 - Security awareness
 - Monitoring and orchestration
 - Scalability
 
-The MLOps architecture we've designed focus on interactions between components in order to achieve our main business case where an external user
-access daily refreshed predictions of the biking trafic.
+> The MLOps architecture we designed focuses on interactions between components
+> to achieve our main business case: an external user can access daily refreshed
+> bike traffic predictions.
 
 [![MLOps Architecture v2](references/Architecture_MLOps_v2.drawio.png)](https://drive.google.com/file/d/12olpeXpeOF2-UgBSf1h_LhjRVfG8t3KB/view?usp=drive_link)
 
 ## 🧱 GitHub Structure
 
-``` text
+```text
 avr25-mle-trafic-cycliste/
 ├── LICENSE             <- MIT license
 ├── README.md           <- This top-level README for developers using this project
 ├── flake8              <- Linter configuration rules
-├── pyproject.toml      <- Python dev project configuration
-├── uv.lock             <- UV frozen configuration of the dev env
-├── noxfile.py          <- NOX dev session (build/clean)
+├── pyproject.toml      <- Python development project configuration
+├── uv.lock             <- UV lockfile for the dev environment
+├── noxfile.py          <- Nox dev sessions (build/clean)
 ├── data                <- Data storage
-│   ├── raw             <- The original, immutable data dump (e.g. from external sources)
-│   ├── interim         <- Intermediate data extracted from raw (e.g. specialized for a goal)
-│   ├── processed       <- Processed data that has been transformed (e.g. enriched with feats)
-│   └── final           <- Final stage data (e.g. train/test and predictions)
-├── logs                <- Logs from training and predicting
-│   └──...
-├── models              <- Trained and serialized models including their best params and transformers
-│   └──...
-├── references          <- Data dictionaries, manuals, and all other explanatory materials
-│   └──...
-├── src/                <- All Source code used in this project
-│   ├── api/            <- Service FastAPI (lecture des prédictions)
+│   ├── raw             <- Original, immutable data dumps (e.g., external sources)
+│   ├── interim         <- Intermediate data derived from raw (goal-specific)
+│   ├── processed       <- Processed data (e.g., feature-enriched)
+│   └── final           <- Final stage data (e.g., train/test and predictions)
+├── logs                <- Logs from training and prediction
+│   └── ...
+├── models              <- Trained/serialized models, best params, transformers
+│   └── ...
+├── references          <- Data dictionaries, manuals, other explanatory material
+│   └── ...
+├── src/                <- All source code used in this project
+│   ├── api/            <- FastAPI service (prediction readout)
 │   │   └── main.py
-│   └── ml/             <- machine learning pipeline
-│       ├── data        <- Scripts to collect intial raw data or generate new daily one
+│   └── ml/             <- Machine learning pipeline
+│       ├── data        <- Scripts to collect initial raw data or generate daily data
 │       │   ├── data_utils.py
 │       │   └── import_raw_data.py
-│       ├── features    <- Scripts to turn raw data into modeling ready data
+│       ├── features    <- Scripts to turn raw data into modeling-ready data
 │       │   ├── features_utils.py
 │       │   └── build_features.py
-│       └── models      <- Scripts to train models and calculate predictions in batch
+│       └── models      <- Train models and compute batch predictions
 │           ├── models_utils.py
 │           └── train_and_predict.py
-├── docker/             <- container architecture
-│   ├── dev/            <- dev architecture
+├── docker/             <- Container architecture
+│   ├── dev/            <- Development setup
 │   │   ├── api/
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
 │   │   └── ml/
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
-│   └── prod/           <- production architecture
-│       └──...       
+│   └── prod/           <- Production setup
+│       └── ...
 └── tests/              <- Unit tests (pytest for src source code)
 ```
 
@@ -85,34 +86,36 @@ avr25-mle-trafic-cycliste/
 
 ### 🔧 Prerequisites
 
-The build environment initialization requires python, pipx, NOX, UV as a Bootstrap.
+Initialize the build environment with Python, pipx, Nox, and UV.
 
 ```bash
-# check python is here (if not install it manually depending on your OS)
-python --version 
-# install pipx and publish it into the PATH  
+# Check Python is installed (install it manually if needed, depending on your OS)
+python --version
+
+# Install pipx and add it to PATH
 python -m pip install --upgrade pip
 python -m pip install --user pipx
 pipx ensurepath
-# install NOX (session manager like a MAKE multi OS) and UV (fast virtual env back end)
+
+# Install Nox (multi-OS session runner) and UV (fast virtual env + resolver)
 pipx install nox uv
 ```
 
 ### 🔧 Repository cloning and DVC setup (One-time init)
 
-Please refer to the Dagshub remote setup actions depending on your preference to collect:
+Please refer to DagsHub remote setup actions. Example steps:
 
-- Git cloning actions (for example)
+- Git cloning
 
 ```bash
 git clone https://github.com/zheddhe/avr25-mle-trafic-cycliste.git
 ```
 
-- DVC setup actions (for example)
+- DVC setup
 
 ```bash
 dvc remote add origin s3://dvc
-dvc remote modify origin endpointurl https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
+dvc remote modify origin endpointurl   https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
 
 dvc remote modify origin --local access_key_id [...]
 dvc remote modify origin --local secret_access_key [...]
@@ -120,93 +123,95 @@ dvc remote modify origin --local secret_access_key [...]
 
 ## 🚀 DevOps setup
 
-This section covers the project seen as a monolithic architecture
+> This section covers the project setup as a monolithic architecture from a DevOps point of view.
 
 ```bash
-### Rebuild a complete virtual dev env (and trigger flake8 and pytest)
+### Rebuild a complete virtual dev env (runs flake8 and pytest)
 nox -s build
 
-### Activate the virtual env in command line (based on your OS)
+### Activate the virtual environment in a command-line session (per OS)
 # Windows cmd
-.nox\build\Scripts\activate.bat 
-# Mac/Linux shell
+.nox\build\Scripts\activate.bat
+# macOS/Linux shell
 source .nox/build/bin/activate
 
-### [Optional] Clean all project generated file and all virtual envs (build included)
+### [Optional] Clean all generated files and all virtual envs (build included)
 nox -s cleanall
 
-### Execute the dvc pipeline
+### Execute the DVC pipeline
 dvc repro
 
-### Launch the data API (find a free port on your system)
-# the API will be available at http://localhost:10000/docs
+### Launch the data API (use any free port)
+# The API will be available at http://localhost:10000/docs
 uvicorn src.api.main:app --reload --port 10000
 ```
 
-### MLOps setup
+## MLOps setup
 
-This section covers the project seen as containerized service architecture, it can be launched with the following command
+> This section covers the project setup as a containerized microservices architecture from an MLOps point of view.
 
 ```bash
+# Launch the full environment
 docker compose up -d --force-recreate
 ```
 
-### 1. 📊 Container manager
+### 1. 🐳 Container manager
 
-We use **Docker Desktop** for a local simulation of a dev and production environment (we foresee to use cloud deployment as well)
+We use **Docker Desktop** to simulate local development and production (cloud deployment is also planned).
 
 #### Local Docker Desktop with a supervisor to activate
 
 Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
 
 ```bash
-### Check and activation of the supervisor for docker desktop locally
-# Windows
+### Check and activate the local Docker Desktop supervisor on Windows
 Set-Service -Name WSLService -StartupType Automatic
 Start-Service -Name WSLService
 Get-Service WSLService
 ```
 
-### 2. 📊 Experience tracker
+### 2. 📈 Experience tracker
 
-We use **MLFlow** to keep a registry of **metrics**, **params** and training and prediction **artefacts** (sklearn pipeline, auto-regressive transformer, splits train test and prédictions, metrics and hyperparams).
+We use **MLflow** to record **metrics**, **params**, and training/prediction
+**artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
+splits, predictions, metrics, and hyperparameters).
 
-#### Dagshub remote service
+#### DagsHub remote service
 
 ```bash
-### Configure environment variable (based on your OS)
+### Configure environment variables (per OS)
 # Windows cmd
-set MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow 
+set MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 set MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-set MLFLOW_TRACKING_PASSWORD=<DagHhub TOKEN (preferrably over a personnal password...)>
-# Mac/Linux shell
+set MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
+# macOS/Linux shell
 export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferrably over a personnal password...)>
+export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
 ```
 
 #### Local service
 
 ```bash
-### Configure environment variables (based on your OS)
+### Configure environment variables (per OS)
 # Windows cmd
 set MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 set MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 set AWS_ACCESS_KEY_ID=minio
 set AWS_SECRET_ACCESS_KEY=minio123
-# Mac/Linux shell
+# macOS/Linux shell
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_ACCESS_KEY_ID=minio
 export AWS_SECRET_ACCESS_KEY=minio123
 ```
 
-## 🧭 Team collaboration
+## 🤝 Team collaboration
 
 ### 1. 📖 External Documentation
 
 - [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
-- [Data processing and modelization report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
+- [Data processing and modeling report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
 
 ### 2. 🗺️ GitHub Dashboards
 
@@ -215,10 +220,10 @@ export AWS_SECRET_ACCESS_KEY=minio123
 
 ### 3. 🔀 Branch Workflow
 
-Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below
+Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below:
 
-- Create branch per story/bugfix and merge them with pull requests afterward
-- Tag stable versions ideally after each story/bugfix successfull merge
+- Create one branch per story/bugfix and merge via pull requests
+- Tag stable versions ideally after each successful story/bugfix merge
 
 [![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
 
@@ -226,8 +231,8 @@ Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/e
 
 Tests are executed using `pytest`, including:
 
-- ✅ Unit tests for each service separately (in `tests/[service name]/`)  
-- ✅ Transversal Integration tests for the system combining the various services (in `tests/integration/`)  
+- ✅ Unit tests for each service separately (`tests/[service name]/`)  
+- ✅ Cross-service integration tests (`tests/integration/`)
 
 Continuous Integration workflows are handled with GitHub Actions:
 
