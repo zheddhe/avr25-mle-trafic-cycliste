@@ -1,0 +1,33 @@
+data:
+  raw_csv: data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
+
+files:
+  interim: initial.csv
+  processed: initial_with_feats.csv
+
+train:
+  target_col: comptage_horaire
+  ts_col_utc: date_et_heure_de_comptage_utc
+  ts_col_local: date_et_heure_de_comptage_local
+  ar: 7
+  mm: 1
+  roll: 24
+  test_ratio: 0.25
+  grid_iter: 0
+
+# ⚠️ subdir = identifiant ASCII (sans accents), ex. Sebastopol_N-S_v3
+scenarios:
+  sebastopol_ns_v3:
+    site: "Totem 73 boulevard de Sébastopol"
+    orientation: "N-S"
+    range_start: 0.0
+    range_end: 75.0
+    subdir: "Sebastopol_N-S_v3"
+
+  # Ajoutez jusqu'à 4 autres scénarios ici...
+  # another_counter:
+  #   site: "..."
+  #   orientation: "..."
+  #   range_start: 5.0
+  #   range_end: 80.0
+  #   subdir: "Another_ASCII_Id"

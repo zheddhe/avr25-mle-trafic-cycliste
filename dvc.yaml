@@ -1,31 +1,69 @@
+# Permet d'utiliser ${...} avec les clés de params.yaml
+vars:
+  - params.yaml
+
 stages:
   import_raw_data:
-    cmd: python src/ml/data/import_raw_data.py
-    deps:
-      - src/ml/data/import_raw_data.py
-      - src/ml/data/data_utils.py
-      - src/test_config.py
-      - data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
-    outs:
-      - data/interim/Sebastopol_N-S_v2/
+    foreach: ${scenarios}
+    do:
+      cmd: >
+        python -m src.ml.data.import_raw_data
+        --raw-path ${data.raw_csv}
+        --site "${item.site}"
+        --orientation "${item.orientation}"
+        --range-start ${item.range_start}
+        --range-end ${item.range_end}
+        --sub-dir ${item.subdir}
+        --interim-name ${files.interim}
+      deps:
+        - src/ml/data/import_raw_data.py
+        - src/ml/data/data_utils.py
+        - ${data.raw_csv}
+      outs:
+        - data/interim/${item.subdir}
+      params:
+        - data.raw_csv
+        - scenarios.${key}
 
   build_features:
-    cmd: python src/ml/features/build_features.py
-    deps:
-      - src/ml/features/build_features.py
-      - src/ml/features/features_utils.py
-      - data/interim/Sebastopol_N-S_v2/
-    outs:
-      - data/processed/Sebastopol_N-S_v2/
+    foreach: ${scenarios}
+    do:
+      cmd: >
+        python -m src.ml.features.build_features
+        --interim-path data/interim/${item.subdir}/${files.interim}
+        --sub-dir ${item.subdir}
+        --processed-name ${files.processed}
+      deps:
+        - src/ml/features/build_features.py
+        - src/ml/features/features_utils.py
+        - data/interim/${item.subdir}
+      outs:
+        - data/processed/${item.subdir}
+      params:
+        - files.processed
 
   train_and_predict:
-    cmd: python src/ml/models/train_and_predict.py
-    deps:
-      - src/ml/models/train_and_predict.py
-      - src/ml/models/models_utils.py
-      - src/ml/models/mlflow_tracking.py
-      - data/processed/Sebastopol_N-S_v2/
-    outs:
-      - models/Sebastopol_N-S_v2/
-      - data/final/Sebastopol_N-S_v2/
-
+    foreach: ${scenarios}
+    do:
+      cmd: >
+        python -m src.ml.models.train_and_predict
+        --processed-path data/processed/${item.subdir}/${files.processed}
+        --sub-dir ${item.subdir}
+        --target-col ${train.target_col}
+        --ts-col-utc ${train.ts_col_utc}
+        --ts-col-local ${train.ts_col_local}
+        --ar ${train.ar}
+        --mm ${train.mm}
+        --roll ${train.roll}
+        --test-ratio ${train.test_ratio}
+        --grid-iter ${train.grid_iter}
+      deps:
+        - src/ml/models/train_and_predict.py
+        - src/ml/models/models_utils.py
+        - src/ml/models/mlflow_tracking.py
+        - data/processed/${item.subdir}
+      outs:
+        - models/${item.subdir}
+        - data/final/${item.subdir}
+      params:
+        - train

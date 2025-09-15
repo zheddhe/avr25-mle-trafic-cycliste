@@ -8,7 +8,7 @@ from typing import Any, Dict, Union, List, Optional
 import pandas as pd
 import logging
 import os
-from src.test_config import SITE_TEST
+from tests.integration.test_scenario import SITE_TEST
 
 # -------------------------------------------------------------------
 # Logs configuration
