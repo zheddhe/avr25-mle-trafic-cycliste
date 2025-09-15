@@ -61,7 +61,7 @@ def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
     try:
         df = pd.read_csv(path, index_col=0)
     except Exception as exc:
-        logger.warning(f"Failed to read CSV [{path}]: {exc}")
+        logger.warning("Failed to read CSV [%s]: %s", path, exc)
         return None
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
@@ -74,15 +74,20 @@ def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
     return df
 
 
-def load_predictions_from_final(root_dir: str) -> Dict[str, pd.DataFrame]:
+def load_predictions_from_final(
+    root_dir: str,
+) -> tuple[Dict[str, pd.DataFrame], int, int]:
     """
     Explore <root_dir> to find all subdirs containing a y_full.csv.
-    Return a mapping {subdir_name: dataframe}.
+    Return (mapping, skipped_no_csv, invalid_csv).
     """
     mapping: Dict[str, pd.DataFrame] = {}
+    skipped_no_csv = 0
+    invalid_csv = 0
+
     if not os.path.isdir(root_dir):
         logger.warning(f"Final data root not found: [{root_dir}]")
-        return mapping
+        return mapping, skipped_no_csv, invalid_csv
 
     for entry in os.scandir(root_dir):
         if not entry.is_dir():
@@ -91,17 +96,19 @@ def load_predictions_from_final(root_dir: str) -> Dict[str, pd.DataFrame]:
         csv_path = os.path.join(entry.path, "y_full.csv")
         if not os.path.isfile(csv_path):
             logger.debug(f"No y_full.csv in [{entry.path}], skipping.")
+            skipped_no_csv += 1
             continue
 
         df = _safe_read_csv(csv_path)
         if df is None:
+            invalid_csv += 1
             continue
 
         mapping[subdir] = df
         logger.info(
             f"Loaded predictions for counter [{subdir}]: {df.shape[0]} rows x [{df.shape[1]}] cols"
         )
-    return mapping
+    return mapping, skipped_no_csv, invalid_csv
 
 
 def refresh_store() -> Dict[str, pd.DataFrame]:
@@ -109,7 +116,7 @@ def refresh_store() -> Dict[str, pd.DataFrame]:
     Rescan the filesystem and refresh the in-memory store.
     """
     global df_predictions
-    mapping = load_predictions_from_final(DATA_FINAL_ROOT)
+    mapping, _, _ = load_predictions_from_final(DATA_FINAL_ROOT)
     df_predictions = mapping
     logger.info(f"Store refreshed: {len(df_predictions)} counters available.")
     return df_predictions
@@ -211,6 +218,20 @@ class Counter(BaseModel):
     id: str = Field(..., description="Counter identifier (subdir name).")
 
 
+class AdminRefreshResponse(BaseModel):
+    message: str = Field(..., description="Operation result.")
+    counters_before: int = Field(..., description="Store size before refresh.")
+    counters_after: int = Field(..., description="Store size after refresh.")
+    data_root: str = Field(..., description="Absolute root directory used.")
+    loaded: int = Field(..., description="Counters successfully loaded.")
+    skipped_no_csv: int = Field(
+        ..., description="Subdirs without y_full.csv."
+    )
+    invalid_csv: int = Field(
+        ..., description="y_full.csv unreadable or schema-missing."
+    )
+
+
 # -------------------------------------------------------------------
 # Custom exception + handler
 # -------------------------------------------------------------------
@@ -272,18 +293,32 @@ def get_verify():
     description=(
         "Rescan the filesystem (DATA_FINAL_ROOT) and reload all counters."
     ),
+    response_model=AdminRefreshResponse,
     responses=generic_responses,
 )
 def post_refresh(user: str = Depends(_check_credentials)):
+    global df_predictions
     before = len(df_predictions)
-    refresh_store()
+    mapping, skipped_no_csv, invalid_csv = load_predictions_from_final(
+        DATA_FINAL_ROOT
+    )
+    df_predictions = mapping
     after = len(df_predictions)
-    return {
-        "message": "Store refreshed.",
-        "counters_before": before,
-        "counters_after": after,
-        "data_root": os.path.abspath(DATA_FINAL_ROOT),
-    }
+
+    logger.info(
+        f"Admin refresh done. before={before} after={after} loaded={after} "
+        f"skipped_no_csv={skipped_no_csv} invalid_csv={invalid_csv}"
+    )
+
+    return AdminRefreshResponse(
+        message="Store refreshed.",
+        counters_before=before,
+        counters_after=after,
+        data_root=os.path.abspath(DATA_FINAL_ROOT),
+        loaded=after,
+        skipped_no_csv=skipped_no_csv,
+        invalid_csv=invalid_csv,
+    )
 
 
 @app.get(
@@ -351,7 +386,7 @@ def get_predictions_by_counter(
         )
 
     df = df_predictions[counter_id]
-    df_page = df.iloc[offset:offset + limit]
+    df_page = df.iloc[offset: offset + limit]
 
     return PredictionList(
         total=int(len(df)),
