@@ -33,7 +33,7 @@ This project implements a complete machine learning and MLOps architecture in th
 > to achieve our main business case: an external user can access daily refreshed
 > bike traffic predictions.
 
-[![MLOps Architecture v2](references/Architecture_MLOps_v2.drawio.png)](https://drive.google.com/file/d/12olpeXpeOF2-UgBSf1h_LhjRVfG8t3KB/view?usp=drive_link)
+[![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 
 ## 🧱 GitHub Structure
 
@@ -154,8 +154,10 @@ uvicorn src.api.main:app --reload --port 10000
 
 > This section covers the project setup as a containerized microservices architecture from an MLOps point of view.
 >
-> - NB : custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
-> - NB2 : use **--build** extra option in the following commands to rebuild docker images prior to an execution
+> - Custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
+> - Use **--build** extra option in the following commands to rebuild docker images prior to an execution
+>
+> [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 
 ```bash
 # 1) Init and start all the backend (mlflow + postgres + minio + mc_init)
@@ -166,7 +168,7 @@ docker compose -f docker-compose.yaml --env-file .env up ml_data_dev ml_features
 
 # 3) Launch the prediction API in background
 docker compose -f docker-compose.yaml --env-file .env up -d api_dev
-# Docs: http://localhost:8000/docs (Basic Auth requis)
+# Docs: http://localhost:8000/docs (Basic Auth required)
 ```
 
 ### 1. 🐳 Container manager

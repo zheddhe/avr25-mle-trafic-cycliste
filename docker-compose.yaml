@@ -140,7 +140,6 @@ services:
       - --interim-name
       - ${INTERIM_NAME}
     volumes: *binds
-    networks: [dev_net]
 
   ml_features_dev:
     build:
@@ -163,7 +162,6 @@ services:
       - --timestamp-col
       - date_et_heure_de_comptage
     volumes: *binds
-    networks: [dev_net]
 
   ml_models_dev:
     build:
