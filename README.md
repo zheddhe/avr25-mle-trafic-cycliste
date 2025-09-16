@@ -158,14 +158,14 @@ uvicorn src.api.main:app --reload --port 10000
 > - NB2 : use **--build** extra option in the following commands to rebuild docker images prior to an execution
 
 ```bash
-# 1) Start all the backend in background (mlflow + postgres + minio)
-docker compose up -d postgres minio mc_init mlflow
+# 1) Init and start all the backend (mlflow + postgres + minio + mc_init)
+docker compose -f docker-compose.yaml --env-file .env up -d postgres minio mc_init mlflow
 
-# 2) Start the pipeline interactively
-docker compose up ml_models_dev
+# 2) Start the pipeline dockers interactively
+docker compose -f docker-compose.yaml --env-file .env up ml_data_dev ml_features_dev ml_models_dev
 
 # 3) Launch the prediction API in background
-docker compose up -d api_dev
+docker compose -f docker-compose.yaml --env-file .env up -d api_dev
 # Docs: http://localhost:8000/docs (Basic Auth requis)
 ```
 
