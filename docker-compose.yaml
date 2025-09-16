@@ -1,127 +1,79 @@
-# -------------------- anchors (reuse blocks) --------------------
-x-mlflow-job-env: &mlflow_job_env
-  MLFLOW_TRACKING_URI: http://mlflow:5000
-  MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-  AWS_ACCESS_KEY_ID: minio
-  AWS_SECRET_ACCESS_KEY: minio123
-  AWS_DEFAULT_REGION: us-east-1
-  GIT_PYTHON_REFRESH: quiet
+# ========================
+# AIRFLOW PARAMETER FACTORIZATION
+# ========================
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.8.1}
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+  depends_on:
+    airflow-redis:
+      condition: service_healthy
+    airflow-postgres:
+      condition: service_healthy
+  networks:
+    - dev_net
 
-x-binds: &binds
-  - ./data:/app/data
-  - ./models:/app/models
-  - ./logs:/app/logs
+x-airflow-volumes-common: &airflow-volumes-common
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
 
-networks:
-  dev_net: { driver: bridge }
+x-business-volumes: &airflow-volumes-business
+  volumes:
+    - ./data:/opt/airflow/data
+    - ./models:/opt/airflow/models
+    - ./scripts:/opt/airflow/scripts
 
+x-docker-socket: &airflow-docker-socket
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+
+x-airflow-web: &airflow-web
+  environment:
+    <<: *airflow-common-env
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "true"
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+
+x-airflow-smtp: &airflow-smtp
+  environment:
+    <<: *airflow-common-env
+    AIRFLOW__SMTP__SMTP_HOST: "mailhog"
+    AIRFLOW__SMTP__SMTP_PORT: 1025
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
+    AIRFLOW__SMTP__SMTP_STARTTLS: "False"
+    AIRFLOW__SMTP__SMTP_SSL: "False"
+
+# ========================
+# VOLUMES
+# ========================
 volumes:
-  postgres_data:
-  minio_data:
+  mlflow-postgres-db:
+  mlflow-minio-data:
+  airflow-postgres-db:
 
+# ========================
+# NETWORK
+# ========================
+networks:
+  dev_net:
+    driver: bridge
+
+# ========================
+# BUSINESS SERVICES
+# ========================
 services:
-  # ======================= Storage & Tracking =======================
-  postgres:
-    image: postgres:15
-    container_name: mlflow_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: mlflow
-      POSTGRES_PASSWORD: mlflow
-      POSTGRES_DB: mlflow
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mlflow"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks: [dev_net]
-
-  minio:
-    image: minio/minio:latest
-    container_name: mlflow_minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Console UI
-    volumes:
-      - minio_data:/data
-    networks: [dev_net]
-
-  mc_init:
-    image: minio/mc:latest
-    container_name: mlflow_minio_mc
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set minio http://minio:9000 minio minio123 &&
-      mc mb -p minio/mlflow || true &&
-      mc anonymous set download minio/mlflow || true &&
-      touch /tmp/ok && sleep 1
-      "
-    networks: [dev_net]
-
-  mlflow:
-    build:
-      context: .
-      dockerfile: docker/dev/mlflow/Dockerfile
-    image: trafic-cycliste-mlflow:dev
-    container_name: mlflow_server
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      mc_init:
-        condition: service_completed_successfully
-    environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@postgres:5432/mlflow
-      MLFLOW_ARTIFACT_ROOT: s3://mlflow/
-      AWS_ACCESS_KEY_ID: minio
-      AWS_SECRET_ACCESS_KEY: minio123
-      AWS_DEFAULT_REGION: us-east-1
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-    command:
-      - server
-      - --host
-      - 0.0.0.0
-      - --port
-      - "5000"
-      - --backend-store-uri
-      - postgresql://mlflow:mlflow@postgres:5432/mlflow
-      - --default-artifact-root
-      - s3://mlflow/
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    ports:
-      - "5000:5000"
-    networks: [dev_net]
-
-  # ======================== Batch one-shot jobs ========================
   ml_data_dev:
-    build:
+    image: avr25-mle-trafic-cycliste-data:dev
+    build: 
       context: .
-      dockerfile: docker/dev/ml/data/Dockerfile
-    image: trafic-cycliste-data:dev
-    container_name: ml_data_dev
-    restart: "no"
-    environment: {}
-    working_dir: /app
+      dockerfile: ./docker/dev/ml/data/Dockerfile
     command:
       - --raw-path
       - /app/data/raw/${RAW_FILE_NAME}
@@ -139,19 +91,19 @@ services:
       - ${SUB_DIR}
       - --interim-name
       - ${INTERIM_NAME}
-    volumes: *binds
+    restart: no
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - dev_net
+    profiles: ["all", "business"]
 
   ml_features_dev:
-    build:
+    image: avr25-mle-trafic-cycliste-features:dev
+    build: 
       context: .
-      dockerfile: docker/dev/ml/features/Dockerfile
-    image: trafic-cycliste-features:dev
-    container_name: ml_features_dev
-    restart: "no"
-    depends_on:
-      ml_data_dev:
-        condition: service_completed_successfully
-    working_dir: /app
+      dockerfile: ./docker/dev/ml/features/Dockerfile
     command:
       - --interim-path
       - /app/data/interim/${SUB_DIR}/${INTERIM_NAME}
@@ -161,22 +113,18 @@ services:
       - ${PROCESSED_NAME}
       - --timestamp-col
       - date_et_heure_de_comptage
-    volumes: *binds
+    restart: no
+    volumes:
+      - ./data:/app/data
+    networks:
+      - dev_net
+    profiles: ["all", "business"]
 
   ml_models_dev:
-    build:
+    image: avr25-mle-trafic-cycliste-models:dev
+    build: 
       context: .
-      dockerfile: docker/dev/ml/models/Dockerfile
-    image: trafic-cycliste-models:dev
-    container_name: ml_models_dev
-    restart: "no"
-    depends_on:
-      ml_features_dev:
-        condition: service_completed_successfully
-      mlflow:
-        condition: service_healthy
-    environment: *mlflow_job_env
-    working_dir: /app
+      dockerfile: ./docker/dev/ml/models/Dockerfile
     command:
       - --processed-path
       - /app/data/processed/${SUB_DIR}/${PROCESSED_NAME}
@@ -198,28 +146,236 @@ services:
       - "${TEST_RATIO}"
       - --grid-iter
       - "${GRID_ITER}"
-    volumes: *binds
-    networks: [dev_net]
+    restart: no
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    networks:
+      - dev_net
+    profiles: ["all", "business"]
 
-  # ============================== API ==============================
   api_dev:
-    build:
+    image: avr25-mle-trafic-cycliste-api:dev
+    build: 
       context: .
-      dockerfile: docker/dev/api/Dockerfile
-    image: trafic-cycliste-api:dev
-    container_name: api_dev
-    restart: unless-stopped
-    depends_on:
-      ml_models_dev:
-        condition: service_completed_successfully
-    environment:
-      DATA_FINAL_ROOT: /app/data/final
+      dockerfile: ./docker/dev/api/Dockerfile
     ports:
       - "8000:8000"
-    volumes: *binds
+    restart: unless-stopped
+    environment:
+      DATA_FINAL_ROOT: /app/data/final
+    networks:
+      - dev_net
+    profiles: ["all", "business"]
+
+# ========================
+# MLFLOW SERVICES
+# ========================
+  mlflow-postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      interval: 5s
       timeout: 3s
-      retries: 10
-    networks: [dev_net]
+      retries: 20
+    volumes:
+      - mlflow-postgres-db:/var/lib/postgresql/data
+    networks:
+      - dev_net
+    profiles: ["all", "mlflow"]
+
+  mlflow-minio:
+    image: minio/minio
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    command: server /data
+    volumes:
+      - mlflow-minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - dev_net
+    profiles: ["all", "mlflow"]
+
+  mlflow-mc-init:
+    image: minio/mc
+    depends_on:
+      mlflow-minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set minio http://mlflow-minio:9000 minio minio123 &&
+      mc mb -p minio/mlflow || true &&
+      mc anonymous set download minio/mlflow || true &&
+      touch /tmp/ok && sleep 1
+      "
+    networks:
+      - dev_net
+    profiles: ["all", "mlflow"]
+
+  mlflow-server:
+    image: avr25-mle-trafic-cycliste-mlflow:dev
+    build:
+      context: .
+      dockerfile: docker/dev/mlflow/Dockerfile
+    depends_on:
+      mlflow-postgres:
+        condition: service_healthy
+      mlflow-minio:
+        condition: service_healthy
+      mlflow-mc-init:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflow
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://mlflow/
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio123
+      AWS_DEFAULT_REGION: us-east-1
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    command:
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+    restart: unless-stopped
+    networks:
+      - dev_net
+    profiles: ["all", "mlflow"]
+
+# ========================
+# AIRFLOW SERVICES
+# ========================
+  airflow-mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: always
+    networks:
+      - dev_net
+    profiles: ["all", "airflow"]
+
+  airflow-postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+    networks:
+      - dev_net
+    profiles: ["all", "airflow"]
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    profiles: ["all", "airflow"]
+
+  airflow-redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+    restart: always
+    networks:
+      - dev_net
+    profiles: ["all", "airflow"]
+
+  airflow-webserver:
+    <<: [*airflow-common, *airflow-web, *airflow-smtp, *airflow-volumes-common]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: webserver
+    ports:
+      - 8080:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    profiles: ["all", "airflow"]
+
+  airflow-scheduler:
+    <<: [*airflow-common, *airflow-smtp, *airflow-volumes-common, *airflow-volumes-business, *airflow-docker-socket]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: scheduler
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"'
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    profiles: ["all", "airflow"]
+
+  airflow-worker:
+    <<: [*airflow-common, *airflow-volumes-common, *airflow-volumes-business, *airflow-docker-socket]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >-
+          celery --app airflow.executors.celery_executor.app inspect ping
+          -d "celery@$${HOSTNAME}"
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    profiles: ["all", "airflow"]
+
+  airflow-flower:
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    <<: *airflow-common
+    command: celery flower
+    ports:
+      - 5555:5555
+    restart: always
+    profiles: ["all", "airflow"]

@@ -160,14 +160,24 @@ uvicorn src.api.main:app --reload --port 10000
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 
 ```bash
-# 1) Init and start all the backend (mlflow + postgres + minio + mc_init)
-docker compose -f docker-compose.yaml --env-file .env up -d postgres minio mc_init mlflow
+# 1) Init and start all the backends services : 
+# profile mlflow : mlflow / postgres / minio / mc_init) in background
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile mlflow up -d
+# profile airflow : airflow / postgres / redis / mailhog) in background
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile airflow up -d
 
-# 2) Start the pipeline dockers interactively
-docker compose -f docker-compose.yaml --env-file .env up ml_data_dev ml_features_dev ml_models_dev
+# 2) Init and start all the business services (one ML pipeline and API) in background
+# profile ml : raw ingestion / features engineering / train and predict services
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up -d
+# profile api : data api service
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile api up -d
 
-# 3) Launch the prediction API in background
-docker compose -f docker-compose.yaml --env-file .env up -d api_dev
+# Or simply Launch everything at once !! (including the ml pipeline once)
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile mlflow airflow ml api up -d
+
+# Stop everything (including networks but keep database volumes)
+docker compose -p avr25-mle-trafic-cycliste down
+
 # Docs: http://localhost:8000/docs (Basic Auth required)
 ```
 
