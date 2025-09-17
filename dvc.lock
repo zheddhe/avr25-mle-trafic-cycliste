@@ -82,7 +82,7 @@ stages:
   import_raw_data@sebastopol_ns_v3:
     cmd: "python -m src.ml.data.import_raw_data --raw-path data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
       --site \"Totem 73 boulevard de Sébastopol\" --orientation \"N-S\" --range-start
-      0.0 --range-end 75.0 --sub-dir Sebastopol_N-S_v3 --interim-name initial.csv\n"
+      0.0 --range-end 75.0 --sub-dir Sebastopol_N-S_dvcrepro --interim-name initial.csv\n"
     deps:
     - path: 
         data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
@@ -91,12 +91,12 @@ stages:
       size: 149464819
     - path: src/ml/data/data_utils.py
       hash: md5
-      md5: 74fb0b7c34f2dfb7c6aae9fd2ca5551b
-      size: 896
+      md5: 5d830030c3197301d808144481181608
+      size: 963
     - path: src/ml/data/import_raw_data.py
       hash: md5
-      md5: e498cf7e2115872827711f635abb6c93
-      size: 4773
+      md5: f0b53169591c51f20efb783d59e707ae
+      size: 4845
     params:
       params.yaml:
         data.raw_csv: 
@@ -106,62 +106,62 @@ stages:
           orientation: N-S
           range_start: 0.0
           range_end: 75.0
-          subdir: Sebastopol_N-S_v3
+          subdir: Sebastopol_N-S_dvcrepro
     outs:
-    - path: data/interim/Sebastopol_N-S_v3
+    - path: data/interim/Sebastopol_N-S_dvcrepro
       hash: md5
       md5: a63a37b43985a1ca9d5d06681ca9ac23.dir
       size: 1216943
       nfiles: 1
   build_features@sebastopol_ns_v3:
-    cmd: "python -m src.ml.features.build_features --interim-path data/interim/Sebastopol_N-S_v3/initial.csv
-      --sub-dir Sebastopol_N-S_v3 --processed-name initial_with_feats.csv\n"
+    cmd: "python -m src.ml.features.build_features --interim-path data/interim/Sebastopol_N-S_dvcrepro/initial.csv
+      --sub-dir Sebastopol_N-S_dvcrepro --processed-name initial_with_feats.csv\n"
     deps:
-    - path: data/interim/Sebastopol_N-S_v3
+    - path: data/interim/Sebastopol_N-S_dvcrepro
       hash: md5
       md5: a63a37b43985a1ca9d5d06681ca9ac23.dir
       size: 1216943
       nfiles: 1
     - path: src/ml/features/build_features.py
       hash: md5
-      md5: b752f596a6dffb7ea79cd229ca87066e
-      size: 4086
+      md5: 48e40b7a150b9618643afd74c5a927de
+      size: 4161
     - path: src/ml/features/features_utils.py
       hash: md5
-      md5: 7325746a0934d801f392e0f0574d1f67
-      size: 3776
+      md5: dcd8f42d3b6488f41db8a3057cd4147a
+      size: 3851
     params:
       params.yaml:
         files.processed: initial_with_feats.csv
     outs:
-    - path: data/processed/Sebastopol_N-S_v3
+    - path: data/processed/Sebastopol_N-S_dvcrepro
       hash: md5
       md5: 4d9ab96b3c2d455d51e270e02d34576e.dir
       size: 1350050
       nfiles: 1
   train_and_predict@sebastopol_ns_v3:
-    cmd: "python -m src.ml.models.train_and_predict --processed-path data/processed/Sebastopol_N-S_v3/initial_with_feats.csv
-      --sub-dir Sebastopol_N-S_v3 --target-col comptage_horaire --ts-col-utc date_et_heure_de_comptage_utc
-      --ts-col-local date_et_heure_de_comptage_local --ar 7 --mm 1 --roll 24 --test-ratio
-      0.25 --grid-iter 0\n"
+    cmd: "python -m src.ml.models.train_and_predict --processed-path data/processed/Sebastopol_N-S_dvcrepro/initial_with_feats.csv
+      --sub-dir Sebastopol_N-S_dvcrepro --target-col comptage_horaire --ts-col-utc
+      date_et_heure_de_comptage_utc --ts-col-local date_et_heure_de_comptage_local
+      --ar 7 --mm 1 --roll 24 --test-ratio 0.25 --grid-iter 0\n"
     deps:
-    - path: data/processed/Sebastopol_N-S_v3
+    - path: data/processed/Sebastopol_N-S_dvcrepro
       hash: md5
       md5: 4d9ab96b3c2d455d51e270e02d34576e.dir
       size: 1350050
       nfiles: 1
     - path: src/ml/models/mlflow_tracking.py
       hash: md5
-      md5: 665e358bb0c1066f8c0c7f4585c32c18
-      size: 4308
+      md5: 1f546c4260492995302e2805070df906
+      size: 5226
     - path: src/ml/models/models_utils.py
       hash: md5
-      md5: 9cbcca0d368650a11930576e9f602d4f
-      size: 20148
+      md5: e6e8379e50bc446a6077bfdb6b76a84d
+      size: 20219
     - path: src/ml/models/train_and_predict.py
       hash: md5
-      md5: 79009b454889866db90cb28fd4ac00fc
-      size: 5603
+      md5: fbf176dfa1b6a72f7df8dc3a66081378
+      size: 5679
     params:
       params.yaml:
         train:
@@ -174,12 +174,12 @@ stages:
           test_ratio: 0.25
           grid_iter: 0
     outs:
-    - path: data/final/Sebastopol_N-S_v3
+    - path: data/final/Sebastopol_N-S_dvcrepro
       hash: md5
       md5: 5dae20614df0af0c108d32a05e79307c.dir
       size: 2400660
       nfiles: 9
-    - path: models/Sebastopol_N-S_v3
+    - path: models/Sebastopol_N-S_dvcrepro
       hash: md5
       md5: e57a649816798c65bcca73c7e8e4cdc2.dir
       size: 419068

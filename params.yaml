@@ -22,7 +22,7 @@ scenarios:
     orientation: "N-S"
     range_start: 0.0
     range_end: 75.0
-    subdir: "Sebastopol_N-S_v3"
+    subdir: "Sebastopol_N-S_dvcrepro"
 
   # Ajoutez jusqu'à 4 autres scénarios ici...
   # another_counter:
