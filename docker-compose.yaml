@@ -22,13 +22,11 @@ x-airflow-volumes-common: &airflow-volumes-common
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
 
 x-business-volumes: &airflow-volumes-business
   volumes:
     - ./data:/opt/airflow/data
     - ./models:/opt/airflow/models
-    - ./scripts:/opt/airflow/scripts
 
 x-docker-socket: &airflow-docker-socket
   volumes:
@@ -297,17 +295,6 @@ services:
       - airflow_net
     profiles: ["all", "airflow"]
 
-  airflow-init:
-    <<: *airflow-common
-    command: version
-    environment:
-      <<: *airflow-common-env
-      _AIRFLOW_DB_UPGRADE: "true"
-      _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
-    profiles: ["all", "airflow"]
-
   airflow-redis:
     image: redis:latest
     ports:
@@ -320,6 +307,17 @@ services:
     restart: always
     networks:
       - airflow_net
+    profiles: ["all", "airflow"]
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
     profiles: ["all", "airflow"]
 
   airflow-webserver:
