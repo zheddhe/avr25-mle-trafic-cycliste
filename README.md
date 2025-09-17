@@ -166,14 +166,15 @@ docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .e
 # profile airflow : airflow / postgres / redis / mailhog) in background
 docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile airflow up -d
 
-# 2) Init and start all the business services (one ML pipeline and API) in background
-# profile ml : raw ingestion / features engineering / train and predict services
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up -d
+# 2) Init and start all the permanent business services (ie. the API) in background
 # profile api : data api service
 docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile api up -d
 
-# Or simply Launch everything at once !! (including the ml pipeline once)
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile mlflow airflow ml api up -d
+# 3) simulate a pipeline run in interactive mode (they must be orchestrated in sequence)
+# profile ml : raw ingestion / features engineering / train and predict services
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up ml_data_dev
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up ml_features_dev
+docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up ml_models_dev
 
 # Stop everything (including networks but keep database volumes)
 docker compose -p avr25-mle-trafic-cycliste down

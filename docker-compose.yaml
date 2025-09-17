@@ -99,7 +99,7 @@ services:
       - ./logs:/app/logs
     networks:
       - airflow_net
-    profiles: ["all", "business"]
+    profiles: ["all", "ml"]
 
   ml_features_dev:
     image: avr25-mle-trafic-cycliste-features:dev
@@ -121,7 +121,7 @@ services:
       - ./logs:/app/logs
     networks:
       - airflow_net
-    profiles: ["all", "business"]
+    profiles: ["all", "ml"]
 
   ml_models_dev:
     image: avr25-mle-trafic-cycliste-models:dev
@@ -157,7 +157,7 @@ services:
     networks:
       - mlflow_net
       - airflow_net
-    profiles: ["all", "business"]
+    profiles: ["all", "ml"]
 
   api_dev:
     image: avr25-mle-trafic-cycliste-api:dev
@@ -171,7 +171,7 @@ services:
       DATA_FINAL_ROOT: /app/data/final
     networks:
       - airflow_net
-    profiles: ["all", "business"]
+    profiles: ["all", "api"]
 
 # ========================
 # MLFLOW SERVICES
