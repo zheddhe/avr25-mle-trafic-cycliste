@@ -16,7 +16,7 @@ x-airflow-common: &airflow-common
     airflow-postgres:
       condition: service_healthy
   networks:
-    - dev_net
+    - airflow_net
 
 x-airflow-volumes-common: &airflow-volumes-common
   volumes:
@@ -62,7 +62,9 @@ volumes:
 # NETWORK
 # ========================
 networks:
-  dev_net:
+  airflow_net:
+    driver: bridge
+  mlflow_net:
     driver: bridge
 
 # ========================
@@ -96,7 +98,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
-      - dev_net
+      - airflow_net
     profiles: ["all", "business"]
 
   ml_features_dev:
@@ -116,8 +118,9 @@ services:
     restart: no
     volumes:
       - ./data:/app/data
+      - ./logs:/app/logs
     networks:
-      - dev_net
+      - airflow_net
     profiles: ["all", "business"]
 
   ml_models_dev:
@@ -150,8 +153,10 @@ services:
     volumes:
       - ./models:/app/models
       - ./data:/app/data
+      - ./logs:/app/logs
     networks:
-      - dev_net
+      - mlflow_net
+      - airflow_net
     profiles: ["all", "business"]
 
   api_dev:
@@ -165,7 +170,7 @@ services:
     environment:
       DATA_FINAL_ROOT: /app/data/final
     networks:
-      - dev_net
+      - airflow_net
     profiles: ["all", "business"]
 
 # ========================
@@ -185,7 +190,7 @@ services:
     volumes:
       - mlflow-postgres-db:/var/lib/postgresql/data
     networks:
-      - dev_net
+      - mlflow_net
     profiles: ["all", "mlflow"]
 
   mlflow-minio:
@@ -206,7 +211,7 @@ services:
       retries: 20
     restart: unless-stopped
     networks:
-      - dev_net
+      - mlflow_net
     profiles: ["all", "mlflow"]
 
   mlflow-mc-init:
@@ -222,7 +227,7 @@ services:
       touch /tmp/ok && sleep 1
       "
     networks:
-      - dev_net
+      - mlflow_net
     profiles: ["all", "mlflow"]
 
   mlflow-server:
@@ -259,7 +264,7 @@ services:
       - "5000"
     restart: unless-stopped
     networks:
-      - dev_net
+      - mlflow_net
     profiles: ["all", "mlflow"]
 
 # ========================
@@ -272,7 +277,7 @@ services:
       - "8025:8025"
     restart: always
     networks:
-      - dev_net
+      - airflow_net
     profiles: ["all", "airflow"]
 
   airflow-postgres:
@@ -289,7 +294,7 @@ services:
       retries: 5
     restart: always
     networks:
-      - dev_net
+      - airflow_net
     profiles: ["all", "airflow"]
 
   airflow-init:
@@ -314,7 +319,7 @@ services:
       retries: 50
     restart: always
     networks:
-      - dev_net
+      - airflow_net
     profiles: ["all", "airflow"]
 
   airflow-webserver:
