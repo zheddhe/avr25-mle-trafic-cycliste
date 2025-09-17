@@ -17,7 +17,7 @@ train:
 
 # ⚠️ subdir = identifiant ASCII (sans accents), ex. Sebastopol_N-S_v3
 scenarios:
-  sebastopol_ns_v3:
+  sebastopol_ns:
     site: "Totem 73 boulevard de Sébastopol"
     orientation: "N-S"
     range_start: 0.0
