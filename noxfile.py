@@ -52,18 +52,16 @@ def _iter_targets(patterns):
 
 def _remove_paths(session: nox.Session, patterns) -> None:
     """Remove files/dirs matching given glob patterns, robustly."""
-    # Do not delete the active Nox venv of this session.
     active_nox_dir = None
-    if getattr(session, "virtualenv", None):
-        active_nox_dir = Path(session.virtualenv.location)
+    venv = getattr(session, "virtualenv", None)
+    if venv is not None and hasattr(venv, "location"):
+        active_nox_dir = Path(venv.location)
 
     for path in _iter_targets(patterns):
         if not path.exists():
             continue
-        # Skip the active env of the current session.
-        if active_nox_dir and (
-            path == active_nox_dir or active_nox_dir in path.parents
-        ):
+        # Skip the active env of the current session
+        if active_nox_dir and (path == active_nox_dir or active_nox_dir in path.parents):
             session.log(f"Skip active nox venv: {path}")
             continue
 
@@ -72,7 +70,8 @@ def _remove_paths(session: nox.Session, patterns) -> None:
         else:
             _safe_unlink(path)
         session.log(f"Removed {path}")
-    # Best-effort cleanup for scattered artifacts
+
+    # Best-effort cleanup
     for pyc in Path(".").rglob("*.pyc"):
         _safe_unlink(pyc)
     for cover in Path(".").rglob("*,cover"):
@@ -83,6 +82,7 @@ def _remove_paths(session: nox.Session, patterns) -> None:
 
 
 @nox.session(python=PYTHON_VERSION,
+             venv_backend="none",
              reuse_venv=True,
              name="cleanall")
 def cleanall(session: nox.Session) -> None:

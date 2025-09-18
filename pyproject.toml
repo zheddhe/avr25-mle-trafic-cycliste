@@ -44,6 +44,7 @@ dev = [
     "nox==2025.5.1",
     "uv==0.8.14",
     "pip==25.2",
+    "apache-airflow==3.0.6",
 ]
 
 [project.readme]
@@ -53,9 +54,8 @@ content-type = "text/markdown"
 [project.urls]
 Source = "https://github.com/zheddhe/avr25-mle-trafic-cycliste"
 
-[tool.setuptools]
-packages = { find = {} }
-include-package-data = true
+[tool.setuptools.packages.find]
+exclude = ["tests*", "logs*"]
 
 [tool.pytest.ini_options]
 addopts = [

@@ -1,3 +1,4 @@
+# tests/integration/test_scenario.py
 RAW_FILE_NAME = "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
 
 SITE_TEST = {

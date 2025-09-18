@@ -121,7 +121,6 @@ def main(
     # Compute default processed path if needed
     if sub_dir is None:
         sub_dir = os.path.basename(os.path.dirname(interim_path))
-        os.makedirs(sub_dir, exist_ok=True)
     out_dir = os.path.join("data", "processed", sub_dir)
     os.makedirs(out_dir, exist_ok=True)
     processed_path = os.path.join(out_dir, processed_name)
