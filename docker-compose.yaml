@@ -165,6 +165,8 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    volumes:
+      - ./data:/app/data
     environment:
       DATA_FINAL_ROOT: /app/data/final
     networks:
@@ -187,6 +189,7 @@ services:
       retries: 20
     volumes:
       - mlflow-postgres-db:/var/lib/postgresql/data
+    restart: always
     networks:
       - mlflow_net
     profiles: ["all", "mlflow"]
@@ -207,7 +210,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    restart: unless-stopped
+    restart: always
     networks:
       - mlflow_net
     profiles: ["all", "mlflow"]

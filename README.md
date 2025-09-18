@@ -33,7 +33,7 @@ This project implements a complete machine learning and MLOps architecture in th
 > to achieve our main business case: an external user can access daily refreshed
 > bike traffic predictions.
 
-[![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
+[![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1aglCRFaxXRVEEEwtE5ePFnW-vjE8CYa-/view?usp=sharing)
 
 ## 🧱 GitHub Structure
 
