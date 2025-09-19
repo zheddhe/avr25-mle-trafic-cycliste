@@ -3,8 +3,11 @@
 # ========================
 volumes:
   mlflow-postgres-db:
+    name: mlflow-postgres-db
   mlflow-minio-data:
+    name: mlflow-minio-data
   airflow-postgres-db:
+    name: airflow-postgres-db
 
 # ========================
 # NETWORK
