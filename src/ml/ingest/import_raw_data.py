@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import json
+from pathlib import Path
 import re
 import logging
 import unicodedata
@@ -9,7 +11,17 @@ import click
 import pandas as pd
 from typing import Optional
 
-from src.ml.data.data_utils import apply_percent_range_selection
+from src.ml.ingest.data_utils import apply_percent_range_selection
+
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+def write_manifest(path: str, payload: dict) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------------------------------------------
@@ -159,6 +171,27 @@ def main(
 
     df_counter.to_csv(out_path, index=True)
     logger.info(f"Saved interim slice to [{out_path}] ({len(df_counter)} rows).")
+
+    man = os.getenv("MANIFEST_INGEST")
+    if man:
+        write_manifest(man, {
+            "inputs": {
+                "raw_path": f"/app/data/raw/{os.getenv('RAW_FILE_NAME')}",
+                "site": os.getenv("SITE"),
+                "orientation": os.getenv("ORIENTATION"),
+                "range": [
+                    float(os.getenv("RANGE_START", "0")),
+                    float(os.getenv("RANGE_END", "100"))
+                ]
+            },
+            "outputs": {
+                "interim_path":
+                f"/app/data/interim/{os.getenv('SUB_DIR')}/{os.getenv('INTERIM_NAME')}"
+            },
+            "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": os.getenv("SUB_DIR")}
+        })
+
+    logger.info("Data ingestion ended successfully.")
     exit(0)
 
 

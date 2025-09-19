@@ -2,12 +2,24 @@
 from __future__ import annotations
 
 import os
+import json
+from pathlib import Path
 import logging
 from typing import Optional, List
 import click
 import pandas as pd
 
 from src.ml.features.features_utils import DatetimePeriodicsTransformer
+
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+def write_manifest(path: str, payload: dict) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------------------------------------------
@@ -127,6 +139,22 @@ def main(
 
     df.to_csv(processed_path, index=True)
     logger.info(f"Saved processed CSV to [{processed_path}] ({len(df)} rows, {df.shape[1]} cols).")
+
+    man = os.getenv("MANIFEST_FEATS")
+    if man:
+        write_manifest(man, {
+            "inputs": {
+                "interim_path":
+                f"/app/data/interim/{os.getenv('SUB_DIR')}/{os.getenv('INTERIM_NAME')}"
+            },
+            "outputs": {
+                "processed_path":
+                f"/app/data/processed/{os.getenv('SUB_DIR')}/{os.getenv('PROCESSED_NAME')}"
+            },
+            "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": os.getenv("SUB_DIR")}
+        })
+
+    logger.info("Feature engineering ended successfully.")
     exit(0)
 
 

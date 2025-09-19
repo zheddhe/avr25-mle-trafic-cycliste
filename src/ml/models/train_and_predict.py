@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import json
+from pathlib import Path
 import logging
 from typing import Optional
 import click
@@ -19,6 +21,16 @@ from src.ml.models.mlflow_tracking import (
     log_model_with_signature,
     log_local_artifacts,
 )
+
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+def write_manifest(path: str, payload: dict) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------------------------------------------
@@ -200,6 +212,18 @@ def main(
             registered_name=f"{sub_dir}-model",
         )
         log_local_artifacts(sub_dir)
+
+    # write a manifest
+    man = os.getenv("MANIFEST_MODELS")
+    if man:
+        write_manifest(man, {
+            "inputs": {
+                "processed_path":
+                f"/app/data/processed/{os.getenv('SUB_DIR')}/{os.getenv('PROCESSED_NAME')}"
+            },
+            "outputs": {"table": f"/app/data/final/{os.getenv('SUB_DIR')}/y_full.csv"},
+            "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": os.getenv("SUB_DIR")}
+        })
 
     logger.info("Training and forecasting ended successfully.")
     exit(0)
