@@ -482,7 +482,7 @@ def save_artefacts(report: Dict, save_dir):
     y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
     y_full_path = os.path.join(save_data_path, "y_full.csv")
     logging.info(
-        "Final refined data CSV files saved in {save_data_path}:\n"
+        f"Final refined data CSV files saved in {save_data_path}:\n"
         f"{X_train_path}\n"
         f"{X_test_path}\n"
         f"{X_train_dates_path}\n"
