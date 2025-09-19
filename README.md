@@ -186,7 +186,7 @@ docker compose --profile ml up ml_models_dev
 docker compose down
 
 # /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
-docker compose down -v --rmi all && docker system prune -f
+docker compose --profile all down -v --rmi && docker system prune -f
 
 # Docs: http://localhost:8000/docs (Basic Auth required)
 ```
