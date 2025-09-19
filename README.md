@@ -160,24 +160,33 @@ uvicorn src.api.main:app --reload --port 10000
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 
 ```bash
-# 1) Init and start all the backends services : 
+### NB : toutes les commandes ont implicitement les arguments
+# -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env
+
+# 1) Init and build the docker images
+docker compose --profile all build
+
+# 2) Start all the backends services : 
 # profile mlflow : mlflow / postgres / minio / mc_init) in background
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile mlflow up -d
+docker compose --profile mlflow up -d
 # profile airflow : airflow / postgres / redis / mailhog) in background
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile airflow up -d
+docker compose --profile airflow up -d
 
-# 2) Init and start all the permanent business services (ie. the API) in background
+# 3) Start all the permanent business services (ie. the API) in background
 # profile api : data api service
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile api up -d
+docker compose --profile api up -d
 
-# 3) simulate a pipeline run in interactive mode (they must be orchestrated in sequence)
+# 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
 # profile ml : raw ingestion / features engineering / train and predict services
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up ml_data_dev
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up ml_features_dev
-docker compose -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env --profile ml up ml_models_dev
+docker compose --profile ml up ml_data_dev
+docker compose --profile ml up ml_features_dev
+docker compose --profile ml up ml_models_dev
 
-# Stop everything (including networks but keep database volumes)
-docker compose -p avr25-mle-trafic-cycliste down
+# /!\ Stop everything (including networks but keep database volumes)
+docker compose down
+
+# /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
+docker compose down -v --rmi all && docker system prune -f
 
 # Docs: http://localhost:8000/docs (Basic Auth required)
 ```
@@ -186,15 +195,19 @@ docker compose -p avr25-mle-trafic-cycliste down
 
 We use **Docker Desktop** to simulate local development and production (cloud deployment is also planned).
 
-#### Local Docker Desktop with a supervisor to activate
+#### Local Docker Desktop with a supervisor
 
 Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
 
 ```bash
-### Check and activate the local Docker Desktop supervisor on Windows
+### [Windows with PowerShell] Check and activate the local Docker Desktop supervisor 
 Set-Service -Name WSLService -StartupType Automatic
 Start-Service -Name WSLService
 Get-Service WSLService
+### [Windows with PowerShell] install an Ubuntu distribution
+wsl --install -d Ubuntu
+### [Windows with cmd] link docker desktop with Ubuntu distrib in Settings > Resources > WSL Integration and switch on it
+wsl -d Ubuntu
 ```
 
 ### 2. 📈 Experience tracker

@@ -1,54 +1,4 @@
 # ========================
-# AIRFLOW PARAMETER FACTORIZATION
-# ========================
-x-airflow-common: &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.8.1}
-  environment: &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-    AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
-  depends_on:
-    airflow-redis:
-      condition: service_healthy
-    airflow-postgres:
-      condition: service_healthy
-  networks:
-    - airflow_net
-
-x-airflow-volumes-common: &airflow-volumes-common
-  volumes:
-    - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
-
-x-business-volumes: &airflow-volumes-business
-  volumes:
-    - ./data:/opt/airflow/data
-    - ./models:/opt/airflow/models
-
-x-docker-socket: &airflow-docker-socket
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
-
-x-airflow-web: &airflow-web
-  environment:
-    <<: *airflow-common-env
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-    AIRFLOW__CORE__LOAD_EXAMPLES: "true"
-    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
-
-x-airflow-smtp: &airflow-smtp
-  environment:
-    <<: *airflow-common-env
-    AIRFLOW__SMTP__SMTP_HOST: "mailhog"
-    AIRFLOW__SMTP__SMTP_PORT: 1025
-    AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
-    AIRFLOW__SMTP__SMTP_STARTTLS: "False"
-    AIRFLOW__SMTP__SMTP_SSL: "False"
-
-# ========================
 # VOLUMES
 # ========================
 volumes:
@@ -61,8 +11,13 @@ volumes:
 # ========================
 networks:
   airflow_net:
+    name: airflow_net
     driver: bridge
   mlflow_net:
+    name: mlflow_net
+    driver: bridge
+  mlops_net:
+    name: mlops_net
     driver: bridge
 
 # ========================
@@ -70,8 +25,8 @@ networks:
 # ========================
 services:
   ml_data_dev:
-    image: avr25-mle-trafic-cycliste-data:dev
-    build: 
+    image: ml-data:dev
+    build:
       context: .
       dockerfile: ./docker/dev/ml/data/Dockerfile
     command:
@@ -91,8 +46,9 @@ services:
       - ${SUB_DIR}
       - --interim-name
       - ${INTERIM_NAME}
-    restart: no
+    restart: "no"
     volumes:
+      # Bind host for external exchanges
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
@@ -100,8 +56,8 @@ services:
     profiles: ["all", "ml"]
 
   ml_features_dev:
-    image: avr25-mle-trafic-cycliste-features:dev
-    build: 
+    image: ml-features:dev
+    build:
       context: .
       dockerfile: ./docker/dev/ml/features/Dockerfile
     command:
@@ -113,8 +69,9 @@ services:
       - ${PROCESSED_NAME}
       - --timestamp-col
       - date_et_heure_de_comptage
-    restart: no
+    restart: "no"
     volumes:
+      # Bind host for external exchanges
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
@@ -122,8 +79,8 @@ services:
     profiles: ["all", "ml"]
 
   ml_models_dev:
-    image: avr25-mle-trafic-cycliste-models:dev
-    build: 
+    image: ml-models:dev
+    build:
       context: .
       dockerfile: ./docker/dev/ml/models/Dockerfile
     command:
@@ -147,10 +104,11 @@ services:
       - "${TEST_RATIO}"
       - --grid-iter
       - "${GRID_ITER}"
-    restart: no
+    restart: "no"
     volumes:
-      - ./models:/app/models
+      # Bind host for external exchanges
       - ./data:/app/data
+      - ./models:/app/models
       - ./logs:/app/logs
     networks:
       - mlflow_net
@@ -158,8 +116,8 @@ services:
     profiles: ["all", "ml"]
 
   api_dev:
-    image: avr25-mle-trafic-cycliste-api:dev
-    build: 
+    image: api:dev
+    build:
       context: .
       dockerfile: ./docker/dev/api/Dockerfile
     ports:
@@ -213,6 +171,7 @@ services:
     restart: always
     networks:
       - mlflow_net
+      - mlops_net
     profiles: ["all", "mlflow"]
 
   mlflow-mc-init:
@@ -232,7 +191,7 @@ services:
     profiles: ["all", "mlflow"]
 
   mlflow-server:
-    image: avr25-mle-trafic-cycliste-mlflow:dev
+    image: mlflow:dev
     build:
       context: .
       dockerfile: docker/dev/mlflow/Dockerfile
@@ -266,6 +225,7 @@ services:
     restart: unless-stopped
     networks:
       - mlflow_net
+      - mlops_net
     profiles: ["all", "mlflow"]
 
 # ========================
@@ -301,7 +261,7 @@ services:
   airflow-redis:
     image: redis:latest
     ports:
-      - 6379:6379
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -313,75 +273,159 @@ services:
     profiles: ["all", "airflow"]
 
   airflow-init:
-    <<: *airflow-common
-    command: version
+    image: apache/airflow:2.8.1
     environment:
-      <<: *airflow-common-env
-      _AIRFLOW_DB_UPGRADE: "true"
-      _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+    depends_on:
+      airflow-redis:
+        condition: service_healthy
+      airflow-postgres:
+        condition: service_healthy
+    networks:
+      - airflow_net
+    command: >
+      bash -c "airflow db migrate &&
+        (airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} --firstname Admin --lastname User --role Admin --email admin@example.com || true) &&
+        airflow variables import /opt/airflow/config/variables.json"
+    restart: "no"
+    volumes:
+      - ./docker/dev/airflow/variables.json:/opt/airflow/config/variables.json
     profiles: ["all", "airflow"]
 
   airflow-webserver:
-    <<: [*airflow-common, *airflow-web, *airflow-smtp, *airflow-volumes-common]
+    image: apache/airflow:2.8.1
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "true"
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+      AIRFLOW__SMTP__SMTP_HOST: "mailhog"
+      AIRFLOW__SMTP__SMTP_PORT: 1025
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
+      AIRFLOW__SMTP__SMTP_STARTTLS: "False"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-    command: webserver
+    command: ["webserver"]
     ports:
-      - 8080:8080
+      - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 10s
       timeout: 10s
       retries: 5
     restart: always
+    volumes:
+      # Bind host for external exchanges
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      # socket bind for container exchanges
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - airflow_net
+      - mlops_net
     profiles: ["all", "airflow"]
 
   airflow-scheduler:
-    <<: [*airflow-common, *airflow-smtp, *airflow-volumes-common, *airflow-volumes-business, *airflow-docker-socket]
+    image: apache/airflow:2.8.1
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+      AIRFLOW__SMTP__SMTP_HOST: "mailhog"
+      AIRFLOW__SMTP__SMTP_PORT: 1025
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
+      AIRFLOW__SMTP__SMTP_STARTTLS: "False"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+      DOCKER_HOST: unix:///var/run/docker.sock
+    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-    command: scheduler
+    command: ["scheduler"]
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"'
-        ]
+        - CMD-SHELL
+        - airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"
       interval: 10s
       timeout: 10s
       retries: 5
     restart: always
+    volumes:
+      # Bind host for external exchanges
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      # socket bind for container exchanges
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - airflow_net
+      - mlops_net
     profiles: ["all", "airflow"]
 
   airflow-worker:
-    <<: [*airflow-common, *airflow-volumes-common, *airflow-volumes-business, *airflow-docker-socket]
+    image: apache/airflow:2.8.1
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+      DOCKER_HOST: unix:///var/run/docker.sock
+    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-    command: celery worker
+    command: ["celery", "worker"]
     healthcheck:
       test:
-        - "CMD-SHELL"
-        - >-
-          celery --app airflow.executors.celery_executor.app inspect ping
-          -d "celery@$${HOSTNAME}"
+        - CMD-SHELL
+        - celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"
       interval: 10s
       timeout: 10s
       retries: 5
     restart: always
+    volumes:
+      # Bind host for external exchanges
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      # socket bind for container exchanges
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - airflow_net
     profiles: ["all", "airflow"]
 
   airflow-flower:
+    image: apache/airflow:2.8.1
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-    <<: *airflow-common
-    command: celery flower
+    command: ["celery", "flower"]
     ports:
-      - 5555:5555
+      - "5555:5555"
     restart: always
+    networks:
+      - airflow_net
     profiles: ["all", "airflow"]
