@@ -37,6 +37,7 @@ IMG_MODELS = Variable.get("docker_image_models", default_var="ml-models:dev")
 DOCKER_NET = Variable.get("docker_network", default_var="mlops_net")
 
 HOST_REPO = Variable.get("host_repo_root", default_var="/")
+AIRFLOW_REPO = Variable.get("airflow_repo_root", default_var="/opt/airflow")
 CONT_REPO = Variable.get("container_repo_root", default_var="/app")
 
 INC_PCT = float(Variable.get("daily_increment_pct", default_var="1.0"))
@@ -114,7 +115,7 @@ def _make_env(run_id: str, window: Dict[str, float]) -> Dict[str, str]:
 
 
 def _host_paths() -> Dict[str, str]:
-    final_root = Path(HOST_REPO) / "data" / "final" / SUB_DIR
+    final_root = Path(AIRFLOW_REPO) / "data" / "final" / SUB_DIR
     versions_root = final_root / "_versions"
     current_link = final_root / "current"
     return {
@@ -140,11 +141,18 @@ def _promote_artifacts(**ctx) -> None:
     target_version_dir.mkdir(parents=True, exist_ok=True)
 
     cont_final = models_manifest["outputs"]["table"]
-    host_final = Path(str(cont_final).replace(CONT_REPO, HOST_REPO))
+    airflow_final = Path(str(cont_final).replace(CONT_REPO, AIRFLOW_REPO, 1))
+
+    if not airflow_final.exists():
+        raise FileNotFoundError(
+            f"Final file not found in Airflow container: {airflow_final} "
+            f"(from container path: {cont_final}). Check mounts and "
+            f"AIRFLOW_REPO/HOST_REPO."
+        )
 
     dst_final = target_version_dir / FINAL_BASENAME
     dst_final.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(host_final, dst_final)
+    shutil.copy2(airflow_final, dst_final)
 
     tmp_link = final_root / ".current_tmp"
     if tmp_link.exists() or tmp_link.is_symlink():

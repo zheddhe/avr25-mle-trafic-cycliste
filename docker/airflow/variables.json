@@ -1,0 +1,42 @@
+{
+  "docker_image_ingest": "ml-ingest:dev",
+  "docker_image_features": "ml-features:dev",
+  "docker_image_models": "ml-models:dev",
+
+  "docker_network": "mlops_net",
+
+  "host_repo_root": "/host_mnt/c/Users/remyc/Projects/avr25-mle-trafic-cycliste",
+  "airflow_repo_root": "/opt/airflow",
+  "container_repo_root": "/app",
+
+  "bike_subdir": "Sebastopol_N-S_mlops",
+
+  "daily_increment_pct": "0.5",
+  "initial_anchor_date": "2025-09-01",
+
+  "api_conn_id": "bike_api",
+  "final_basename": "y_full.csv",
+
+  "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
+  "site": "Totem 73 boulevard de Sébastopol",
+  "orientation": "N-S",
+  "interim_name": "initial.csv",
+
+  "processed_name": "initial_with_feats.csv",
+
+  "ar": "7",
+  "mm": "1",
+  "roll": "24",
+  "test_ratio": "0.25",
+  "grid_iter": "0",
+
+  "mlflow_tracking_uri": "http://mlflow-server:5000",
+  "mlflow_s3_endpoint_url": "http://mlflow-minio:9000",
+  "aws_access_key_id": "minio",
+  "aws_secret_access_key": "minio123",
+  "aws_default_region": "us-east-1",
+
+  "tz": "Europe/Paris",
+  "airflow_uid": "0",
+  "airflow_gid": "0"
+}
