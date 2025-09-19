@@ -7,7 +7,7 @@ stages:
     foreach: ${scenarios}
     do:
       cmd: >
-        python -m src.ml.data.import_raw_data
+        python -m src.ml.ingest.import_raw_data
         --raw-path ${data.raw_csv}
         --site "${item.site}"
         --orientation "${item.orientation}"
@@ -16,8 +16,8 @@ stages:
         --sub-dir ${item.subdir}
         --interim-name ${files.interim}
       deps:
-        - src/ml/data/import_raw_data.py
-        - src/ml/data/data_utils.py
+        - src/ml/ingest/import_raw_data.py
+        - src/ml/ingest/data_utils.py
         - ${data.raw_csv}
       outs:
         - data/interim/${item.subdir}

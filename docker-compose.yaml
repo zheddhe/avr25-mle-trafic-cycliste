@@ -24,11 +24,11 @@ networks:
 # BUSINESS SERVICES
 # ========================
 services:
-  ml_data_dev:
-    image: ml-data:dev
+  ml_ingest_dev:
+    image: ml-ingest:dev
     build:
       context: .
-      dockerfile: ./docker/dev/ml/data/Dockerfile
+      dockerfile: ./docker/dev/ml/ingest/Dockerfile
     command:
       - --raw-path
       - /app/data/raw/${RAW_FILE_NAME}

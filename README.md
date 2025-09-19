@@ -60,7 +60,7 @@ avr25-mle-trafic-cycliste/
 │   ├── api/            <- FastAPI service (prediction readout)
 │   │   └── main.py
 │   └── ml/             <- Machine learning pipeline
-│       ├── data        <- Scripts to collect initial raw data or generate daily data
+│       ├── ingest      <- Scripts to ingest initial raw data or daily data
 │       │   ├── data_utils.py
 │       │   └── import_raw_data.py
 │       ├── features    <- Scripts to turn raw data into modeling-ready data
@@ -178,7 +178,7 @@ docker compose --profile api up -d
 
 # 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
 # profile ml : raw ingestion / features engineering / train and predict services
-docker compose --profile ml up ml_data_dev
+docker compose --profile ml up ml_ingest_dev
 docker compose --profile ml up ml_features_dev
 docker compose --profile ml up ml_models_dev
 

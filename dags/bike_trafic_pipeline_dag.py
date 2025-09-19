@@ -30,7 +30,7 @@ from docker.types import Mount
 
 SUB_DIR = Variable.get("bike_subdir", default_var="Sebastopol_N-S_mlops")
 
-IMG_DATA = Variable.get("docker_image_data", default_var="ml-data:dev")
+IMG_INGEST = Variable.get("docker_image_ingest", default_var="ml-ingest:dev")
 IMG_FEATS = Variable.get("docker_image_features", default_var="ml-features:dev")
 IMG_MODELS = Variable.get("docker_image_models", default_var="ml-models:dev")
 
@@ -263,7 +263,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
         # 3) Docker tasks — commandes en Jinja pur, env via dict (XComArg)
         ingest = DockerOperator(
             task_id="ingest",
-            image=IMG_DATA,
+            image=IMG_INGEST,
             command=[
                 "--raw-path",
                 "{{ var.value.container_repo_root }}/data/raw/"

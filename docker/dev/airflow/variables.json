@@ -1,5 +1,5 @@
 {
-  "docker_image_data": "ml-data:dev",
+  "docker_image_ingest": "ml-ingest:dev",
   "docker_image_features": "ml-features:dev",
   "docker_image_models": "ml-models:dev",
 
