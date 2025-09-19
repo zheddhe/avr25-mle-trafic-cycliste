@@ -10,7 +10,7 @@
 
   "bike_subdir": "Sebastopol_N-S_mlops",
 
-  "daily_increment_pct": "1.0",
+  "daily_increment_pct": "0.5",
   "initial_anchor_date": "2025-09-01",
 
   "api_conn_id": "bike_api",

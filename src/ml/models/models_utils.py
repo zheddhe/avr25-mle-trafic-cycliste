@@ -530,6 +530,8 @@ def save_artefacts(report: Dict, save_dir):
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(report["metrics"], f, indent=4, ensure_ascii=False)
 
+    return y_full_path
+
 
 def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
     yt = np.array(pd.Series(y_true).to_numpy(copy=False),

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import json
+import sys
 from pathlib import Path
 import re
 import logging
@@ -117,24 +118,33 @@ def main(
     """
     Extract a single counter from the raw dataset and save an interim slice.
     """
+    if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
+        logger.error("range-start/range-end must be within [0, 100]. Got (%s, %s).",
+                     range_start, range_end)
+        sys.exit(2)
+    if range_start > range_end:
+        logger.error("range-start must be <= range-end. Got (%s, %s).",
+                     range_start, range_end)
+        sys.exit(2)
+
     try:
         logger.info("Loading raw CSV [%s] ...", raw_path)
         df = pd.read_csv(raw_path, index_col=0)
     except Exception as exc:
         logger.exception("Failed to load raw CSV: %s", exc)
-        exit(1)
+        sys.exit(1)
 
     key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
     missing = [c for c in key_cols + [timestamp_col] if c not in df.columns]
     if missing:
         logger.error(f"Missing required columns: {missing}")
-        exit(1)
+        sys.exit(1)
 
     grp = df.groupby(key_cols)
     key = (site, orientation)
     if key not in grp.groups:
         logger.warning("Counter not found: %s", key)
-        exit(1)
+        sys.exit(1)
 
     df_counter = grp.get_group(key).copy()
     logger.info(f"Counter [{site} | {orientation}] has {len(df_counter)} rows.")
@@ -160,7 +170,7 @@ def main(
     )
     if df_counter.empty:
         logger.warning("Slice produced an empty DataFrame.")
-        exit(1)
+        sys.exit(1)
 
     # Output path
     if sub_dir is None:
@@ -172,27 +182,32 @@ def main(
     df_counter.to_csv(out_path, index=True)
     logger.info(f"Saved interim slice to [{out_path}] ({len(df_counter)} rows).")
 
+    # write a manifest if required in environment variable
     man = os.getenv("MANIFEST_INGEST")
     if man:
-        write_manifest(man, {
-            "inputs": {
-                "raw_path": f"/app/data/raw/{os.getenv('RAW_FILE_NAME')}",
-                "site": os.getenv("SITE"),
-                "orientation": os.getenv("ORIENTATION"),
-                "range": [
-                    float(os.getenv("RANGE_START", "0")),
-                    float(os.getenv("RANGE_END", "100"))
-                ]
-            },
-            "outputs": {
-                "interim_path":
-                f"/app/data/interim/{os.getenv('SUB_DIR')}/{os.getenv('INTERIM_NAME')}"
-            },
-            "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": os.getenv("SUB_DIR")}
-        })
+        try:
+            write_manifest(man, {
+                "inputs": {
+                    "raw_path": str(Path(raw_path).resolve()),
+                    "site": site,
+                    "orientation": orientation,
+                    "range": [range_start, range_end],
+                    "timestamp_col": timestamp_col,
+                },
+                "outputs": {
+                    "interim_path": str(out_path)
+                },
+                "run": {
+                    "run_id": os.getenv("RUN_ID"),
+                    "sub_dir": sub_dir
+                }
+            })
+            logger.info("Ingest manifest written to [%s].", man)
+        except Exception as exc:
+            logger.warning("Failed to write manifest [%s]: %s", man, exc)
 
     logger.info("Data ingestion ended successfully.")
-    exit(0)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
