@@ -384,7 +384,7 @@ with DAG(
 ) as init_dag:
     etl = build_etl_group(init_dag, mode="init")
 
-    promote = PythonOperator(task_id="promote_artifacts", python_callable=_promote_artifacts)
+    # promote = PythonOperator(task_id="promote_artifacts", python_callable=_promote_artifacts)
     api_refresh = SimpleHttpOperator(
         task_id="api_refresh",
         http_conn_id=API_CONN_ID,
@@ -393,7 +393,8 @@ with DAG(
         response_check=lambda r: r.status_code == 200,
         log_response=True,
     )
-    etl >> promote >> api_refresh  # type: ignore
+    # etl >> promote >> api_refresh  # type: ignore
+    etl >> api_refresh  # type: ignore
 
 # ------------------------- DAG 2: daily window refresh ----------------------- #
 
@@ -408,7 +409,7 @@ with DAG(
 ) as daily_dag:
     etl = build_etl_group(daily_dag, mode="daily")
 
-    promote = PythonOperator(task_id="promote_artifacts", python_callable=_promote_artifacts)
+    # promote = PythonOperator(task_id="promote_artifacts", python_callable=_promote_artifacts)
     api_refresh = SimpleHttpOperator(
         task_id="api_refresh",
         http_conn_id=API_CONN_ID,
@@ -417,4 +418,5 @@ with DAG(
         response_check=lambda r: r.status_code == 200,
         log_response=True,
     )
-    etl >> promote >> api_refresh  # type: ignore
+    # etl >> promote >> api_refresh  # type: ignore
+    etl >> api_refresh  # type: ignore
