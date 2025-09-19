@@ -294,10 +294,11 @@ services:
     command: >
       bash -c "airflow db migrate &&
         (airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} --firstname Admin --lastname User --role Admin --email admin@example.com || true) &&
-        airflow variables import /opt/airflow/config/variables.json"
+        airflow variables import /opt/airflow/config/variables.json &&
+        airflow connections import /opt/airflow/config/connections.json"
     restart: "no"
     volumes:
-      - ./docker/dev/airflow/variables.json:/opt/airflow/config/variables.json
+      - ./docker/dev/airflow/:/opt/airflow/config/
     profiles: ["all", "airflow"]
 
   airflow-webserver:

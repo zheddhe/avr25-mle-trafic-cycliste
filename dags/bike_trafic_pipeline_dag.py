@@ -43,7 +43,6 @@ CONT_REPO = Variable.get("container_repo_root", default_var="/app")
 INC_PCT = float(Variable.get("daily_increment_pct", default_var="1.0"))
 ANCHOR = Variable.get("initial_anchor_date", default_var=str(datetime.today().date()))
 
-API_CONN_ID = Variable.get("api_conn_id", default_var="bike_api")
 FINAL_BASENAME = Variable.get("final_basename", default_var="y_full.csv")
 
 # Ingestion
@@ -387,7 +386,7 @@ with DAG(
     # promote = PythonOperator(task_id="promote_artifacts", python_callable=_promote_artifacts)
     api_refresh = SimpleHttpOperator(
         task_id="api_refresh",
-        http_conn_id=API_CONN_ID,
+        http_conn_id="api_dev",
         endpoint="/admin/refresh",
         method="POST",
         response_check=lambda r: r.status_code == 200,
@@ -412,7 +411,7 @@ with DAG(
     # promote = PythonOperator(task_id="promote_artifacts", python_callable=_promote_artifacts)
     api_refresh = SimpleHttpOperator(
         task_id="api_refresh",
-        http_conn_id=API_CONN_ID,
+        http_conn_id="api_dev",
         endpoint="/admin/refresh",
         method="POST",
         response_check=lambda r: r.status_code == 200,
