@@ -482,7 +482,7 @@ def save_artefacts(report: Dict, save_dir):
     y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
     y_full_path = os.path.join(save_data_path, "y_full.csv")
     logging.info(
-        "Final refined data CSV files saved in {save_data_path}:\n"
+        f"Final refined data CSV files saved in {save_data_path}:\n"
         f"{X_train_path}\n"
         f"{X_test_path}\n"
         f"{X_train_dates_path}\n"
@@ -529,6 +529,8 @@ def save_artefacts(report: Dict, save_dir):
         json.dump(report["params"], f, indent=4, ensure_ascii=False)
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(report["metrics"], f, indent=4, ensure_ascii=False)
+
+    return y_full_path
 
 
 def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:

@@ -14,8 +14,8 @@ from click.testing import CliRunner
 
 MODULE_ALIASES = {
     "import_raw_data": [
-        "src.ml.data.import_raw_data",
-        "ml.data.import_raw_data",
+        "src.ml.ingest.import_raw_data",
+        "ml.ingest.import_raw_data",
         "import_raw_data",
     ],
     "build_features": [
@@ -91,7 +91,7 @@ def _invoke_click(script_key: str, argv: list[str]) -> int:
     fname = aliases[0].split(".")[-1] + ".py"
     candidates = [
         _project_root() / fname,
-        _project_root() / "src" / "ml" / "data" / "import_raw_data.py"
+        _project_root() / "src" / "ml" / "ingest" / "import_raw_data.py"
         if script_key == "import_raw_data" else None,
         _project_root() / "src" / "ml" / "features" / "build_features.py"
         if script_key == "build_features" else None,

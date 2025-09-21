@@ -185,7 +185,7 @@ stages:
       size: 419068
       nfiles: 4
   import_raw_data@sebastopol_ns:
-    cmd: "python -m src.ml.data.import_raw_data --raw-path data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
+    cmd: "python -m src.ml.ingest.import_raw_data --raw-path data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
       --site \"Totem 73 boulevard de Sébastopol\" --orientation \"N-S\" --range-start
       0.0 --range-end 75.0 --sub-dir Sebastopol_N-S_dvcrepro --interim-name initial.csv\n"
     deps:
@@ -194,14 +194,14 @@ stages:
       hash: md5
       md5: e38aee22570ad4ab0b92d72dba3690cf
       size: 149464819
-    - path: src/ml/data/data_utils.py
+    - path: src/ml/ingest/data_utils.py
       hash: md5
-      md5: 5d830030c3197301d808144481181608
-      size: 963
-    - path: src/ml/data/import_raw_data.py
+      md5: ab1ac9c70a3efdfb5ab8bf769df333df
+      size: 965
+    - path: src/ml/ingest/import_raw_data.py
       hash: md5
-      md5: f0b53169591c51f20efb783d59e707ae
-      size: 4845
+      md5: f79983b2e053f4c6f68eb2224671bee7
+      size: 6665
     params:
       params.yaml:
         data.raw_csv: 
@@ -229,8 +229,8 @@ stages:
       nfiles: 1
     - path: src/ml/features/build_features.py
       hash: md5
-      md5: 48e40b7a150b9618643afd74c5a927de
-      size: 4161
+      md5: 99577b57188190dc2f78a7c3fb7c3145
+      size: 5611
     - path: src/ml/features/features_utils.py
       hash: md5
       md5: dcd8f42d3b6488f41db8a3057cd4147a
@@ -261,12 +261,12 @@ stages:
       size: 5226
     - path: src/ml/models/models_utils.py
       hash: md5
-      md5: e6e8379e50bc446a6077bfdb6b76a84d
-      size: 20219
+      md5: e13298f53db395dc878880eb04280478
+      size: 20246
     - path: src/ml/models/train_and_predict.py
       hash: md5
-      md5: fbf176dfa1b6a72f7df8dc3a66081378
-      size: 5679
+      md5: e6bba7f9a4a6edc3b5f6c17ddd915f6a
+      size: 7364
     params:
       params.yaml:
         train:

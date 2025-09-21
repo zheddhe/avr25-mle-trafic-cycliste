@@ -1,6 +1,6 @@
 outs:
-- md5: 123f5ea9ec0f37d8e999f67d41ed6fce.dir
-  size: 1209945
-  nfiles: 1
+- md5: ae3370c7b331197f5f3e489dceb65f32.dir
+  size: 3629897
+  nfiles: 3
   hash: md5
   path: Sebastopol_N-S_mlops

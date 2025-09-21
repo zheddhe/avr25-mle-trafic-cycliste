@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import os
+import json
+import sys
+from pathlib import Path
 import logging
 from typing import Optional
 import click
@@ -19,6 +22,16 @@ from src.ml.models.mlflow_tracking import (
     log_model_with_signature,
     log_local_artifacts,
 )
+
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+def write_manifest(path: str, payload: dict) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------------------------------------------
@@ -132,6 +145,13 @@ def main(
     """
     Train a time-series model and produce recursive forecasts with MLflow logs.
     """
+    if not (0.0 < test_ratio < 0.95):
+        logger.error(f"test-ratio must be in (0, 0.95). Got {test_ratio}.")
+        sys.exit(2)
+    if grid_iter < 0:
+        logger.error(f"grid-iter must be >= 0. Got {grid_iter}.")
+        sys.exit(2)
+
     # Configure MLflow URI from env, optionally override by CLI
     configure_mlflow_from_env(explicit_uri=mlflow_uri)
 
@@ -143,12 +163,12 @@ def main(
         df = pd.read_csv(processed_path, index_col=0)
     except Exception as exc:
         logger.exception(f"Failed to load processed CSV: {exc}")
-        exit(1)
+        sys.exit(1)
 
     for col in [ts_col_utc, ts_col_local]:
         if col not in df.columns:
             logger.error(f"Missing required column: {col}")
-            exit(1)
+            sys.exit(1)
 
     # Ensure tz-aware datetimes
     try:
@@ -189,7 +209,7 @@ def main(
         tags=tags,
     ):
         log_report_content(report, target_col=target_col)
-        save_artefacts(report, sub_dir)
+        y_full_path = save_artefacts(report, sub_dir)
 
         # Log model with signature using one train row
         x_sample = report["X_train"].head(1)
@@ -201,8 +221,33 @@ def main(
         )
         log_local_artifacts(sub_dir)
 
+    # write a manifest if required in environment variable
+    man = os.getenv("MANIFEST_MODELS")
+    if man:
+        try:
+            write_manifest(man, {
+                "inputs": {
+                    "processed_path": processed_path,
+                    "target_col": target_col,
+                    "ts_col_utc": ts_col_utc,
+                    "ts_col_local": ts_col_local,
+                    "ar": ar, "mm": mm, "roll": roll,
+                    "test_ratio": test_ratio, "grid_iter": grid_iter
+                },
+                "outputs": {
+                    "table": str(y_full_path)
+                },
+                "run": {
+                    "run_id": os.getenv("RUN_ID"),
+                    "sub_dir": sub_dir
+                }
+            })
+            logger.info("Models manifest written to [%s].", man)
+        except Exception as exc:
+            logger.warning("Failed to write models manifest [%s]: %s", man, exc)
+
     logger.info("Training and forecasting ended successfully.")
-    exit(0)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

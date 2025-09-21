@@ -2,12 +2,25 @@
 from __future__ import annotations
 
 import os
+import json
+import sys
+from pathlib import Path
 import logging
 from typing import Optional, List
 import click
 import pandas as pd
 
 from src.ml.features.features_utils import DatetimePeriodicsTransformer
+
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+def write_manifest(path: str, payload: dict) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 # -------------------------------------------------------------------
@@ -105,7 +118,11 @@ def main(
         df = pd.read_csv(interim_path, index_col=0)
     except Exception as exc:
         logger.exception(f"Failed to load interim CSV: {exc}")
-        exit(1)
+        sys.exit(1)
+
+    if timestamp_col not in df.columns:
+        logger.error(f"Timestamp column [{timestamp_col}] not found in interim dataset.")
+        sys.exit(1)
 
     # Enrich periodic features
     tr_date = DatetimePeriodicsTransformer(timestamp_col=timestamp_col)
@@ -127,7 +144,31 @@ def main(
 
     df.to_csv(processed_path, index=True)
     logger.info(f"Saved processed CSV to [{processed_path}] ({len(df)} rows, {df.shape[1]} cols).")
-    exit(0)
+
+    # write a manifest if required in environment variable
+    man = os.getenv("MANIFEST_FEATS")
+    if man:
+        try:
+            write_manifest(man, {
+                "inputs": {
+                    "interim_path": str(interim_path),
+                    "timestamp_col": timestamp_col,
+                    "extra_drop": list(extra_drop) if extra_drop else [],
+                },
+                "outputs": {
+                    "processed_path": str(processed_path)
+                },
+                "run": {
+                    "run_id": os.getenv("RUN_ID"),
+                    "sub_dir": sub_dir
+                }
+            })
+            logger.info(f"Features manifest written to [{man}].")
+        except Exception as exc:
+            logger.warning(f"Failed to write manifest [{man}]: {exc}")
+
+    logger.info("Feature engineering ended successfully.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
