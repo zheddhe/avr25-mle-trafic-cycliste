@@ -200,8 +200,8 @@ stages:
       size: 965
     - path: src/ml/ingest/import_raw_data.py
       hash: md5
-      md5: 3c815f6d7a65129457e7312c6093c08e
-      size: 6063
+      md5: f79983b2e053f4c6f68eb2224671bee7
+      size: 6665
     params:
       params.yaml:
         data.raw_csv: 
@@ -229,8 +229,8 @@ stages:
       nfiles: 1
     - path: src/ml/features/build_features.py
       hash: md5
-      md5: f60fa189bfed1893ec2ba6d15bec0ea6
-      size: 5120
+      md5: 99577b57188190dc2f78a7c3fb7c3145
+      size: 5611
     - path: src/ml/features/features_utils.py
       hash: md5
       md5: dcd8f42d3b6488f41db8a3057cd4147a
@@ -261,12 +261,12 @@ stages:
       size: 5226
     - path: src/ml/models/models_utils.py
       hash: md5
-      md5: 4ebb16fae9eac9be2f70b30325173148
-      size: 20220
+      md5: e13298f53db395dc878880eb04280478
+      size: 20246
     - path: src/ml/models/train_and_predict.py
       hash: md5
-      md5: c3df9069e349b28882e86b8dd5408f20
-      size: 6571
+      md5: e6bba7f9a4a6edc3b5f6c17ddd915f6a
+      size: 7364
     params:
       params.yaml:
         train:
