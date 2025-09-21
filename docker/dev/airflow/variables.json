@@ -11,8 +11,8 @@
 
   "bike_subdir": "Sebastopol_N-S_mlops",
 
-  "daily_increment_pct": "0.5",
-  "initial_anchor_date": "2025-09-01",
+  "daily_increment_pct": "0.25",
+  "initial_anchor_date": "2025-09-20",
 
   "api_conn_id": "http://api_dev:8000",
   "final_basename": "y_full.csv",
