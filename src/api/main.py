@@ -123,31 +123,71 @@ def refresh_store() -> Dict[str, pd.DataFrame]:
 
 
 # -------------------------------------------------------------------
-# Simple security (Basic Auth)
+# Simple security (Basic Auth) avec système de rôles
 # -------------------------------------------------------------------
+
+# Dictionnaire des utilisateurs avec leurs rôles
 dict_credentials = {
-    "remy": "remy",
-    "elias": "elias",
-    "kolade": "kolade",
+    # Administrateurs - accès complet
+    "remy": {"password": "remy", "role": "admin"},
+    "elias": {"password": "elias", "role": "admin"},
+    "kolade": {"password": "kolade", "role": "admin"},
+    "sofia": {"password": "sofia", "role": "admin"},
+    
+    # Utilisateurs standard - accès prédictions uniquement
+    "user1": {"password": "user1", "role": "user"},
+    "user2": {"password": "user2", "role": "user"},
 }
+
 security = HTTPBasic()
 
 
-def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)) -> dict:
     """
-    Validate Basic Auth credentials for docs (/docs, /redoc) and endpoints.
+    Validate Basic Auth credentials et retourne les infos utilisateur.
     """
     if credentials.username not in dict_credentials:
         raise HTTPException(
             status_code=403,
             detail=f"Unknown user [{credentials.username}]",
         )
-    if dict_credentials[credentials.username] != credentials.password:
+    
+    user_info = dict_credentials[credentials.username]
+    if user_info["password"] != credentials.password:
         raise HTTPException(
             status_code=403,
             detail="Invalid password.",
         )
-    # Do not return secrets; just allow the request to proceed.
+    
+    # Retourner les informations utilisateur (sans le mot de passe)
+    return {
+        "username": credentials.username,
+        "role": user_info["role"]
+    }
+
+
+def _check_admin_role(user_info: dict = Depends(_check_credentials)) -> dict:
+    """
+    Vérifie que l'utilisateur a le rôle admin.
+    """
+    if user_info["role"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied. Admin role required. Current role: {user_info['role']}",
+        )
+    return user_info
+
+
+def _check_user_or_admin_role(user_info: dict = Depends(_check_credentials)) -> dict:
+    """
+    Vérifie que l'utilisateur a le rôle user ou admin.
+    """
+    if user_info["role"] not in ["user", "admin"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied. User or Admin role required. Current role: {user_info['role']}",
+        )
+    return user_info
 
 
 # -------------------------------------------------------------------
@@ -273,30 +313,40 @@ generic_responses: ResponsesDict = {
 
 
 # -------------------------------------------------------------------
-# Routes
+# Routes avec contrôle d'accès par rôle
 # -------------------------------------------------------------------
+
 @app.get(
     "/verify",
     tags=["Admin"],
     summary="Verify service health",
-    description="Simple service health check.",
-    responses={},
+    description="Simple service health check. [ADMIN ONLY]",
+    responses=generic_responses,
 )
-def get_verify():
-    return {"message": "API is healthy."}
+def get_verify(user_info: dict = Depends(_check_admin_role)):
+    """
+    Health check - Accès limité aux administrateurs
+    """
+    logger.info(f"Health check requested by admin user: {user_info['username']}")
+    return {
+        "message": "API is healthy.",
+        "checked_by": user_info["username"],
+        "role": user_info["role"]
+    }
 
 
 @app.post(
     "/admin/refresh",
     tags=["Admin"],
     summary="Refresh in-memory store",
-    description=(
-        "Rescan the filesystem (DATA_FINAL_ROOT) and reload all counters."
-    ),
+    description="Rescan the filesystem (DATA_FINAL_ROOT) and reload all counters. [ADMIN ONLY]",
     response_model=AdminRefreshResponse,
     responses=generic_responses,
 )
-def post_refresh(user: str = Depends(_check_credentials)):
+def post_refresh(user_info: dict = Depends(_check_admin_role)):
+    """
+    Refresh du store - Accès limité aux administrateurs
+    """
     global df_predictions
     before = len(df_predictions)
     mapping, skipped_no_csv, invalid_csv = load_predictions_from_final(
@@ -306,12 +356,13 @@ def post_refresh(user: str = Depends(_check_credentials)):
     after = len(df_predictions)
 
     logger.info(
-        f"Admin refresh done. before={before} after={after} loaded={after} "
+        f"Admin refresh done by {user_info['username']}. "
+        f"before={before} after={after} loaded={after} "
         f"skipped_no_csv={skipped_no_csv} invalid_csv={invalid_csv}"
     )
 
     return AdminRefreshResponse(
-        message="Store refreshed.",
+        message=f"Store refreshed by {user_info['username']}.",
         counters_before=before,
         counters_after=after,
         data_root=os.path.abspath(DATA_FINAL_ROOT),
@@ -327,18 +378,23 @@ def post_refresh(user: str = Depends(_check_credentials)):
     summary="List available counters",
     description=(
         "List all counters detected under data/final/<subdir>/y_full.csv "
-        "(or under DATA_FINAL_ROOT)."
+        "(or under DATA_FINAL_ROOT). [USER or ADMIN]"
     ),
     response_model=List[Counter],
     responses=generic_responses,
 )
-def get_all_counters(user: str = Depends(_check_credentials)):
+def get_all_counters(user_info: dict = Depends(_check_user_or_admin_role)):
+    """
+    Liste des compteurs - Accès pour utilisateurs et administrateurs
+    """
     if not df_predictions:
         raise CustomException(
             type="PredictionsNotLoaded",
             message=f"df_predictions content: {df_predictions}",
             date=str(datetime.now()),
         )
+    
+    logger.info(f"Counters list requested by user: {user_info['username']} (role: {user_info['role']})")
     return [Counter(id=name) for name in sorted(df_predictions.keys())]
 
 
@@ -348,7 +404,7 @@ def get_all_counters(user: str = Depends(_check_credentials)):
     summary="Get predictions for a counter",
     description=(
         "Return a paginated list of predictions for the given counter id "
-        "(subdir name). Max 100 per page."
+        "(subdir name). Max 100 per page. [USER or ADMIN]"
     ),
     response_model=PredictionList,
     responses=generic_responses,
@@ -366,8 +422,11 @@ def get_predictions_by_counter(
         ge=0,
         description="Number of predictions to skip (pagination).",
     ),
-    user: str = Depends(_check_credentials),
+    user_info: dict = Depends(_check_user_or_admin_role),
 ):
+    """
+    Prédictions pour un compteur - Accès pour utilisateurs et administrateurs
+    """
     if not df_predictions:
         raise CustomException(
             type="PredictionsNotLoaded",
@@ -388,6 +447,11 @@ def get_predictions_by_counter(
     df = df_predictions[counter_id]
     df_page = df.iloc[offset: offset + limit]
 
+    logger.info(
+        f"Predictions for counter {counter_id} requested by user: {user_info['username']} "
+        f"(role: {user_info['role']}, limit: {limit}, offset: {offset})"
+    )
+
     return PredictionList(
         total=int(len(df)),
         limit=int(limit),
@@ -397,3 +461,24 @@ def get_predictions_by_counter(
             for row in df_page.to_dict(orient="records")
         ],
     )
+
+# Endpoint optionnel pour voir les informations de l'utilisateur connecté
+@app.get(
+    "/me",
+    tags=["Admin"],
+    summary="Get current user info",
+    description="Get information about the currently authenticated user.",
+    responses=generic_responses,
+)
+def get_current_user(user_info: dict = Depends(_check_credentials)):
+    """
+    Informations sur l'utilisateur connecté
+    """
+    return {
+        "username": user_info["username"],
+        "role": user_info["role"],
+        "permissions": {
+            "admin_endpoints": user_info["role"] == "admin",
+            "prediction_endpoints": user_info["role"] in ["user", "admin"]
+        }
+    }
