@@ -113,6 +113,11 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./logs:/app/logs
+    environment:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     networks:
       - mlflow_net
       - airflow_net
@@ -129,7 +134,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      DATA_FINAL_ROOT: /app/data/final
+      DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
     networks:
       - airflow_net
     profiles: ["all", "api"]

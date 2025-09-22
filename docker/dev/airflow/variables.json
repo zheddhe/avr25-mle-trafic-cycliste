@@ -20,9 +20,9 @@
   "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
   "site": "Totem 73 boulevard de Sébastopol",
   "orientation": "N-S",
-  "interim_name": "initial.csv",
+  "interim_name": "initial_airflow.csv",
 
-  "processed_name": "initial_with_feats.csv",
+  "processed_name": "initial_airflow_with_feats.csv",
 
   "ar": "7",
   "mm": "1",

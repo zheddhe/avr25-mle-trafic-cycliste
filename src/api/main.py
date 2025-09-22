@@ -38,7 +38,9 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 # Data root and in-memory store
 # -------------------------------------------------------------------
-DATA_FINAL_ROOT = os.getenv("DATA_FINAL_ROOT", os.path.join("data", "final"))
+DATA_FINAL_ROOT = os.path.abspath(
+    os.getenv("DATA_FINAL_ROOT") or os.path.join("data", "final")
+)
 
 # df_predictions: key = subdir (counter id), value = DataFrame loaded from
 # <DATA_FINAL_ROOT>/<subdir>/y_full.csv
