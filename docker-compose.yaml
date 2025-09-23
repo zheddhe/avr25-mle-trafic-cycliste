@@ -300,8 +300,8 @@ services:
       bash -c "airflow db migrate &&
         (airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} --firstname Admin --lastname User --role Admin --email admin@example.com || true) &&
         airflow variables import /opt/airflow/config/variables.json &&
-        airflow pools import /opt/airflow/config/pools.json &&
-        airflow connections import /opt/airflow/config/connections.json"
+        airflow connections import /opt/airflow/config/connections.json &&
+        airflow pools set sequential_counters 1 'Orchestrator: trigger child DAGs sequentially'"
     restart: "no"
     volumes:
       - ./docker/dev/airflow/:/opt/airflow/config/
