@@ -1,58 +1,57 @@
-# dags/bike_traffic_pipeline_dag.py
-
+# src/airflow/dags/bike_traffic_pipeline_dag.py
 from __future__ import annotations
 
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Mapping, Tuple, Optional
+from typing import Dict, Any, Mapping, Optional
 
 from airflow import DAG
 from airflow.models import Variable, TaskInstance
-from airflow.models.param import Param
-from airflow.models.param import ParamsDict
+from airflow.models.param import Param, ParamsDict
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import SimpleHttpOperator
 from airflow.utils.task_group import TaskGroup
 from docker.types import Mount
-from pydantic import BaseModel, Field, ValidationError
+from dags_common.utils import _load_config
 
-# --------------------------- Infra Variables -------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Infra Variables
+# --------------------------------------------------------------------------- #
+# Docker images and runtime network
 IMG_INGEST = Variable.get("docker_image_ingest", default_var="ml-ingest:dev")
 IMG_FEATS = Variable.get("docker_image_features", default_var="ml-features:dev")
 IMG_MODELS = Variable.get("docker_image_models", default_var="ml-models:dev")
 DOCKER_NET = Variable.get("docker_network", default_var="mlops_net")
 
+# Host and container paths
 HOST_REPO = Variable.get("host_repo_root", default_var="/")
 AIRFLOW_REPO = Variable.get("airflow_repo_root", default_var="/opt/airflow")
 CONT_REPO = Variable.get("container_repo_root", default_var="/app")
-
-# MLflow / MinIO
-MLFLOW_TRACKING_URI = Variable.get(
-    "mlflow_tracking_uri", default_var="http://mlflow-server:5000"
-)
-MLFLOW_S3_ENDPOINT_URL = Variable.get(
-    "mlflow_s3_endpoint_url", default_var="http://mlflow-minio:9000"
-)
-AWS_ACCESS_KEY_ID = Variable.get("aws_access_key_id", default_var="minio")
-AWS_SECRET_ACCESS_KEY = Variable.get(
-    "aws_secret_access_key", default_var="minio123"
-)
-AWS_DEFAULT_REGION = Variable.get("aws_default_region", default_var="us-east-1")
-
-# Divers
-TZ = Variable.get("tz", default_var="Europe/Paris")
-AIRFLOW_UID = Variable.get("airflow_uid", default_var="0")
-AIRFLOW_GID = Variable.get("airflow_gid", default_var="0")
-
 MOUNTS = [
     Mount(source=f"{HOST_REPO}/data", target=f"{CONT_REPO}/data", type="bind"),
     Mount(source=f"{HOST_REPO}/models", target=f"{CONT_REPO}/models", type="bind"),
 ]
 
-dag_params: ParamsDict = ParamsDict(
+# MLflow / MinIO configuration
+MLFLOW_TRACKING_URI = Variable.get("mlflow_tracking_uri", default_var="http://mlflow-server:5000")
+MLFLOW_S3_ENDPOINT_URL = Variable.get(
+    "mlflow_s3_endpoint_url",
+    default_var="http://mlflow-minio:9000"
+)
+AWS_ACCESS_KEY_ID = Variable.get("aws_access_key_id", default_var="minio")
+AWS_SECRET_ACCESS_KEY = Variable.get("aws_secret_access_key", default_var="minio123")
+AWS_DEFAULT_REGION = Variable.get("aws_default_region", default_var="us-east-1")
+
+# Airflow runtime configuration
+TZ = Variable.get("tz", default_var="Europe/Paris")
+AIRFLOW_UID = Variable.get("airflow_uid", default_var="0")
+AIRFLOW_GID = Variable.get("airflow_gid", default_var="0")
+
+# DAG parameters
+DAG_PARAMS: ParamsDict = ParamsDict(
     {
         "counter_id": Param(
             default="Sebastopol_N-S_mlops",
@@ -63,100 +62,27 @@ dag_params: ParamsDict = ParamsDict(
 )
 
 
-# --------------------------- Config Models ---------------------------------- #
-class ModelingCfg(BaseModel):
-    ar: int = 7
-    mm: int = 1
-    roll: int = 24
-    test_ratio: float = 0.25
-    grid_iter: int = 0
-
-
-class CounterCfg(BaseModel):
-    raw_file_name: str
-    site: str
-    orientation: str
-    interim_name: str
-    processed_name: str
-    final_basename: str = "y_full.csv"
-    modeling: ModelingCfg = Field(default_factory=ModelingCfg)
-
-
-class SchedulingCfg(BaseModel):
-    initial_anchor_date: str  # ISO date
-    daily_increment_pct: float = 1.0
-
-
-class DagCfg(BaseModel):
-    counters: Dict[str, CounterCfg]
-    scheduling: SchedulingCfg
-
-
-def _load_config() -> Tuple[DagCfg, str]:
-    """Load JSON config from Variable 'bike_dag_config' or fallback to env
-    Variables (legacy). Return a validated DagCfg and selected counter_id.
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+def _make_env(sub_dir: str, run_id: str, window: Dict[str, float]) -> Dict[str, str]:
     """
-    cfg_json = Variable.get("bike_dag_config", default_var="")
-    counter_id = Variable.get(
-        "bike_counter_id", default_var=Variable.get("bike_subdir", "default")
-    )
+    Build environment variables for Docker tasks.
 
-    if cfg_json:
-        try:
-            cfg = DagCfg.model_validate_json(cfg_json)
-            return cfg, counter_id
-        except ValidationError as exc:
-            raise ValueError(f"Invalid bike_dag_config: {exc}") from exc
+    Parameters
+    ----------
+    sub_dir : str
+        The subdirectory used for run artifacts.
+    run_id : str
+        Unique identifier of the run.
+    window : Dict[str, float]
+        Window percentages (start, end).
 
-    # -------- Fallback: rebuild config from legacy Variables -----------------
-    raw_file = Variable.get(
-        "raw_file_name",
-        default_var=(
-            "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
-        ),
-    )
-    subdir = Variable.get("bike_subdir", default_var="default")
-    site = Variable.get("site", default_var="unknown")
-    orientation = Variable.get("orientation", default_var="N-S")
-    interim = Variable.get("interim_name", default_var="initial.csv")
-    processed = Variable.get(
-        "processed_name", default_var="initial_with_feats.csv"
-    )
-    final_base = Variable.get("final_basename", default_var="y_full.csv")
-    anchor = Variable.get("initial_anchor_date", default_var=str(datetime.today().date()))
-    inc_pct = float(Variable.get("daily_increment_pct", default_var="1.0"))
-
-    modeling = ModelingCfg(
-        ar=int(Variable.get("ar", default_var="7")),
-        mm=int(Variable.get("mm", default_var="1")),
-        roll=int(Variable.get("roll", default_var="24")),
-        test_ratio=float(Variable.get("test_ratio", default_var="0.25")),
-        grid_iter=int(Variable.get("grid_iter", default_var="0")),
-    )
-
-    cfg = DagCfg(
-        counters={
-            subdir: CounterCfg(
-                raw_file_name=raw_file,
-                site=site,
-                orientation=orientation,
-                interim_name=interim,
-                processed_name=processed,
-                final_basename=final_base,
-                modeling=modeling,
-            )
-        },
-        scheduling=SchedulingCfg(
-            initial_anchor_date=anchor, daily_increment_pct=inc_pct
-        ),
-    )
-    return cfg, counter_id
-
-
-# ------------------------------ Helpers ------------------------------------- #
-
-def _make_env(sub_dir: str, run_id: str,
-              window: Dict[str, float]) -> Dict[str, str]:
+    Returns
+    -------
+    Dict[str, str]
+        Dictionary of environment variables.
+    """
     artifact_root = f"{CONT_REPO}/data/runs/{sub_dir}/{run_id}"
     return {
         "RUN_ID": run_id,
@@ -179,6 +105,14 @@ def _make_env(sub_dir: str, run_id: str,
 
 
 def _read_manifests(**ctx) -> Dict[str, Any]:
+    """
+    Read manifests (ingest, features, models) from previous tasks or build defaults.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary with keys "ingest", "features" and "models".
+    """
     ti: TaskInstance = ctx["ti"]
     run_id: str = ti.xcom_pull(key="RUN_ID", task_ids="etl.prepare_args")
     sub_dir: str = ti.xcom_pull(key="SUB_DIR", task_ids="etl.prepare_args")
@@ -200,7 +134,7 @@ def _read_manifests(**ctx) -> Dict[str, Any]:
         ing = {
             "outputs": {
                 "interim_path": f"{CONT_REPO}/data/interim/{sub_dir}/"
-                                f"{ti.xcom_pull('etl.prepare_args', key='INTERIM_NAME')}"  # noqa: E501
+                                f"{ti.xcom_pull('etl.prepare_args', key='INTERIM_NAME')}"
             }
         }
     if fea is None:
@@ -208,7 +142,7 @@ def _read_manifests(**ctx) -> Dict[str, Any]:
             "inputs": {"interim_path": ing["outputs"]["interim_path"]},
             "outputs": {
                 "processed_path": f"{CONT_REPO}/data/processed/{sub_dir}/"
-                                  f"{ti.xcom_pull('etl.prepare_args', key='PROCESSED_NAME')}"  # noqa: E501
+                                  f"{ti.xcom_pull('etl.prepare_args', key='PROCESSED_NAME')}"
             },
         }
     if mod is None:
@@ -216,7 +150,7 @@ def _read_manifests(**ctx) -> Dict[str, Any]:
             "inputs": {"processed_path": fea["outputs"]["processed_path"]},
             "outputs": {
                 "table": f"{CONT_REPO}/data/final/{sub_dir}/"
-                         f"{ti.xcom_pull('etl.prepare_args', key='FINAL_BASENAME')}"  # noqa: E501
+                         f"{ti.xcom_pull('etl.prepare_args', key='FINAL_BASENAME')}"
             },
         }
 
@@ -226,14 +160,20 @@ def _read_manifests(**ctx) -> Dict[str, Any]:
     return {"ingest": ing, "features": fea, "models": mod}
 
 
-# --------------------------- Prepare args ------------------------------------ #
-
+# --------------------------------------------------------------------------- #
+# Prepare args
+# --------------------------------------------------------------------------- #
 def _prepare_args_common(
         ti: TaskInstance, exec_date: datetime,
         mode: str, counter_override=None
 ) -> Dict[str, Any]:
-    """Compute RUN_ID, window, SUB_DIR (dynamic with day suffix), push XCom,
-    and return ENV mapping injected into Docker operators.
+    """
+    Compute run context (IDs, window, subdir) and push it to XCom.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Environment dictionary injected into Docker operators.
     """
     cfg, counter_id = _load_config()
     if counter_override:
@@ -261,13 +201,13 @@ def _prepare_args_common(
 
     effective_sub_dir = f"{counter_id}_day{delta_days}"
 
-    # XComs (core)
+    # Push run context in XCom
     ti.xcom_push(key="RUN_ID", value=run_id)
     ti.xcom_push(key="WINDOW", value=window)
     ti.xcom_push(key="PROCEED", value=proceed)
     ti.xcom_push(key="SUB_DIR", value=effective_sub_dir)
 
-    # XComs (args/config for containers)
+    # Push container args in XCom
     ti.xcom_push(key="RAW_FILE_NAME", value=counter.raw_file_name)
     ti.xcom_push(key="SITE", value=counter.site)
     ti.xcom_push(key="ORIENTATION", value=counter.orientation)
@@ -281,27 +221,33 @@ def _prepare_args_common(
     ti.xcom_push(key="TEST_RATIO", value=str(counter.modeling.test_ratio))
     ti.xcom_push(key="GRID_ITER", value=str(counter.modeling.grid_iter))
 
-    env = _make_env(effective_sub_dir, run_id, window)
-    return env
+    return _make_env(effective_sub_dir, run_id, window)
 
 
 def _prepare_args_callable(mode: str):
+    """
+    Build a callable for prepare_args depending on mode (init or daily).
+    """
     def _callable(**ctx):
         ti = ctx["ti"]
         exec_date = ctx["data_interval_end"]
-        # priority to params then config from the parent as a fallback
+        # Priority: DAG param, then DAG run conf (parent orchestrator)
         counter_override = (ctx.get("params") or {})["counter_id"]
         if not counter_override:
             counter_override = (ctx.get("dag_run") or {})["conf"]["counter_id"]
         return _prepare_args_common(
-            ti=ti, exec_date=exec_date, mode=mode,
-            counter_override=counter_override,
+            ti=ti, exec_date=exec_date, mode=mode, counter_override=counter_override
         )
     return _callable
 
 
-# --------------------------- Build ETL group -------------------------------- #
+# --------------------------------------------------------------------------- #
+# Build ETL group
+# --------------------------------------------------------------------------- #
 def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
+    """
+    Build the ETL task group: prepare_args → ingest → features → models → read_manifests.
+    """
     with TaskGroup(group_id="etl", dag=dag) as etl:
         prepare_args = PythonOperator(
             task_id="prepare_args",
@@ -312,45 +258,36 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
         if mode == "daily":
             def _gate(**ctx) -> bool:
                 ti: TaskInstance = ctx["ti"]
-                return bool(
-                    ti.xcom_pull(task_ids="etl.prepare_args", key="PROCEED")
-                )
-            gate = ShortCircuitOperator(
-                task_id="gate", python_callable=_gate, dag=dag
-            )
+                return bool(ti.xcom_pull(task_ids="etl.prepare_args", key="PROCEED"))
+
+            gate = ShortCircuitOperator(task_id="gate", python_callable=_gate, dag=dag)
             prepare_args >> gate  # type: ignore
             upstream = gate
         else:
             upstream = prepare_args
 
-        # ---------- Docker tasks: all dynamic via XCom (no static subdir) ----
-
+        # Docker tasks, dynamically parameterized via XCom
         ingest = DockerOperator(
             task_id="ingest",
             image=IMG_INGEST,
             command=[
                 "--raw-path",
                 "{{ var.value.container_repo_root }}/data/raw/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='RAW_FILE_NAME') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='RAW_FILE_NAME') }}",
                 "--site",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}",
                 "--orientation",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='ORIENTATION') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
                 "--range-start",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='WINDOW')['start'] }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='WINDOW')['start'] }}",
                 "--range-end",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='WINDOW')['end'] }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='WINDOW')['end'] }}",
                 "--timestamp-col",
                 "date_et_heure_de_comptage",
                 "--sub-dir",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
                 "--interim-name",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='INTERIM_NAME') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
             ],
             environment=prepare_args.output,
             mounts=MOUNTS,
@@ -369,13 +306,11 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--interim-path",
                 "{{ var.value.container_repo_root }}/data/interim/"
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='INTERIM_NAME') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
                 "--sub-dir",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
                 "--processed-name",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='PROCESSED_NAME') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='PROCESSED_NAME') }}",
                 "--timestamp-col",
                 "date_et_heure_de_comptage",
             ],
@@ -396,8 +331,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--processed-path",
                 "{{ var.value.container_repo_root }}/data/processed/"
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='PROCESSED_NAME') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='PROCESSED_NAME') }}",
                 "--sub-dir",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
                 "--target-col",
@@ -413,11 +347,9 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--roll",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ROLL') }}",
                 "--test-ratio",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='TEST_RATIO') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='TEST_RATIO') }}",
                 "--grid-iter",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args',"
-                "               key='GRID_ITER') }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='GRID_ITER') }}",
             ],
             environment=prepare_args.output,
             mounts=MOUNTS,
@@ -440,7 +372,11 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
     return etl
 
 
+# --------------------------------------------------------------------------- #
+# Counter ID extraction and flags
+# --------------------------------------------------------------------------- #
 def _extract_counter_id(ctx: Mapping[str, Any]) -> Optional[str]:
+    """Extract counter_id from DAG params or dag_run.conf."""
     params_obj = ctx.get("params")
     if isinstance(params_obj, Mapping):
         val = params_obj.get("counter_id")
@@ -456,40 +392,34 @@ def _extract_counter_id(ctx: Mapping[str, Any]) -> Optional[str]:
 
 
 def _init_gate_callable(**ctx) -> bool:
+    """Short-circuit init DAG if init already done for this counter."""
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     key = f"bike_init_done__{counter_id}"
-    # si la variable vaut "1", on court-circuite (init déjà fait)
     return Variable.get(key, default_var="0") != "1"
 
 
 def _mark_init_done_callable(**ctx) -> None:
+    """Mark init done for this counter by setting Airflow variable."""
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     key = f"bike_init_done__{counter_id}"
     Variable.set(key, "1")
 
 
-# ------------------------ DAG 1: initial load & deploy ----------------------- #
+# --------------------------------------------------------------------------- #
+# DAGs: Init and Daily
+# --------------------------------------------------------------------------- #
 with DAG(
     dag_id="bike_traffic_init",
     description="One-shot historical bootstrap (with short-circuit).",
     start_date=datetime(2025, 9, 1),
-    schedule=None,  # triggered by orchestrator only (or manually)
+    schedule=None,  # Triggered by orchestrator only (or manually)
     catchup=False,
     tags=["mlops", "init", "bike"],
-    params=dag_params,
+    params=DAG_PARAMS,
 ) as init_dag:
-    init_gate = ShortCircuitOperator(
-        task_id="init_gate",
-        python_callable=_init_gate_callable,
-    )
-
+    init_gate = ShortCircuitOperator(task_id="init_gate", python_callable=_init_gate_callable)
     etl = build_etl_group(init_dag, mode="init")
-
-    mark_done = PythonOperator(
-        task_id="mark_init_done",
-        python_callable=_mark_init_done_callable,
-    )
-
+    mark_done = PythonOperator(task_id="mark_init_done", python_callable=_mark_init_done_callable)
     api_refresh = SimpleHttpOperator(
         task_id="api_refresh",
         http_conn_id="api_dev",
@@ -498,22 +428,19 @@ with DAG(
         response_check=lambda r: r.status_code == 200,
         log_response=True,
     )
-
     init_gate >> etl >> mark_done >> api_refresh  # type: ignore
 
 
-# ------------------------- DAG 2: daily window refresh ----------------------- #
 with DAG(
     dag_id="bike_traffic_daily",
     description="Daily sliding window with DockerOperator (XCom-driven).",
     start_date=datetime(2025, 9, 1),
-    schedule=None,  # triggered by orchestrator only (or manually)
+    schedule=None,  # Triggered by orchestrator only (or manually)
     catchup=False,
     tags=["mlops", "daily", "bike"],
-    params=dag_params,
+    params=DAG_PARAMS,
 ) as daily_dag:
     etl = build_etl_group(daily_dag, mode="daily")
-
     api_refresh = SimpleHttpOperator(
         task_id="api_refresh",
         http_conn_id="api_dev",

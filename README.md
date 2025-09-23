@@ -45,11 +45,6 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml      <- Python development project configuration
 ├── uv.lock             <- UV lockfile for the dev environment
 ├── noxfile.py          <- Nox dev sessions (build/clean)
-├── dags                <- Orchestrator DAGs shared with host
-│   ├── bike_traffic_pipeline_dag.py
-│   └── bike_traffic_orchestrator_dag.py
-├── config              <- Orchestrator config shared with host (read-only)
-│   └── bike_dag_config.json
 ├── data                <- Data shared with host (read/write)
 │   ├── raw             <- Original, immutable data dumps (e.g., external sources)
 │   ├── interim         <- Intermediate data derived from raw (goal-specific)
@@ -65,6 +60,15 @@ avr25-mle-trafic-cycliste/
 ├── references          <- Data dictionaries, manuals, other explanatory material
 │   └── ...
 ├── src/                <- All source code used in this project
+│   ├── airflow/        <- Airflow orchestration management
+│   │   ├── dags        <- Orchestrator DAGs code shared with host
+│   │   │   ├── bike_traffic_pipeline_dag.py
+│   │   │   └── bike_traffic_orchestrator_dag.py
+│   │   ├── common      <- Orchestrator common utils shared with host
+│   │   │   ├── config.py
+│   │   │   └── models.py
+│   │   ├── config      <- Orchestrator config shared with host (read-only)
+│   │   │   └── bike_dag_config.json
 │   ├── api/            <- FastAPI service (prediction readout)
 │   │   └── main.py
 │   └── ml/             <- Machine learning pipeline
@@ -81,7 +85,6 @@ avr25-mle-trafic-cycliste/
 │   ├── dev/            <- Development setup
 │   │   ├── airflow/    <- Config for airflow initialization (airflow-init)
 │   │   │   ├── connections.json
-│   │   │   ├── pools.json
 │   │   │   └── variables.json
 │   │   ├── mlflow/     <- Custom docker image for mlflow server
 │   │   │   └── Dockerfile
