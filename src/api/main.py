@@ -5,7 +5,7 @@ import os
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
-
+from contextlib import asynccontextmanager
 import pandas as pd
 from fastapi import (
     Depends,
@@ -212,12 +212,19 @@ app = FastAPI(
 )
 
 
-@app.on_event("startup")
-def on_startup() -> None:
+# -------------------------------------------------------------------
+# Lifespan context
+# -------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """
-    Load all counters at service startup.
+    Lifecycle manager for FastAPI.
+    - On startup: refresh the store.
+    - On shutdown: (placeholder for cleanup if needed).
     """
     refresh_store()
+    yield
+    # add cleaning steps if necessary
 
 
 # -------------------------------------------------------------------
