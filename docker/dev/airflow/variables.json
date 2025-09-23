@@ -7,7 +7,7 @@
   "host_repo_root": "/host_mnt/c/Users/remyc/Projects/avr25-mle-trafic-cycliste",
   "container_repo_root": "/app",
   "airflow_repo_root": "/opt/airflow",
-
+  "bike_dag_config": "/opt/airflow/config/bike_dag_config.json",
   "airflow_uid": "0",
   "airflow_gid": "0",
 
