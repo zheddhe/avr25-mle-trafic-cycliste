@@ -133,7 +133,7 @@ dict_credentials = {
     "elias": {"password": "elias", "role": "admin"},
     "kolade": {"password": "kolade", "role": "admin"},
     "sofia": {"password": "sofia", "role": "admin"},
-    
+
     # Utilisateurs standard - accès prédictions uniquement
     "user1": {"password": "user1", "role": "user"},
     "user2": {"password": "user2", "role": "user"},
@@ -151,14 +151,14 @@ def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)) ->
             status_code=403,
             detail=f"Unknown user [{credentials.username}]",
         )
-    
+
     user_info = dict_credentials[credentials.username]
     if user_info["password"] != credentials.password:
         raise HTTPException(
             status_code=403,
             detail="Invalid password.",
         )
-    
+
     # Retourner les informations utilisateur (sans le mot de passe)
     return {
         "username": credentials.username,
@@ -393,8 +393,10 @@ def get_all_counters(user_info: dict = Depends(_check_user_or_admin_role)):
             message=f"df_predictions content: {df_predictions}",
             date=str(datetime.now()),
         )
-    
-    logger.info(f"Counters list requested by user: {user_info['username']} (role: {user_info['role']})")
+
+    logger.info(
+        f"Counters list requested by user: {user_info['username']} (role: {user_info['role']})"
+    )
     return [Counter(id=name) for name in sorted(df_predictions.keys())]
 
 
@@ -461,6 +463,7 @@ def get_predictions_by_counter(
             for row in df_page.to_dict(orient="records")
         ],
     )
+
 
 # Endpoint optionnel pour voir les informations de l'utilisateur connecté
 @app.get(
