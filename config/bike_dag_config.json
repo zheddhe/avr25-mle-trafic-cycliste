@@ -1,0 +1,23 @@
+{
+  "scheduling": {
+    "initial_anchor_date": "2025-09-20",
+    "daily_increment_pct": 0.25
+  },
+  "counters": {
+    "Sebastopol_N-S_mlops": {
+      "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
+      "site": "Totem 73 boulevard de Sébastopol",
+      "orientation": "N-S",
+      "interim_name": "initial_airflow.csv",
+      "processed_name": "initial_airflow_with_feats.csv",
+      "final_basename": "y_full.csv",
+      "modeling": {
+        "ar": 7,
+        "mm": 1,
+        "roll": 24,
+        "test_ratio": 0.25,
+        "grid_iter": 0
+      }
+    }
+  }
+}

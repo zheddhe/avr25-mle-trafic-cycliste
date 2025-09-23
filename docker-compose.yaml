@@ -300,6 +300,7 @@ services:
       bash -c "airflow db migrate &&
         (airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} --firstname Admin --lastname User --role Admin --email admin@example.com || true) &&
         airflow variables import /opt/airflow/config/variables.json &&
+        airflow pools import /opt/airflow/config/pools.json &&
         airflow connections import /opt/airflow/config/connections.json"
     restart: "no"
     volumes:
@@ -340,6 +341,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -379,6 +381,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -413,6 +416,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

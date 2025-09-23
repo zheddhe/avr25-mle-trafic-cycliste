@@ -45,14 +45,22 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml      <- Python development project configuration
 ├── uv.lock             <- UV lockfile for the dev environment
 ├── noxfile.py          <- Nox dev sessions (build/clean)
-├── data                <- Data storage
+├── dags                <- Orchestrator DAGs shared with host
+│   ├── bike_traffic_pipeline_dag.py
+│   └── bike_traffic_orchestrator_dag.py
+├── config              <- Orchestrator config shared with host (read-only)
+│   └── bike_dag_config.json
+├── data                <- Data shared with host (read/write)
 │   ├── raw             <- Original, immutable data dumps (e.g., external sources)
 │   ├── interim         <- Intermediate data derived from raw (goal-specific)
 │   ├── processed       <- Processed data (e.g., feature-enriched)
 │   └── final           <- Final stage data (e.g., train/test and predictions)
-├── logs                <- Logs from training and prediction
-│   └── ...
-├── models              <- Trained/serialized models, best params, transformers
+├── logs                <- Logs shared with host (read/write)
+│   ├── ml              <- ML pipeline logs
+│   ├── api             <- data API logs
+│   ├── scheduler       <- airflow scheduler logs
+│   └── dag[...]        <- unitary dag run logs
+├── models              <- Models artefacts shared with host (read/write)
 │   └── ...
 ├── references          <- Data dictionaries, manuals, other explanatory material
 │   └── ...
@@ -71,6 +79,12 @@ avr25-mle-trafic-cycliste/
 │           └── train_and_predict.py
 ├── docker/             <- Container architecture
 │   ├── dev/            <- Development setup
+│   │   ├── airflow/    <- Config for airflow initialization (airflow-init)
+│   │   │   ├── connections.json
+│   │   │   ├── pools.json
+│   │   │   └── variables.json
+│   │   ├── mlflow/     <- Custom docker image for mlflow server
+│   │   │   └── Dockerfile
 │   │   ├── api/
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
@@ -186,7 +200,7 @@ docker compose --profile ml up ml_models_dev
 docker compose down
 
 # /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
-docker compose --profile all down -v --rmi && docker system prune -f
+docker compose --profile all down -v --rmi all && docker system prune -f
 
 # Docs: http://localhost:8000/docs (Basic Auth required)
 ```
@@ -215,6 +229,23 @@ wsl -d Ubuntu
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
 splits, predictions, metrics, and hyperparameters).
+
+### 3. 🧩 Multi-counter orchestration
+
+- The business configuration is mounted read-only in the Airflow container:
+  `/opt/airflow/config/bike_dag_config.json` (repo source: `./config/`).
+
+- `bike_traffic_init`: one-shot historical bootstrap per counter.
+  - It short-circuits if the Airflow Variable `bike_init_done__<counter>`
+    equals `"1"`.
+  - On success, it sets that variable to `"1"`.
+
+- `bike_traffic_daily`: rolling increment assuming init has been done.
+  - Triggered by the parent only (its `schedule` is `None`).
+
+- `bike_traffic_orchestrator`:
+  - Every day: for each configured counter, trigger `init` then `daily`.
+  - The `init` run is cheap if already done (short-circuited).
 
 #### DagsHub remote service
 
