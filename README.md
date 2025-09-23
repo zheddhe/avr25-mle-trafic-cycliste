@@ -200,7 +200,7 @@ docker compose --profile ml up ml_features_dev
 docker compose --profile ml up ml_models_dev
 
 # /!\ Stop everything (including networks but keep database volumes)
-docker compose down
+docker compose --profile all down
 
 # /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
 docker compose --profile all down -v --rmi all && docker system prune -f

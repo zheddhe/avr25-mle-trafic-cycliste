@@ -34,6 +34,7 @@ with DAG(
     run_init = TriggerDagRunOperator.partial(
         task_id="run_init",
         trigger_dag_id="bike_traffic_init",
+        poke_interval=5,  # 5s poke interval
         wait_for_completion=True,
         pool="sequential_counters",
     ).expand(conf=get_counters.output)
@@ -42,6 +43,7 @@ with DAG(
     run_daily = TriggerDagRunOperator.partial(
         task_id="run_daily",
         trigger_dag_id="bike_traffic_daily",
+        poke_interval=5,  # 5s poke interval
         wait_for_completion=True,
         pool="sequential_counters",
     ).expand(conf=get_counters.output)
