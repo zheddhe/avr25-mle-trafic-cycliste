@@ -236,19 +236,23 @@ Get-Service WSLService
 It is recommended however to install your dev env on a Virtual Machine using Ubuntu latest distribution
 
 ```bash
-### [Windows with PowerShell] install an Ubuntu distribution
+### [On Windows with PowerShell] 
+# install an Ubuntu distribution
 wsl --install -d Ubuntu
-sudo apt update
-sudo apt install ca-certificates curl gnupg lsb-release -y
 ```
 
 ```bash
-### [Ubuntu Virtual Machine] Add official GPG key for docker distribution
+### [On Ubuntu Virtual Machine] 
+# Add official GPG key for docker distribution
+sudo apt update
+sudo apt install ca-certificates curl gnupg lsb-release -y
+
+# Add official GPG key for docker distribution
 sudo mkdir -m 0755 -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-### [Ubuntu Virtual Machine] Add official docker repository
+# Add official docker repository
 echo \
   "deb [arch=$(dpkg --print-architecture) \
   signed-by=/etc/apt/keyrings/docker.gpg] \
@@ -256,11 +260,11 @@ echo \
   $(lsb_release -cs) stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-### [Ubuntu Virtual Machine] Update packages list and install Docker components
+# Update packages list and install Docker components
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
-### [Ubuntu Virtual Machine] Add current user authorization to docker engine
+# Add current user authorization to docker engine
 sudo usermod -aG docker $USER
 newgrp docker
 ```
@@ -300,12 +304,7 @@ splits, predictions, metrics, and hyperparameters).
 #### DagsHub remote service
 
 ```bash
-### Configure environment variables (per OS)
-# Windows cmd
-set MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
-set MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-set MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
-# macOS/Linux shell
+### Configure environment variables
 export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
 export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
@@ -314,13 +313,7 @@ export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal passw
 #### Local service
 
 ```bash
-### Configure environment variables (per OS)
-# Windows cmd
-set MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-set MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
-set AWS_ACCESS_KEY_ID=minio
-set AWS_SECRET_ACCESS_KEY=minio123
-# macOS/Linux shell
+### Configure environment variables
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_ACCESS_KEY_ID=minio
