@@ -133,6 +133,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
+      - ./logs:/app/logs
     environment:
       DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
     networks:

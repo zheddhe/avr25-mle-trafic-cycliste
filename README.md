@@ -234,8 +234,17 @@ splits, predictions, metrics, and hyperparameters).
 
 ### 3. 🧩 Multi-counter orchestration
 
-- The business configuration is mounted read-only in the Airflow container:
-  `/opt/airflow/config/bike_dag_config.json` (repo source: `./config/`).
+- The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`), it configures especially :
+  - The host repository root (to adjust to your production or dev environment)
+  - The mlflow server information (by default the one of the technical stack propose, could be a cloud hosted one)
+  - The images to use for the various container
+  - the API connection as an admin (to refresh the prediction)
+
+- The business configuration is mounted read-only in the Airflow containers (Scheduler / WebServer / Worker) into
+  `/opt/airflow/config/bike_dag_config.json` (repo source: `./src/airflow/config/`), it configures especially :
+  - The list counters managed (extracted from the original dataset)
+  - The anchor date (when do we start from to simulate our production)
+  - The daily increment (which portion of the original dataset is considered to shift the data of 1 production day)
 
 - `bike_traffic_init`: one-shot historical bootstrap per counter.
   - It short-circuits if the Airflow Variable `bike_init_done__<counter>`

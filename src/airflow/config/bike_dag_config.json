@@ -1,6 +1,6 @@
 {
   "scheduling": {
-    "initial_anchor_date": "2025-09-20",
+    "initial_anchor_date": "2025-09-23",
     "daily_increment_pct": 0.25
   },
   "counters": {

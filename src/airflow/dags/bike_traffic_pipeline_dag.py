@@ -32,6 +32,7 @@ AIRFLOW_REPO = Variable.get("airflow_repo_root", default_var="/opt/airflow")
 CONT_REPO = Variable.get("container_repo_root", default_var="/app")
 MOUNTS = [
     Mount(source=f"{HOST_REPO}/data", target=f"{CONT_REPO}/data", type="bind"),
+    Mount(source=f"{HOST_REPO}/logs", target=f"{CONT_REPO}/logs", type="bind"),
     Mount(source=f"{HOST_REPO}/models", target=f"{CONT_REPO}/models", type="bind"),
 ]
 
@@ -54,7 +55,7 @@ AIRFLOW_GID = Variable.get("airflow_gid", default_var="0")
 DAG_PARAMS: ParamsDict = ParamsDict(
     {
         "counter_id": Param(
-            default="Sebastopol_N-S_mlops",
+            default="Sebastopol_N-S_airflow",
             type="string",
             description="Counter to process for this run",
         )
@@ -83,7 +84,7 @@ def _make_env(sub_dir: str, run_id: str, window: Dict[str, float]) -> Dict[str, 
     Dict[str, str]
         Dictionary of environment variables.
     """
-    artifact_root = f"{CONT_REPO}/data/runs/{sub_dir}/{run_id}"
+    artifact_root = f"{CONT_REPO}/logs/run/{sub_dir}/{run_id}"
     return {
         "RUN_ID": run_id,
         "SUB_DIR": sub_dir,
