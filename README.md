@@ -64,9 +64,8 @@ avr25-mle-trafic-cycliste/
 │   │   ├── dags        <- Orchestrator DAGs code shared with host
 │   │   │   ├── bike_traffic_pipeline_dag.py
 │   │   │   └── bike_traffic_orchestrator_dag.py
-│   │   ├── common      <- Orchestrator common utils shared with host
-│   │   │   ├── config.py
-│   │   │   └── models.py
+│   │   │   ├── common
+│   │   │   │   └── utils.py
 │   │   ├── config      <- Orchestrator config shared with host (read-only)
 │   │   │   └── bike_dag_config.json
 │   ├── api/            <- FastAPI service (prediction readout)

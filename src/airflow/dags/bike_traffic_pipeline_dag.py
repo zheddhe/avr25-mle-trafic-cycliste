@@ -14,7 +14,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import SimpleHttpOperator
 from airflow.utils.task_group import TaskGroup
 from docker.types import Mount
-from dags_common.utils import _load_config
+from common.utils import _load_config
 
 
 # --------------------------------------------------------------------------- #
