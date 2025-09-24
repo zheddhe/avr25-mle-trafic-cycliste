@@ -44,7 +44,7 @@ dev = [
     "nox==2025.5.1",
     "uv==0.8.14",
     "pip==25.2",
-    "apache-airflow==3.0.6",
+    "apache-airflow==2.8.1",
 ]
 
 [project.readme]
