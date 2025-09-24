@@ -82,6 +82,13 @@ avr25-mle-trafic-cycliste/
 │           └── train_and_predict.py
 ├── docker/             <- Container architecture
 │   ├── dev/            <- Development setup
+│   │   ├── grafana/    <- Config for grafana (dashboard & provisionning)
+│   │   │   ├── dashboards/
+│   │   │   └── provisioning/
+│   │   │       ├── dashboards.yaml
+│   │   │       └── datasource.yaml
+│   │   ├── prometheus/ <- Config for prometheus targets and general configuration
+│   │   │   └── prometheus.yml
 │   │   ├── airflow/    <- Config for airflow initialization (airflow-init)
 │   │   │   ├── connections.json
 │   │   │   └── variables.json
@@ -183,10 +190,12 @@ uvicorn src.api.main:app --reload --port 10000
 docker compose --profile all build
 
 # 2) Start all the backends services : 
-# profile mlflow : mlflow / postgres / minio / mc_init) in background
+# profile mlflow : server / postgres / minio / mc-init in background
 docker compose --profile mlflow up -d
-# profile airflow : airflow / postgres / redis / mailhog) in background
+# profile airflow : webserver / worker / scheduler / init / postgres / redis / mailhog in background
 docker compose --profile airflow up -d
+# profile monitoring : grafana / prometheus / cadvisor / node-exporter
+docker compose --profile monitoring up -d
 
 # 3) Start all the permanent business services (ie. the API) in background
 # profile api : data api service

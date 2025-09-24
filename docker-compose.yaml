@@ -8,6 +8,10 @@ volumes:
     name: mlflow-minio-data
   airflow-postgres-db:
     name: airflow-postgres-db
+  monitoring-prometheus-data:
+    name: monitoring-prometheus-data
+  monitoring-grafana-data:
+    name: monitoring-grafana-data
 
 # ========================
 # NETWORK
@@ -27,7 +31,7 @@ networks:
 # BUSINESS SERVICES
 # ========================
 services:
-  ml_ingest_dev:
+  ml-ingest-dev:
     image: ml-ingest:dev
     build:
       context: .
@@ -58,7 +62,7 @@ services:
       - airflow_net
     profiles: ["all", "ml"]
 
-  ml_features_dev:
+  ml-features-dev:
     image: ml-features:dev
     build:
       context: .
@@ -81,7 +85,7 @@ services:
       - airflow_net
     profiles: ["all", "ml"]
 
-  ml_models_dev:
+  ml-models-dev:
     image: ml-models:dev
     build:
       context: .
@@ -123,7 +127,7 @@ services:
       - airflow_net
     profiles: ["all", "ml"]
 
-  api_dev:
+  api-dev:
     image: api:dev
     build:
       context: .
@@ -345,7 +349,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      # socket bind for container exchanges
+      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
@@ -390,7 +394,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      # socket bind for container exchanges
+      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
@@ -427,7 +431,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      # socket bind for container exchanges
+      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
@@ -452,3 +456,59 @@ services:
     networks:
       - airflow_net
     profiles: ["all", "airflow"]
+
+# ========================
+# MONITORING SERVICES
+# ========================
+  monitoring-prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./docker/dev/prometheus:/etc/prometheus:ro
+      - monitoring-prometheus-data:/prometheus
+    networks:
+      - mlops_net
+    profiles: ["monitoring", "all"]
+
+  monitoring-grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    user: "472"  # grafana uid
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - monitoring-grafana-data:/var/lib/grafana
+      - ./docker/dev/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/dev/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - monitoring-prometheus
+    networks:
+      - mlops_net
+    profiles: ["monitoring", "all"]
+
+  monitoring-cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    # cAdvisor écoute en 8080 en interne : 9200:8080 exposé en host
+    ports:
+      - "9200:8080"
+    volumes:
+      # volumes dans docker desktop pour windows (ou la machine hote directement sur linux)
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      # socket bind for container exchanges with docker desktop
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mlops_net
+    profiles: ["monitoring", "all"]
