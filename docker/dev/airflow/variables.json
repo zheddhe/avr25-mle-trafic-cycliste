@@ -5,7 +5,7 @@
 
   "docker_network": "mlops_net",
 
-  "host_repo_root": "/host_mnt/c/Users/remyc/Projects/avr25-mle-trafic-cycliste",
+  "host_repo_root": "/host_mnt/c/Users/hp/Documents/avr25-mle-trafic-cycliste",
   "airflow_repo_root": "/opt/airflow",
   "container_repo_root": "/app",
 

@@ -7,16 +7,14 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
-from fastapi import (
-    Depends,
-    FastAPI,
-    HTTPException,
-    Query,
-    Request,
-)
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
+
+# Prometheus / FastAPI instrumentation
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Histogram
 
 # -------------------------------------------------------------------
 # Logs configuration
@@ -55,8 +53,7 @@ REQUIRED_COLUMNS = {
 
 def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
     """
-    Read a CSV with index_col=0 and validate required columns.
-    Returns None if the file is invalid or unreadable.
+    Lecture sécurisée d'un CSV + validation du schéma minimal.
     """
     try:
         df = pd.read_csv(path, index_col=0)
@@ -66,9 +63,7 @@ def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        logger.warning(
-            f"CSV [{path}] ignored, missing required columns: {missing}"
-        )
+        logger.warning("CSV [%s] ignored, missing required columns: %s", path, missing)
         return None
 
     return df
@@ -78,15 +73,15 @@ def load_predictions_from_final(
     root_dir: str,
 ) -> tuple[Dict[str, pd.DataFrame], int, int]:
     """
-    Explore <root_dir> to find all subdirs containing a y_full.csv.
-    Return (mapping, skipped_no_csv, invalid_csv).
+    Explore <root_dir> pour trouver tous les sous-dossiers contenant un y_full.csv.
+    Retourne (mapping, skipped_no_csv, invalid_csv).
     """
     mapping: Dict[str, pd.DataFrame] = {}
     skipped_no_csv = 0
     invalid_csv = 0
 
     if not os.path.isdir(root_dir):
-        logger.warning(f"Final data root not found: [{root_dir}]")
+        logger.warning("Final data root not found: [%s]", root_dir)
         return mapping, skipped_no_csv, invalid_csv
 
     for entry in os.scandir(root_dir):
@@ -95,7 +90,7 @@ def load_predictions_from_final(
         subdir = entry.name
         csv_path = os.path.join(entry.path, "y_full.csv")
         if not os.path.isfile(csv_path):
-            logger.debug(f"No y_full.csv in [{entry.path}], skipping.")
+            logger.debug("No y_full.csv in [%s], skipping.", entry.path)
             skipped_no_csv += 1
             continue
 
@@ -106,19 +101,22 @@ def load_predictions_from_final(
 
         mapping[subdir] = df
         logger.info(
-            f"Loaded predictions for counter [{subdir}]: {df.shape[0]} rows x [{df.shape[1]}] cols"
+            "Loaded predictions for counter [%s]: %s rows x [%s] cols",
+            subdir,
+            df.shape[0],
+            df.shape[1],
         )
     return mapping, skipped_no_csv, invalid_csv
 
 
 def refresh_store() -> Dict[str, pd.DataFrame]:
     """
-    Rescan the filesystem and refresh the in-memory store.
+    Rescan filesystem et rafraîchit le store en mémoire.
     """
     global df_predictions
     mapping, _, _ = load_predictions_from_final(DATA_FINAL_ROOT)
     df_predictions = mapping
-    logger.info(f"Store refreshed: {len(df_predictions)} counters available.")
+    logger.info("Store refreshed: %s counters available.", len(df_predictions))
     return df_predictions
 
 
@@ -135,30 +133,20 @@ security = HTTPBasic()
 
 def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     """
-    Validate Basic Auth credentials for docs (/docs, /redoc) and endpoints.
+    Validation Basic Auth pour endpoints protégés.
     """
     if credentials.username not in dict_credentials:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Unknown user [{credentials.username}]",
-        )
+        raise HTTPException(status_code=403, detail=f"Unknown user [{credentials.username}]")
     if dict_credentials[credentials.username] != credentials.password:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid password.",
-        )
-    # Do not return secrets; just allow the request to proceed.
+        raise HTTPException(status_code=403, detail="Invalid password.")
 
 
 # -------------------------------------------------------------------
 # OpenAPI / tags
 # -------------------------------------------------------------------
 tags_metadata = [
-    {"name": "Admin", "description": "Service health and maintenance."},
-    {
-        "name": "Predictions",
-        "description": "Access cyclist traffic predictions.",
-    },
+    {"name": "Admin", "description": "Service health et maintenance."},
+    {"name": "Predictions", "description": "Accès aux prédictions de trafic cycliste."},
 ]
 
 app = FastAPI(
@@ -167,15 +155,33 @@ app = FastAPI(
         "Expose les prédictions du trafic cycliste pour les compteurs "
         "installés dans la ville de Paris."
     ),
-    version="1.1.0",
+    version="1.2.0",
     openapi_tags=tags_metadata,
+)
+
+# -------------------------------------------------------------------
+# Prometheus instrumentation
+# -------------------------------------------------------------------
+# Latence, statut HTTP, throughput, etc.
+instrumentator = Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers={"/metrics"},
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+# Métrique métier: nombre de prédictions renvoyées par appel API
+PRED_PER_RESPONSE = Histogram(
+    "api_predictions_per_response",
+    "Nombre de prédictions renvoyées par appel",
+    buckets=(1, 5, 10, 20, 50, 100, float("inf")),
 )
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     """
-    Load all counters at service startup.
+    Chargement en mémoire au démarrage.
     """
     refresh_store()
 
@@ -185,51 +191,37 @@ def on_startup() -> None:
 # -------------------------------------------------------------------
 class ErrorResponse(BaseModel):
     type: str = Field(..., description="Business error type.")
-    message: Optional[str] = Field(
-        ..., description="Optional detailed error message."
-    )
+    message: Optional[str] = Field(..., description="Detailed error message.")
     date: str = Field(..., description="Server-side timestamp.")
 
 
 class PredictionItem(BaseModel):
-    date_et_heure_de_comptage_local: datetime = Field(
-        ..., description="Local timestamp (Europe/Paris)."
-    )
-    date_et_heure_de_comptage_utc: datetime = Field(
-        ..., description="UTC timestamp."
-    )
+    date_et_heure_de_comptage_local: datetime = Field(..., description="Local timestamp (Europe/Paris).")
+    date_et_heure_de_comptage_utc: datetime = Field(..., description="UTC timestamp.")
     y_true: int = Field(..., description="Observed value.")
     y_pred: float = Field(..., description="Predicted value.")
-    forecast_mode: bool = Field(
-        ..., description="True if predicted on future timestamps."
-    )
+    forecast_mode: bool = Field(..., description="True si prédiction future.")
 
 
 class PredictionList(BaseModel):
-    total: int = Field(..., description="Total available predictions.")
-    limit: int = Field(..., description="Max returned.")
-    offset: int = Field(..., description="Pagination offset.")
-    item: List[PredictionItem] = Field(
-        ..., description="Paginated list of predictions."
-    )
+    total: int = Field(..., description="Total disponible.")
+    limit: int = Field(..., description="Max renvoyé.")
+    offset: int = Field(..., description="Décalage pagination.")
+    item: List[PredictionItem] = Field(..., description="Liste paginée.")
 
 
 class Counter(BaseModel):
-    id: str = Field(..., description="Counter identifier (subdir name).")
+    id: str = Field(..., description="Identifiant compteur (nom du sous-dossier).")
 
 
 class AdminRefreshResponse(BaseModel):
-    message: str = Field(..., description="Operation result.")
-    counters_before: int = Field(..., description="Store size before refresh.")
-    counters_after: int = Field(..., description="Store size after refresh.")
-    data_root: str = Field(..., description="Absolute root directory used.")
-    loaded: int = Field(..., description="Counters successfully loaded.")
-    skipped_no_csv: int = Field(
-        ..., description="Subdirs without y_full.csv."
-    )
-    invalid_csv: int = Field(
-        ..., description="y_full.csv unreadable or schema-missing."
-    )
+    message: str
+    counters_before: int
+    counters_after: int
+    data_root: str
+    loaded: int
+    skipped_no_csv: int
+    invalid_csv: int
 
 
 # -------------------------------------------------------------------
@@ -243,10 +235,7 @@ class CustomException(Exception):
 
 
 @app.exception_handler(CustomException)
-def custom_exception_handler(
-    _request: Request,
-    exception: CustomException,
-):
+def custom_exception_handler(_request: Request, exception: CustomException):
     return JSONResponse(
         status_code=418,
         content=ErrorResponse(
@@ -290,24 +279,24 @@ def get_verify():
     "/admin/refresh",
     tags=["Admin"],
     summary="Refresh in-memory store",
-    description=(
-        "Rescan the filesystem (DATA_FINAL_ROOT) and reload all counters."
-    ),
+    description="Rescan DATA_FINAL_ROOT et recharge tous les compteurs.",
     response_model=AdminRefreshResponse,
     responses=generic_responses,
 )
 def post_refresh(user: str = Depends(_check_credentials)):
     global df_predictions
     before = len(df_predictions)
-    mapping, skipped_no_csv, invalid_csv = load_predictions_from_final(
-        DATA_FINAL_ROOT
-    )
+    mapping, skipped_no_csv, invalid_csv = load_predictions_from_final(DATA_FINAL_ROOT)
     df_predictions = mapping
     after = len(df_predictions)
 
     logger.info(
-        f"Admin refresh done. before={before} after={after} loaded={after} "
-        f"skipped_no_csv={skipped_no_csv} invalid_csv={invalid_csv}"
+        "Admin refresh done. before=%s after=%s loaded=%s skipped_no_csv=%s invalid_csv=%s",
+        before,
+        after,
+        after,
+        skipped_no_csv,
+        invalid_csv,
     )
 
     return AdminRefreshResponse(
@@ -325,10 +314,7 @@ def post_refresh(user: str = Depends(_check_credentials)):
     "/counters",
     tags=["Predictions"],
     summary="List available counters",
-    description=(
-        "List all counters detected under data/final/<subdir>/y_full.csv "
-        "(or under DATA_FINAL_ROOT)."
-    ),
+    description="Liste tous les compteurs détectés sous data/final/<subdir>/y_full.csv.",
     response_model=List[Counter],
     responses=generic_responses,
 )
@@ -346,26 +332,14 @@ def get_all_counters(user: str = Depends(_check_credentials)):
     "/predictions/{counter_id}",
     tags=["Predictions"],
     summary="Get predictions for a counter",
-    description=(
-        "Return a paginated list of predictions for the given counter id "
-        "(subdir name). Max 100 per page."
-    ),
+    description="Retourne une liste paginée de prédictions pour le compteur donné. Max 100.",
     response_model=PredictionList,
     responses=generic_responses,
 )
 def get_predictions_by_counter(
     counter_id: str,
-    limit: int = Query(
-        10,
-        ge=1,
-        le=100,
-        description="Max number of predictions to return.",
-    ),
-    offset: int = Query(
-        0,
-        ge=0,
-        description="Number of predictions to skip (pagination).",
-    ),
+    limit: int = Query(10, ge=1, le=100, description="Max number of predictions."),
+    offset: int = Query(0, ge=0, description="Pagination offset."),
     user: str = Depends(_check_credentials),
 ):
     if not df_predictions:
@@ -378,22 +352,22 @@ def get_predictions_by_counter(
     if counter_id not in df_predictions:
         raise CustomException(
             type="CounterUnavailable",
-            message=(
-                "Available counters: "
-                f"{sorted(list(df_predictions.keys()))}"
-            ),
+            message=f"Available counters: {sorted(list(df_predictions.keys()))}",
             date=str(datetime.now()),
         )
 
     df = df_predictions[counter_id]
-    df_page = df.iloc[offset: offset + limit]
+    df_page = df.iloc[offset : offset + limit]
+
+    # --- métrique métier: nombre d'items renvoyés par appel
+    try:
+        PRED_PER_RESPONSE.observe(float(len(df_page)))
+    except Exception as e:
+        logger.debug("Failed to observe PRED_PER_RESPONSE: %s", e)
 
     return PredictionList(
         total=int(len(df)),
         limit=int(limit),
         offset=int(offset),
-        item=[
-            PredictionItem(**row)  # type: ignore
-            for row in df_page.to_dict(orient="records")
-        ],
+        item=[PredictionItem(**row) for row in df_page.to_dict(orient="records")],  # type: ignore
     )

@@ -1,0 +1,6 @@
+['remote "origin"']
+    access_key_id = Sofia-Bouizzoul
+    secret_access_key = 932be42e42e59eb9c160f6206e2f82f030007717
+    use_ssl = true
+    endpointurl = https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
+    region = us-east-1
