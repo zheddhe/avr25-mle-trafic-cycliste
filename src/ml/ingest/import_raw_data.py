@@ -13,8 +13,11 @@ from typing import Optional
 import click
 import pandas as pd
 
-from src.ml.ingest.data_utils import apply_percent_range_selection
-from src.monitoring.metrics_push import track_pipeline_step  # <-- monitoring batch
+from src.ml.ingest.ingest_utils import (
+    apply_percent_range_selection,
+    track_pipeline_step
+)
+
 
 # -------------------------------------------------------------------
 # Helpers
@@ -35,7 +38,7 @@ def slugify_ascii(text: str) -> str:
 
 
 # -------------------------------------------------------------------
-# Logs
+# Logs Management
 # -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
@@ -48,61 +51,63 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # -------------------------------------------------------------------
-# CLI
+# Main script
 # -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--raw-path",
     type=click.Path(exists=True, dir_okay=False),
     required=True,
-    help="Chemin du CSV brut.",
+    help="Path to the raw CSV file.",
 )
 @click.option(
     "--site",
     type=str,
     required=True,
-    help="Valeur exacte de 'nom_du_site_de_comptage'.",
+    help="Exact value of 'nom_du_site_de_comptage'.",
 )
 @click.option(
     "--orientation",
     type=str,
     required=True,
-    help="Valeur exacte de 'orientation_compteur' (ex. 'N-S').",
+    help="Exact value of 'orientation_compteur' (e.g. 'N-S').",
 )
 @click.option(
     "--range-start",
     type=float,
     default=0.0,
     show_default=True,
-    help="Début de la tranche temporelle en pourcentage [0..100].",
+    help="Start percent [0..100] for chronological slice.",
 )
 @click.option(
     "--range-end",
     type=float,
     default=100.0,
     show_default=True,
-    help="Fin de la tranche temporelle en pourcentage [0..100].",
+    help="End percent [0..100] for chronological slice.",
 )
 @click.option(
     "--timestamp-col",
     type=str,
     default="date_et_heure_de_comptage",
     show_default=True,
-    help="Colonne timestamp ISO8601 dans le CSV brut.",
+    help="ISO8601 timestamp column in raw CSV.",
 )
 @click.option(
     "--sub-dir",
     type=click.Path(file_okay=False),
     default=None,
-    help="Sous-dossier cible ASCII sous data/interim. Par défaut dérivé de site+orientation.",
+    help=("ASCII Target <sub-dir> under data/interim. Default derived from site and "
+          "orientation."),
 )
 @click.option(
     "--interim-name",
     type=str,
     default="initial.csv",
     show_default=True,
-    help="Nom du fichier intermédiaire dans data/interim/<sub-dir>.",
+    help="interim CSV filename inside data/interim/<sub-dir>.",
 )
 def main(
     raw_path: str,
@@ -115,8 +120,8 @@ def main(
     interim_name: str,
 ) -> None:
     """
-    Extrait un compteur du CSV brut et écrit un slice intermédiaire.
-    Pousse des métriques batch (durée, volume) vers Pushgateway.
+    Extract a single counter from the raw dataset and save an interim slice.
+    Pushes batch metrics (duration, volume) to pushgateway.
     """
     # Labels de grouping pour Prometheus/Pushgateway
     labels = {
@@ -132,41 +137,43 @@ def main(
         # Validation paramètres
         if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
             raise click.BadParameter(
-                f"range-start/end doivent être dans [0,100]. Reçu ({range_start}, {range_end})."
+                f"range-start/range-end must be within [0, 100]. Got ({range_start}, {range_end})."
             )
         if range_start > range_end:
             raise click.BadParameter(
-                f"range-start doit être <= range-end. Reçu ({range_start}, {range_end})."
+                f"range-start must be <= range-end. Got ({range_start}, {range_end})."
             )
 
         # Lecture
         try:
-            logger.info("Chargement du CSV brut [%s] ...", raw_path)
+            logger.info(f"Loading raw CSV [{raw_path}] ...")
             df = pd.read_csv(raw_path, index_col=0)
         except Exception as exc:
-            logger.exception("Lecture CSV échouée: %s", exc)
+            logger.exception(f"Failed to load raw CSV: {exc}")
             # Le context manager marquera 'error' et poussera les métriques
-            raise click.ClickException(f"Echec lecture CSV: {exc}")
+            raise click.ClickException(f"Failed to load raw CSV: {exc}")
 
         # Colonnes requises
         key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
         missing = [c for c in key_cols + [timestamp_col] if c not in df.columns]
         if missing:
-            raise click.ClickException(f"Colonnes manquantes: {missing}")
+            raise click.ClickException(f"Missing required columns: {missing}")
 
         # Filtre compteur
         grp = df.groupby(key_cols)
         key = (site, orientation)
         if key not in grp.groups:
-            raise click.ClickException(f"Compteur introuvable: {key}")
+            raise click.ClickException(f"Counter not found: {key}")
 
         df_counter = grp.get_group(key).copy()
-        logger.info("Compteur [%s | %s] -> %d lignes.", site, orientation, len(df_counter))
+        logger.info(f"Counter [{site} | {orientation}] has {len(df_counter)} rows.")
 
-        # Tri chrono
+        # Tri chronologique
         try:
             df_counter[timestamp_col] = pd.to_datetime(
-                df_counter[timestamp_col], format="%Y-%m-%dT%H:%M:%S%z", utc=True
+                df_counter[timestamp_col],
+                format="%Y-%m-%dT%H:%M:%S%z",
+                utc=True
             )
         except Exception:
             df_counter[timestamp_col] = pd.to_datetime(df_counter[timestamp_col], utc=True)
@@ -176,7 +183,7 @@ def main(
         # Slice en pourcentage
         df_counter = apply_percent_range_selection(df_counter, (range_start, range_end))
         if df_counter.empty:
-            raise click.ClickException("La tranche sélectionnée est vide.")
+            raise click.ClickException("Slice produced an empty DataFrame.")
 
         # Sortie
         if sub_dir is None:
@@ -186,7 +193,7 @@ def main(
         out_path = os.path.join(out_dir, interim_name)
 
         df_counter.to_csv(out_path, index=True)
-        logger.info("Slice écrit -> [%s] (%d lignes).", out_path, len(df_counter))
+        logger.info(f"Saved interim slice to [{out_path}] ({len(df_counter)} rows).")
 
         # Manifest optionnel
         man = os.getenv("MANIFEST_INGEST")
@@ -202,18 +209,24 @@ def main(
                             "range": [range_start, range_end],
                             "timestamp_col": timestamp_col,
                         },
-                        "outputs": {"interim_path": str(out_path)},
-                        "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": sub_dir},
-                    },
+                        "outputs": {
+                            "interim_path": str(out_path)
+                        },
+                        "run": {
+                            "run_id": os.getenv("RUN_ID"),
+                            "sub_dir": sub_dir
+                        }
+                    }
                 )
-                logger.info("Manifest d'ingest écrit -> [%s].", man)
+                logger.info(f"Ingest manifest written to [{man}].")
             except Exception as exc:
-                logger.warning("Ecriture du manifest échouée [%s]: %s", man, exc)
+                logger.warning(f"Failed to write manifest [{man}]: {exc}")
 
         # Volume traité pour la métrique
         m["records"] = int(len(df_counter))
 
-    logger.info("Ingestion terminée avec succès.")
+    logger.info("Data ingestion ended successfully.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
@@ -223,4 +236,3 @@ if __name__ == "__main__":
         # click gère le message; on force un code retour 1
         logger.error(str(e))
         sys.exit(1)
-

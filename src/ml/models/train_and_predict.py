@@ -11,12 +11,12 @@ from typing import Optional
 import click
 import pandas as pd
 import pytz
-import mlflow
 from mlflow.tracking import MlflowClient
 
 from src.ml.models.models_utils import (
     train_timeseries_model,
     save_artefacts,
+    track_pipeline_step
 )
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
@@ -25,7 +25,7 @@ from src.ml.models.mlflow_tracking import (
     log_model_with_signature,
     log_local_artifacts,
 )
-from src.monitoring.metrics_push import track_pipeline_step  # <-- monitoring batch
+
 
 # -------------------------------------------------------------------
 # Helpers
@@ -35,6 +35,7 @@ def write_manifest(path: str, payload: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+
 
 # -------------------------------------------------------------------
 # Logs management
@@ -50,84 +51,86 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # -------------------------------------------------------------------
-# CLI
+# Main script
 # -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--processed-path",
     type=click.Path(exists=True, dir_okay=False),
     required=True,
-    help="Chemin du CSV processed contenant *_utc et *_local.",
+    help="Path to processed CSV with *_utc and *_local columns.",
 )
 @click.option(
     "--sub-dir",
     type=str,
     default=None,
-    help=("Sous-dossier cible sous data/final. Si absent, utilise "
-          "data/final/<sub-dir-dérivé-du-processed-path>."),
+    help=("ASCII Target <sub-dir> under data/processed. If not set, will write to "
+          "data/final/<sub-dir-from-processed-path>"),
 )
 @click.option(
     "--target-col",
     type=str,
     default="comptage_horaire",
     show_default=True,
-    help="Colonne cible pour la régression.",
+    help="Target column for regression.",
 )
 @click.option(
     "--ts-col-utc",
     type=str,
     default="date_et_heure_de_comptage_utc",
     show_default=True,
-    help="Nom de la colonne timestamp UTC.",
+    help="UTC timestamp column name.",
 )
 @click.option(
     "--ts-col-local",
     type=str,
     default="date_et_heure_de_comptage_local",
     show_default=True,
-    help="Nom de la colonne timestamp local.",
+    help="Local timestamp column name.",
 )
 @click.option(
     "--ar",
     type=int,
     default=7,
     show_default=True,
-    help="Nombre de retards AR.",
+    help="Number of AR lags.",
 )
 @click.option(
     "--mm",
     type=int,
     default=1,
     show_default=True,
-    help="Nombre de moyennes mobiles.",
+    help="Number of moving averages.",
 )
 @click.option(
     "--roll",
     type=int,
     default=24,
     show_default=True,
-    help="Fenêtre de base (heures) pour moyennes mobiles.",
+    help="Base window (hours) for moving averages.",
 )
 @click.option(
     "--test-ratio",
     type=float,
     default=0.25,
     show_default=True,
-    help="Part chronologique pour le split test.",
+    help="Fraction used for test split (chronological).",
 )
 @click.option(
     "--grid-iter",
     type=int,
     default=0,
     show_default=True,
-    help="Itérations de recherche bayésienne (0 pour désactiver).",
+    help="Bayesian search iterations (0 disables search).",
 )
 @click.option(
     "--mlflow-uri",
     type=str,
     default=None,
-    help="MLflow tracking URI optionnelle (prioritaire sur MLFLOW_TRACKING_URI).",
+    help=("Optional MLflow tracking URI (overrides env "
+          "MLFLOW_TRACKING_URI)."),
 )
 def main(
     processed_path: str,
@@ -143,8 +146,8 @@ def main(
     mlflow_uri: Optional[str],
 ) -> None:
     """
-    Entraîne un modèle séries temporelles, génère les prédictions complètes, journalise sous MLflow.
-    Pousse des métriques batch (durée, volume) vers Pushgateway.
+    Train a time-series model and produce recursive forecasts with MLflow logs.
+    Push batch metrics (duration, volume) to pushgateway.
     """
     # Labels Prometheus (grouping_key)
     labels = {
@@ -155,9 +158,9 @@ def main(
 
     with track_pipeline_step("models", labels) as m:
         if not (0.0 < test_ratio < 0.95):
-            raise click.BadParameter(f"test-ratio doit être dans (0, 0.95). Reçu: {test_ratio}")
+            raise click.BadParameter(f"test-ratio must be in (0, 0.95). Got {test_ratio}.")
         if grid_iter < 0:
-            raise click.BadParameter(f"grid-iter doit être >= 0. Reçu: {grid_iter}")
+            raise click.BadParameter(f"grid-iter must be >= 0. Got {grid_iter}.")
 
         # Configure MLflow (mlflow_uri CLI > env)
         configure_mlflow_from_env(explicit_uri=mlflow_uri)
@@ -167,15 +170,15 @@ def main(
 
         # Données
         try:
-            logger.info("Chargement du CSV processed [%s] ...", processed_path)
+            logger.info(f"Loading processed CSV [{processed_path}] ...")
             df = pd.read_csv(processed_path, index_col=0)
         except Exception as exc:
-            logger.exception("Échec de lecture du CSV processed: %s", exc)
-            raise click.ClickException(f"Lecture CSV échouée: {exc}")
+            logger.exception(f"Failed to load processed CSV: {exc}")
+            raise click.ClickException(f"Failed to load processed CSV: {exc}")
 
         for col in [ts_col_utc, ts_col_local]:
             if col not in df.columns:
-                raise click.ClickException(f"Colonne requise manquante: {col}")
+                raise click.ClickException(f"Missing required column: {col}")
 
         # Datetimes tz-aware
         try:
@@ -246,13 +249,18 @@ def main(
                             "test_ratio": test_ratio,
                             "grid_iter": grid_iter,
                         },
-                        "outputs": {"table": str(y_full_path)},
-                        "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": sub_dir},
-                    },
+                        "outputs": {
+                            "table": str(y_full_path)
+                        },
+                        "run": {
+                            "run_id": os.getenv("RUN_ID"),
+                            "sub_dir": sub_dir
+                        }
+                    }
                 )
-                logger.info("Manifest models écrit: %s", man)
+                logger.info(f"Models manifest written to [{man}]")
             except Exception as exc:
-                logger.warning("Échec d'écriture du manifest models [%s]: %s", man, exc)
+                logger.warning(f"Failed to write models manifest [{man}]: {exc}")
 
         # Promotion automatique Model Registry
         try:
@@ -260,7 +268,7 @@ def main(
             client = MlflowClient()
             versions = client.search_model_versions(f"name='{model_name}'")
             if not versions:
-                logger.warning("Aucune version trouvée pour le modèle [%s].", model_name)
+                logger.warning(f"No version found for model [{model_name}].")
             else:
                 latest = max(versions, key=lambda v: int(v.version))
                 client.transition_model_version_stage(
@@ -272,28 +280,17 @@ def main(
                 try:
                     client.set_registered_model_alias(model_name, "prod", latest.version)
                 except Exception as e:
-                    logger.warning("Alias 'prod' non défini: %s", e)
+                    logger.warning(f"'prod' undefined: {e}")
                 logger.info(
-                    "Modèle [%s] version %s promu en Production.",
-                    model_name,
-                    latest.version,
+                    f"Model [{model_name}] version {latest.version} promoted to production."
                 )
         except Exception as e:
-            logger.warning("Échec de promotion du modèle: %s", e)
+            logger.warning(f"Model promotion failed: {e}")
 
         # Volume traité pour la métrique: lignes de y_full
-        records = 0
-        try:
-            if y_full_path and os.path.isfile(y_full_path):
-                df_full = pd.read_csv(y_full_path, index_col=0)
-                records = int(len(df_full))
-            elif "y_test_pred" in report:
-                records = int(len(report["y_test_pred"]))
-        except Exception as e:
-            logger.warning("Impossible de compter les enregistrements: %s", e)
-        m["records"] = records  # <-- pousse via Pushgateway à la sortie du contexte
+        m["records"] = int(len(df))
 
-    logger.info("Training et forecasting terminés avec succès.")
+    logger.info("Training and forecasting ended successfully.")
     sys.exit(0)
 
 

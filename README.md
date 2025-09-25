@@ -82,6 +82,13 @@ avr25-mle-trafic-cycliste/
 │           └── train_and_predict.py
 ├── docker/             <- Container architecture
 │   ├── dev/            <- Development setup
+│   │   ├── grafana/    <- Config for grafana (dashboard & provisionning)
+│   │   │   ├── dashboards/
+│   │   │   └── provisioning/
+│   │   │       ├── dashboards.yaml
+│   │   │       └── datasource.yaml
+│   │   ├── prometheus/ <- Config for prometheus targets and general configuration
+│   │   │   └── prometheus.yml
 │   │   ├── airflow/    <- Config for airflow initialization (airflow-init)
 │   │   │   ├── connections.json
 │   │   │   └── variables.json
@@ -106,15 +113,30 @@ avr25-mle-trafic-cycliste/
 
 ### 🔧 Prerequisites
 
-Initialize the build environment with Python, pipx, Nox, and UV.
+Initialize the build environment with Python, pipx, Nox, and UV preferrably from a
+virtual Machine on your OS (with Ubuntu 22.04 ior latest distribution)
+
+#### (optional) Virtual machine creation on Windows
 
 ```bash
-# Check Python is installed (install it manually if needed, depending on your OS)
-python --version
+### Check and activate the local virtual machine Hypervisor 
+Set-Service -Name WSLService -StartupType Automatic
+Start-Service -Name WSLService
+Get-Service WSLService
 
-# Install pipx and add it to PATH
-python -m pip install --upgrade pip
-python -m pip install --user pipx
+# install an Ubuntu distribution
+wsl --install -d Ubuntu
+```
+
+#### Linux (through virtual machine or directly)
+
+All the commands in this readme will are provided from a "Linux" OS point of view
+
+```bash
+# Check and update your VM libraries/python/pip/pipx and ensure pipx path
+sudo apt update
+sudo apt install --fix-missing
+sudo apt install -y python3 python3-pip pipx
 pipx ensurepath
 
 # Install Nox (multi-OS session runner) and UV (fast virtual env + resolver)
@@ -125,9 +147,11 @@ pipx install nox uv
 
 Please refer to DagsHub remote setup actions. Example steps:
 
-- Git cloning
+- Git setup and cloning
 
 ```bash
+git config --global user.name "your user"
+git config --global user.email "email@example.com" 
 git clone https://github.com/zheddhe/avr25-mle-trafic-cycliste.git
 ```
 
@@ -149,10 +173,7 @@ dvc remote modify origin --local secret_access_key [...]
 ### Rebuild a complete virtual dev env (runs flake8 and pytest)
 nox -s build
 
-### Activate the virtual environment in a command-line session (per OS)
-# Windows cmd
-.nox\build\Scripts\activate.bat
-# macOS/Linux shell
+### Activate the virtual environment in a command-line session
 source .nox/build/bin/activate
 
 ### [Optional] Clean all generated files and all virtual envs (build included)
@@ -183,10 +204,12 @@ uvicorn src.api.main:app --reload --port 10000
 docker compose --profile all build
 
 # 2) Start all the backends services : 
-# profile mlflow : mlflow / postgres / minio / mc_init) in background
+# profile mlflow : server / postgres / minio / mc-init in background
 docker compose --profile mlflow up -d
-# profile airflow : airflow / postgres / redis / mailhog) in background
+# profile airflow : webserver / worker / scheduler / init / postgres / redis / mailhog in background
 docker compose --profile airflow up -d
+# profile monitoring : grafana / prometheus / cadvisor / node-exporter
+docker compose --profile monitoring up -d
 
 # 3) Start all the permanent business services (ie. the API) in background
 # profile api : data api service
@@ -209,21 +232,42 @@ docker compose --profile all down -v --rmi all && docker system prune -f
 
 ### 1. 🐳 Container manager
 
-We use **Docker Desktop** to simulate local development and production (cloud deployment is also planned).
+We use **Docker Desktop** to simulate local development and production.
 
-#### Local Docker Desktop with a supervisor
+#### Local Docker Desktop with a virtual machine hypervisor
 
 Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
 
+#### Virtual machine with Ubuntu distribution
+
+It is recommended however to install your dev env on a Virtual Machine using Ubuntu latest distribution
+
 ```bash
-### [Windows with PowerShell] Check and activate the local Docker Desktop supervisor 
-Set-Service -Name WSLService -StartupType Automatic
-Start-Service -Name WSLService
-Get-Service WSLService
-### [Windows with PowerShell] install an Ubuntu distribution
-wsl --install -d Ubuntu
-### [Windows with cmd] link docker desktop with Ubuntu distrib in Settings > Resources > WSL Integration and switch on it
-wsl -d Ubuntu
+### [On Ubuntu Virtual Machine] 
+# Add official GPG key for docker distribution
+sudo apt update
+sudo apt install ca-certificates curl gnupg lsb-release -y
+
+# Add official GPG key for docker distribution
+sudo mkdir -m 0755 -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+# Add official docker repository
+echo \
+  "deb [arch=$(dpkg --print-architecture) \
+  signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Update packages list and install Docker components
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+
+# Add current user authorization to docker engine
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 ### 2. 📈 Experience tracker
@@ -261,12 +305,7 @@ splits, predictions, metrics, and hyperparameters).
 #### DagsHub remote service
 
 ```bash
-### Configure environment variables (per OS)
-# Windows cmd
-set MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
-set MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-set MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
-# macOS/Linux shell
+### Configure environment variables
 export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
 export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
@@ -275,13 +314,7 @@ export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal passw
 #### Local service
 
 ```bash
-### Configure environment variables (per OS)
-# Windows cmd
-set MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-set MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
-set AWS_ACCESS_KEY_ID=minio
-set AWS_SECRET_ACCESS_KEY=minio123
-# macOS/Linux shell
+### Configure environment variables
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_ACCESS_KEY_ID=minio
