@@ -293,6 +293,8 @@ services:
       AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
       AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD}
     user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
     depends_on:
       airflow-redis:

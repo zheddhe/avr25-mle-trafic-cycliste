@@ -116,7 +116,21 @@ avr25-mle-trafic-cycliste/
 Initialize the build environment with Python, pipx, Nox, and UV preferrably from a
 virtual Machine on your OS (with Ubuntu 22.04 ior latest distribution)
 
-All the commands will are provided from a "Linux" OS point of view
+#### (optional) Virtual machine creation on Windows
+
+```bash
+### Check and activate the local virtual machine Hypervisor 
+Set-Service -Name WSLService -StartupType Automatic
+Start-Service -Name WSLService
+Get-Service WSLService
+
+# install an Ubuntu distribution
+wsl --install -d Ubuntu
+```
+
+#### Linux (through virtual machine or directly)
+
+All the commands in this readme will are provided from a "Linux" OS point of view
 
 ```bash
 # Check and update your VM libraries/python/pip/pipx and ensure pipx path
@@ -224,22 +238,9 @@ We use **Docker Desktop** to simulate local development and production.
 
 Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
 
-```bash
-### [Windows with PowerShell] Check and activate the local virtual machine Hypervisor 
-Set-Service -Name WSLService -StartupType Automatic
-Start-Service -Name WSLService
-Get-Service WSLService
-```
-
 #### Virtual machine with Ubuntu distribution
 
 It is recommended however to install your dev env on a Virtual Machine using Ubuntu latest distribution
-
-```bash
-### [On Windows with PowerShell] 
-# install an Ubuntu distribution
-wsl --install -d Ubuntu
-```
 
 ```bash
 ### [On Ubuntu Virtual Machine] 

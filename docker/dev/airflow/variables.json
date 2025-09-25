@@ -4,7 +4,7 @@
   "docker_image_models": "ml-models:dev",
   "docker_network": "mlops_net",
 
-  "host_repo_root": "/host_mnt/c/Users/remyc/Projects/avr25-mle-trafic-cycliste",
+  "host_repo_root": "/home/remyc/projects/avr25-mle-trafic-cycliste",
   "container_repo_root": "/app",
   "airflow_repo_root": "/opt/airflow",
   "bike_dag_config": "/opt/airflow/config/bike_dag_config.json",
