@@ -114,6 +114,11 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./logs:/app/logs
+    environment:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     networks:
       - mlflow_net
       - airflow_net
@@ -129,8 +134,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
+      - ./logs:/app/logs
     environment:
-      DATA_FINAL_ROOT: /app/data/final
+      DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
     networks:
       - airflow_net
     profiles: ["all", "api"]
@@ -216,7 +222,7 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
     ports:
-      - "5000:5000"
+      - "5001:5000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000"]
       interval: 5s
@@ -298,7 +304,9 @@ services:
       bash -c "airflow db migrate &&
         (airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} --firstname Admin --lastname User --role Admin --email admin@example.com || true) &&
         airflow variables import /opt/airflow/config/variables.json &&
-        airflow connections import /opt/airflow/config/connections.json"
+        airflow connections delete api_dev || true &&
+        airflow connections import /opt/airflow/config/connections.json &&
+        airflow pools set sequential_counters 2 'Orchestrator: trigger child DAGs sequentially'"
     restart: "no"
     volumes:
       - ./docker/dev/airflow/:/opt/airflow/config/
@@ -339,9 +347,11 @@ services:
     restart: always
     volumes:
       # Bind host for external exchanges
-      - ./dags:/opt/airflow/dags
+      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src/airflow/dags_common:/opt/airflow/dags_common
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -382,9 +392,11 @@ services:
     restart: always
     volumes:
       # Bind host for external exchanges
-      - ./dags:/opt/airflow/dags
+      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src/airflow/dags_common:/opt/airflow/dags_common
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -423,9 +435,11 @@ services:
     restart: always
     volumes:
       # Bind host for external exchanges
-      - ./dags:/opt/airflow/dags
+      - ./src/airflow/dags:/opt/airflow/dags
+      - ./src/airflow/dags_common:/opt/airflow/dags_common
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
+      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

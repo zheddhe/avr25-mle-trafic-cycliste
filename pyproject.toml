@@ -60,11 +60,26 @@ exclude = ["tests*", "logs*"]
 [tool.pytest.ini_options]
 addopts = [
   "--cov",
-  "--cov-config=.coveragerc",
   "--cov-report=html",
   "--cov-report=term"
 ]
 testpaths = ["tests"]
 markers = [
   "integration: end-to-end pipeline tests"
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = [
+    "*/__init__.py",
+    "*/.vscode/*",
+    "*/site-packages/*",
+    "*/python_files/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
 ]

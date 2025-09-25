@@ -45,18 +45,29 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml      <- Python development project configuration
 ├── uv.lock             <- UV lockfile for the dev environment
 ├── noxfile.py          <- Nox dev sessions (build/clean)
-├── data                <- Data storage
+├── data                <- Data shared with host (read/write)
 │   ├── raw             <- Original, immutable data dumps (e.g., external sources)
 │   ├── interim         <- Intermediate data derived from raw (goal-specific)
 │   ├── processed       <- Processed data (e.g., feature-enriched)
 │   └── final           <- Final stage data (e.g., train/test and predictions)
-├── logs                <- Logs from training and prediction
-│   └── ...
-├── models              <- Trained/serialized models, best params, transformers
+├── logs                <- Logs shared with host (read/write)
+│   ├── ml              <- ML pipeline logs
+│   ├── api             <- data API logs
+│   ├── scheduler       <- airflow scheduler logs
+│   └── dag[...]        <- unitary dag run logs
+├── models              <- Models artefacts shared with host (read/write)
 │   └── ...
 ├── references          <- Data dictionaries, manuals, other explanatory material
 │   └── ...
 ├── src/                <- All source code used in this project
+│   ├── airflow/        <- Airflow orchestration management
+│   │   ├── dags        <- Orchestrator DAGs code shared with host
+│   │   │   ├── bike_traffic_pipeline_dag.py
+│   │   │   └── bike_traffic_orchestrator_dag.py
+│   │   │   ├── common
+│   │   │   │   └── utils.py
+│   │   ├── config      <- Orchestrator config shared with host (read-only)
+│   │   │   └── bike_dag_config.json
 │   ├── api/            <- FastAPI service (prediction readout)
 │   │   └── main.py
 │   └── ml/             <- Machine learning pipeline
@@ -71,6 +82,11 @@ avr25-mle-trafic-cycliste/
 │           └── train_and_predict.py
 ├── docker/             <- Container architecture
 │   ├── dev/            <- Development setup
+│   │   ├── airflow/    <- Config for airflow initialization (airflow-init)
+│   │   │   ├── connections.json
+│   │   │   └── variables.json
+│   │   ├── mlflow/     <- Custom docker image for mlflow server
+│   │   │   └── Dockerfile
 │   │   ├── api/
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
@@ -183,10 +199,10 @@ docker compose --profile ml up ml_features_dev
 docker compose --profile ml up ml_models_dev
 
 # /!\ Stop everything (including networks but keep database volumes)
-docker compose down
+docker compose --profile all down
 
 # /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
-docker compose --profile all down -v --rmi && docker system prune -f
+docker compose --profile all down -v --rmi all && docker system prune -f
 
 # Docs: http://localhost:8000/docs (Basic Auth required)
 ```
@@ -215,6 +231,32 @@ wsl -d Ubuntu
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
 splits, predictions, metrics, and hyperparameters).
+
+### 3. 🧩 Multi-counter orchestration
+
+- The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`), it configures especially :
+  - The host repository root (to adjust to your production or dev environment)
+  - The mlflow server information (by default the one of the technical stack propose, could be a cloud hosted one)
+  - The images to use for the various container
+  - the API connection as an admin (to refresh the prediction)
+
+- The business configuration is mounted read-only in the Airflow containers (Scheduler / WebServer / Worker) into
+  `/opt/airflow/config/bike_dag_config.json` (repo source: `./src/airflow/config/`), it configures especially :
+  - The list counters managed (extracted from the original dataset)
+  - The anchor date (when do we start from to simulate our production)
+  - The daily increment (which portion of the original dataset is considered to shift the data of 1 production day)
+
+- `bike_traffic_init`: one-shot historical bootstrap per counter.
+  - It short-circuits if the Airflow Variable `bike_init_done__<counter>`
+    equals `"1"`.
+  - On success, it sets that variable to `"1"`.
+
+- `bike_traffic_daily`: rolling increment assuming init has been done.
+  - Triggered by the parent only (its `schedule` is `None`).
+
+- `bike_traffic_orchestrator`:
+  - Every day: for each configured counter, trigger `init` then `daily`.
+  - The `init` run is cheap if already done (short-circuited).
 
 #### DagsHub remote service
 

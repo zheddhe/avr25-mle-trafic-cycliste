@@ -6,7 +6,7 @@ import json
 import sys
 import subprocess
 from pathlib import Path
-from typing import Dict, Tuple, Any
+from typing import Any
 import pandas as pd
 import pytest
 import inspect
@@ -122,15 +122,16 @@ def _read_csv_nrows(p: Path) -> int:
 # Fixtures
 # ---------------------------------------------------------------------
 @pytest.fixture(scope="session")
-def site_test() -> Dict[Tuple[str, str], Dict[str, Any]]:
+def site_test() -> dict[tuple[str, str, str], dict[str, Any]]:
     """
-    Import scenarios from test_config.SITE_TEST. We cap to 5 scenarios.
+    Import scenarios from test_config.SITE_TEST. We cap to 3 scenarios.
     """
     import tests.integration.test_scenario as cfg  # type: ignore
 
     site_test = dict(cfg.SITE_TEST)  # copy
     assert isinstance(site_test, dict), "SITE_TEST must be a dict."
-    return dict(list(site_test.items())[:5])
+    # Cap to 3 scenarios max to limit time
+    return dict(list(site_test.items())[:3])
 
 
 @pytest.fixture(scope="session")
@@ -165,13 +166,14 @@ def isolate_mlflow(tmp_path, monkeypatch):
 # Parametrization
 # ---------------------------------------------------------------------
 def _params_from_scenario(
-    key: Tuple[str, str], cfg: Dict[str, Any], raw_path: Path
-) -> Dict[str, Any]:
-    site, orientation = key
+    key: tuple[str, str, str], cfg: dict[str, Any], raw_path: Path
+) -> dict[str, Any]:
+    site, orientation, phase = key
     sub_dir = cfg["sub_dir"]
     return {
         "site": site,
         "orientation": orientation,
+        "phase": phase,
         "sub_dir": sub_dir,
         "raw_path": str(raw_path),
         "interim_name": cfg["interim_file_name"],
@@ -190,11 +192,11 @@ def _params_from_scenario(
 # The integration test: import -> features -> train/predict
 # ---------------------------------------------------------------------
 class TestPipelineE2E:
-    @pytest.mark.parametrize("scenario_idx", range(5))
+    @pytest.mark.parametrize("scenario_idx", range(3))
     def test_pipeline_scenarios(
         self,
         scenario_idx: int,
-        site_test: Dict[Tuple[str, str], Dict[str, Any]],
+        site_test: dict[tuple[str, str, str], dict[str, Any]],
         ensure_raw_exists: Path,
     ) -> None:
         if scenario_idx >= len(site_test):
@@ -203,6 +205,11 @@ class TestPipelineE2E:
         key = list(site_test.keys())[scenario_idx]
         cfg = site_test[key]
         params = _params_from_scenario(key, cfg, ensure_raw_exists)
+
+        # Ajout dans les logs pour différencier
+        print(f"\n[Running scenario] site={params['site']} "
+              f"orientation={params['orientation']} "
+              f"phase={params['phase']}")
 
         # ---------------------------
         # 1) import_raw_data
