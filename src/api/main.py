@@ -18,6 +18,10 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
+# Prometheus / FastAPI instrumentation
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Histogram
+
 # -------------------------------------------------------------------
 # Logs configuration
 # -------------------------------------------------------------------
@@ -209,8 +213,26 @@ app = FastAPI(
         "Expose les prédictions du trafic cycliste pour les compteurs "
         "installés dans la ville de Paris."
     ),
-    version="1.1.0",
+    version="1.2.0",
     openapi_tags=tags_metadata,
+)
+
+# -------------------------------------------------------------------
+# Prometheus instrumentation
+# -------------------------------------------------------------------
+# Technical metrics : Latency, HTTP status, throughput, etc.
+instrumentator = Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers={"/metrics"},
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+# Business metrics : number of prediction provided by API call
+PRED_PER_RESPONSE = Histogram(
+    "api_predictions_per_response",
+    "Nombre de prédictions renvoyées par appel",
+    buckets=(1, 5, 10, 20, 50, 100, float("inf")),
 )
 
 
@@ -457,6 +479,12 @@ def get_predictions_by_counter(
 
     df = df_predictions[counter_id]
     df_page = df.iloc[offset: offset + limit]
+
+    # --- métrique métier: nombre d'items renvoyés par appel
+    try:
+        PRED_PER_RESPONSE.observe(float(len(df_page)))
+    except Exception as e:
+        logger.debug("Failed to observe PRED_PER_RESPONSE: %s", e)
 
     logger.info(
         f"Predictions for counter {counter_id} requested by user: {user_info['username']} "

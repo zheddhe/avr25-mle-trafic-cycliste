@@ -7,13 +7,16 @@ import sys
 from pathlib import Path
 import logging
 from typing import Optional
+
 import click
 import pandas as pd
 import pytz
+from mlflow.tracking import MlflowClient
 
 from src.ml.models.models_utils import (
     train_timeseries_model,
     save_artefacts,
+    track_pipeline_step
 )
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
@@ -144,111 +147,156 @@ def main(
 ) -> None:
     """
     Train a time-series model and produce recursive forecasts with MLflow logs.
+    Push batch metrics (duration, volume) to pushgateway.
     """
-    if not (0.0 < test_ratio < 0.95):
-        logger.error(f"test-ratio must be in (0, 0.95). Got {test_ratio}.")
-        sys.exit(2)
-    if grid_iter < 0:
-        logger.error(f"grid-iter must be >= 0. Got {grid_iter}.")
-        sys.exit(2)
-
-    # Configure MLflow URI from env, optionally override by CLI
-    configure_mlflow_from_env(explicit_uri=mlflow_uri)
-
-    if sub_dir is None:
-        sub_dir = os.path.basename(os.path.dirname(processed_path))
-
-    try:
-        logger.info(f"Loading processed CSV [{processed_path}] ...")
-        df = pd.read_csv(processed_path, index_col=0)
-    except Exception as exc:
-        logger.exception(f"Failed to load processed CSV: {exc}")
-        sys.exit(1)
-
-    for col in [ts_col_utc, ts_col_local]:
-        if col not in df.columns:
-            logger.error(f"Missing required column: {col}")
-            sys.exit(1)
-
-    # Ensure tz-aware datetimes
-    try:
-        df[ts_col_utc] = pd.to_datetime(
-            df[ts_col_utc], format="%Y-%m-%d %H:%M:%S%z", utc=True
-        )
-    except Exception:
-        df[ts_col_utc] = pd.to_datetime(df[ts_col_utc], utc=True)
-
-    try:
-        df[ts_col_local] = pd.to_datetime(
-            df[ts_col_local], format="%Y-%m-%d %H:%M:%S%z", utc=True
-        ).dt.tz_convert(pytz.timezone("Europe/Paris"))
-    except Exception:
-        df[ts_col_local] = pd.to_datetime(
-            df[ts_col_local], utc=True
-        ).dt.tz_convert(pytz.timezone("Europe/Paris"))
-
-    # Train + recursive forecast
-    ts_cols = [ts_col_local, ts_col_utc]
-    report = train_timeseries_model(
-        df,
-        target_col=target_col,
-        timestamp_cols=ts_cols,
-        temp_feats=[ar, mm, roll],
-        test_ratio=test_ratio,
-        iter_grid_search=grid_iter,
-    )
-
-    # MLflow logging + local artifacts
-    tags = {
-        "counter.subdir": sub_dir,
-        "model.family": "XGBRegressor",
+    # Labels Prometheus (grouping_key)
+    labels = {
+        "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
+        "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.models"),
+        "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
     }
-    with start_run(
-        experiment_name=sub_dir,
-        run_name=os.path.basename(processed_path),
-        tags=tags,
-    ):
-        log_report_content(report, target_col=target_col)
-        y_full_path = save_artefacts(report, sub_dir)
 
-        # Log model with signature using one train row
-        x_sample = report["X_train"].head(1)
-        log_model_with_signature(
-            pipe_model=report["pipe_model"],
-            sample_input_df=x_sample,
-            artifact_path="model_pipeline",
-            registered_name=f"{sub_dir}-model",
-        )
-        log_local_artifacts(sub_dir)
+    with track_pipeline_step("models", labels) as m:
+        if not (0.0 < test_ratio < 0.95):
+            raise click.BadParameter(f"test-ratio must be in (0, 0.95). Got {test_ratio}.")
+        if grid_iter < 0:
+            raise click.BadParameter(f"grid-iter must be >= 0. Got {grid_iter}.")
 
-    # write a manifest if required in environment variable
-    man = os.getenv("MANIFEST_MODELS")
-    if man:
+        # Configure MLflow (mlflow_uri CLI > env)
+        configure_mlflow_from_env(explicit_uri=mlflow_uri)
+
+        if sub_dir is None:
+            sub_dir = os.path.basename(os.path.dirname(processed_path))
+
+        # Données
         try:
-            write_manifest(man, {
-                "inputs": {
-                    "processed_path": processed_path,
-                    "target_col": target_col,
-                    "ts_col_utc": ts_col_utc,
-                    "ts_col_local": ts_col_local,
-                    "ar": ar, "mm": mm, "roll": roll,
-                    "test_ratio": test_ratio, "grid_iter": grid_iter
-                },
-                "outputs": {
-                    "table": str(y_full_path)
-                },
-                "run": {
-                    "run_id": os.getenv("RUN_ID"),
-                    "sub_dir": sub_dir
-                }
-            })
-            logger.info("Models manifest written to [%s].", man)
+            logger.info(f"Loading processed CSV [{processed_path}] ...")
+            df = pd.read_csv(processed_path, index_col=0)
         except Exception as exc:
-            logger.warning("Failed to write models manifest [%s]: %s", man, exc)
+            logger.exception(f"Failed to load processed CSV: {exc}")
+            raise click.ClickException(f"Failed to load processed CSV: {exc}")
+
+        for col in [ts_col_utc, ts_col_local]:
+            if col not in df.columns:
+                raise click.ClickException(f"Missing required column: {col}")
+
+        # Datetimes tz-aware
+        try:
+            df[ts_col_utc] = pd.to_datetime(
+                df[ts_col_utc], format="%Y-%m-%d %H:%M:%S%z", utc=True
+            )
+        except Exception:
+            df[ts_col_utc] = pd.to_datetime(df[ts_col_utc], utc=True)
+
+        try:
+            df[ts_col_local] = pd.to_datetime(
+                df[ts_col_local], format="%Y-%m-%d %H:%M:%S%z", utc=True
+            ).dt.tz_convert(pytz.timezone("Europe/Paris"))
+        except Exception:
+            df[ts_col_local] = pd.to_datetime(
+                df[ts_col_local], utc=True
+            ).dt.tz_convert(pytz.timezone("Europe/Paris"))
+
+        # Entraînement + forecast récursif
+        ts_cols = [ts_col_local, ts_col_utc]
+        report = train_timeseries_model(
+            df,
+            target_col=target_col,
+            timestamp_cols=ts_cols,
+            temp_feats=[ar, mm, roll],
+            test_ratio=test_ratio,
+            iter_grid_search=grid_iter,
+        )
+
+        # MLflow
+        tags = {
+            "counter.subdir": sub_dir,
+            "model.family": "XGBRegressor",
+        }
+        with start_run(
+            experiment_name=sub_dir,
+            run_name=os.path.basename(processed_path),
+            tags=tags,
+        ):
+            log_report_content(report, target_col=target_col)
+            y_full_path = save_artefacts(report, sub_dir)
+
+            # Log du modèle + signature
+            x_sample = report["X_train"].head(1)
+            log_model_with_signature(
+                pipe_model=report["pipe_model"],
+                sample_input_df=x_sample,
+                artifact_path="model_pipeline",
+                registered_name=f"{sub_dir}-model",
+            )
+            log_local_artifacts(sub_dir)
+
+        # Manifest optionnel
+        man = os.getenv("MANIFEST_MODELS")
+        if man:
+            try:
+                write_manifest(
+                    man,
+                    {
+                        "inputs": {
+                            "processed_path": processed_path,
+                            "target_col": target_col,
+                            "ts_col_utc": ts_col_utc,
+                            "ts_col_local": ts_col_local,
+                            "ar": ar,
+                            "mm": mm,
+                            "roll": roll,
+                            "test_ratio": test_ratio,
+                            "grid_iter": grid_iter,
+                        },
+                        "outputs": {
+                            "table": str(y_full_path)
+                        },
+                        "run": {
+                            "run_id": os.getenv("RUN_ID"),
+                            "sub_dir": sub_dir
+                        }
+                    }
+                )
+                logger.info(f"Models manifest written to [{man}]")
+            except Exception as exc:
+                logger.warning(f"Failed to write models manifest [{man}]: {exc}")
+
+        # Promotion automatique Model Registry
+        try:
+            model_name = f"{sub_dir}-model"
+            client = MlflowClient()
+            versions = client.search_model_versions(f"name='{model_name}'")
+            if not versions:
+                logger.warning(f"No version found for model [{model_name}].")
+            else:
+                latest = max(versions, key=lambda v: int(v.version))
+                client.transition_model_version_stage(
+                    name=model_name,
+                    version=latest.version,
+                    stage="Production",
+                    archive_existing_versions=True,
+                )
+                try:
+                    client.set_registered_model_alias(model_name, "prod", latest.version)
+                except Exception as e:
+                    logger.warning(f"'prod' undefined: {e}")
+                logger.info(
+                    f"Model [{model_name}] version {latest.version} promoted to production."
+                )
+        except Exception as e:
+            logger.warning(f"Model promotion failed: {e}")
+
+        # Volume traité pour la métrique: lignes de y_full
+        m["records"] = int(len(df))
 
     logger.info("Training and forecasting ended successfully.")
     sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except click.ClickException as e:
+        logger.error(str(e))
+        sys.exit(1)

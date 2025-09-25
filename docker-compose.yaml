@@ -1,3 +1,4 @@
+#yaml
 # ========================
 # VOLUMES
 # ========================
@@ -55,7 +56,6 @@ services:
       - ${INTERIM_NAME}
     restart: "no"
     volumes:
-      # Bind host for external exchanges
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
@@ -78,7 +78,6 @@ services:
       - date_et_heure_de_comptage
     restart: "no"
     volumes:
-      # Bind host for external exchanges
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
@@ -113,7 +112,6 @@ services:
       - "${GRID_ITER}"
     restart: "no"
     volumes:
-      # Bind host for external exchanges
       - ./data:/app/data
       - ./models:/app/models
       - ./logs:/app/logs
@@ -511,6 +509,14 @@ services:
       - /sys:/sys:ro
       # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mlops_net
+    profiles: ["monitoring", "all"]
+
+  monitoring-pushgateway:
+    image: prom/pushgateway:v1.9.0
+    ports:
+      - "9091:9091"
     networks:
       - mlops_net
     profiles: ["monitoring", "all"]

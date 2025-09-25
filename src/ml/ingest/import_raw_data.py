@@ -8,11 +8,15 @@ from pathlib import Path
 import re
 import logging
 import unicodedata
-import click
-import pandas as pd
 from typing import Optional
 
-from src.ml.ingest.data_utils import apply_percent_range_selection
+import click
+import pandas as pd
+
+from src.ml.ingest.ingest_utils import (
+    apply_percent_range_selection,
+    track_pipeline_step
+)
 
 
 # -------------------------------------------------------------------
@@ -23,6 +27,14 @@ def write_manifest(path: str, payload: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def slugify_ascii(text: str) -> str:
+    norm = unicodedata.normalize("NFKD", text)
+    text_ascii = norm.encode("ascii", "ignore").decode("ascii")
+    text_ascii = re.sub(r"[^A-Za-z0-9\-_]+", "_", text_ascii)
+    text_ascii = re.sub(r"_+", "_", text_ascii).strip("_")
+    return text_ascii[:64] or "counter"
 
 
 # -------------------------------------------------------------------
@@ -38,14 +50,6 @@ logging.basicConfig(
     handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
-
-
-def slugify_ascii(text: str) -> str:
-    norm = unicodedata.normalize("NFKD", text)
-    text_ascii = norm.encode("ascii", "ignore").decode("ascii")
-    text_ascii = re.sub(r"[^A-Za-z0-9\-_]+", "_", text_ascii)
-    text_ascii = re.sub(r"_+", "_", text_ascii).strip("_")
-    return (text_ascii[:64] or "counter")
 
 
 # -------------------------------------------------------------------
@@ -117,98 +121,118 @@ def main(
 ) -> None:
     """
     Extract a single counter from the raw dataset and save an interim slice.
+    Pushes batch metrics (duration, volume) to pushgateway.
     """
-    if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
-        logger.error("range-start/range-end must be within [0, 100]. Got (%s, %s).",
-                     range_start, range_end)
-        sys.exit(2)
-    if range_start > range_end:
-        logger.error("range-start must be <= range-end. Got (%s, %s).",
-                     range_start, range_end)
-        sys.exit(2)
+    # Labels de grouping pour Prometheus/Pushgateway
+    labels = {
+        "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
+        "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.ingest"),
+        "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
+        "site": slugify_ascii(site),
+        "orientation": slugify_ascii(orientation),
+    }
 
-    try:
-        logger.info("Loading raw CSV [%s] ...", raw_path)
-        df = pd.read_csv(raw_path, index_col=0)
-    except Exception as exc:
-        logger.exception("Failed to load raw CSV: %s", exc)
-        sys.exit(1)
+    # Encapsule tout dans le context manager -> pousse metrics en fin (success/error)
+    with track_pipeline_step("ingest", labels) as m:
+        # Validation paramètres
+        if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
+            raise click.BadParameter(
+                f"range-start/range-end must be within [0, 100]. Got ({range_start}, {range_end})."
+            )
+        if range_start > range_end:
+            raise click.BadParameter(
+                f"range-start must be <= range-end. Got ({range_start}, {range_end})."
+            )
 
-    key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
-    missing = [c for c in key_cols + [timestamp_col] if c not in df.columns]
-    if missing:
-        logger.error(f"Missing required columns: {missing}")
-        sys.exit(1)
-
-    grp = df.groupby(key_cols)
-    key = (site, orientation)
-    if key not in grp.groups:
-        logger.warning("Counter not found: %s", key)
-        sys.exit(1)
-
-    df_counter = grp.get_group(key).copy()
-    logger.info(f"Counter [{site} | {orientation}] has {len(df_counter)} rows.")
-
-    # Ensure chronological order based on the timestamp string format in raw
-    try:
-        df_counter[timestamp_col] = pd.to_datetime(
-            df_counter[timestamp_col],
-            format="%Y-%m-%dT%H:%M:%S%z",
-            utc=True,
-        )
-    except Exception:
-        # fallback: let pandas infer if exact format fails
-        df_counter[timestamp_col] = pd.to_datetime(
-            df_counter[timestamp_col], utc=True
-        )
-
-    df_counter = df_counter.sort_values(timestamp_col).reset_index(drop=True)
-
-    # Percent slice
-    df_counter = apply_percent_range_selection(
-        df_counter, (range_start, range_end)
-    )
-    if df_counter.empty:
-        logger.warning("Slice produced an empty DataFrame.")
-        sys.exit(1)
-
-    # Output path
-    if sub_dir is None:
-        sub_dir = slugify_ascii(f"{site}_{orientation}")
-    out_dir = os.path.join("data", "interim", sub_dir)
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, interim_name)
-
-    df_counter.to_csv(out_path, index=True)
-    logger.info(f"Saved interim slice to [{out_path}] ({len(df_counter)} rows).")
-
-    # write a manifest if required in environment variable
-    man = os.getenv("MANIFEST_INGEST")
-    if man:
+        # Lecture
         try:
-            write_manifest(man, {
-                "inputs": {
-                    "raw_path": str(Path(raw_path).resolve()),
-                    "site": site,
-                    "orientation": orientation,
-                    "range": [range_start, range_end],
-                    "timestamp_col": timestamp_col,
-                },
-                "outputs": {
-                    "interim_path": str(out_path)
-                },
-                "run": {
-                    "run_id": os.getenv("RUN_ID"),
-                    "sub_dir": sub_dir
-                }
-            })
-            logger.info("Ingest manifest written to [%s].", man)
+            logger.info(f"Loading raw CSV [{raw_path}] ...")
+            df = pd.read_csv(raw_path, index_col=0)
         except Exception as exc:
-            logger.warning("Failed to write manifest [%s]: %s", man, exc)
+            logger.exception(f"Failed to load raw CSV: {exc}")
+            # Le context manager marquera 'error' et poussera les métriques
+            raise click.ClickException(f"Failed to load raw CSV: {exc}")
+
+        # Colonnes requises
+        key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
+        missing = [c for c in key_cols + [timestamp_col] if c not in df.columns]
+        if missing:
+            raise click.ClickException(f"Missing required columns: {missing}")
+
+        # Filtre compteur
+        grp = df.groupby(key_cols)
+        key = (site, orientation)
+        if key not in grp.groups:
+            raise click.ClickException(f"Counter not found: {key}")
+
+        df_counter = grp.get_group(key).copy()
+        logger.info(f"Counter [{site} | {orientation}] has {len(df_counter)} rows.")
+
+        # Tri chronologique
+        try:
+            df_counter[timestamp_col] = pd.to_datetime(
+                df_counter[timestamp_col],
+                format="%Y-%m-%dT%H:%M:%S%z",
+                utc=True
+            )
+        except Exception:
+            df_counter[timestamp_col] = pd.to_datetime(df_counter[timestamp_col], utc=True)
+
+        df_counter = df_counter.sort_values(timestamp_col).reset_index(drop=True)
+
+        # Slice en pourcentage
+        df_counter = apply_percent_range_selection(df_counter, (range_start, range_end))
+        if df_counter.empty:
+            raise click.ClickException("Slice produced an empty DataFrame.")
+
+        # Sortie
+        if sub_dir is None:
+            sub_dir = slugify_ascii(f"{site}_{orientation}")
+        out_dir = os.path.join("data", "interim", sub_dir)
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, interim_name)
+
+        df_counter.to_csv(out_path, index=True)
+        logger.info(f"Saved interim slice to [{out_path}] ({len(df_counter)} rows).")
+
+        # Manifest optionnel
+        man = os.getenv("MANIFEST_INGEST")
+        if man:
+            try:
+                write_manifest(
+                    man,
+                    {
+                        "inputs": {
+                            "raw_path": str(Path(raw_path).resolve()),
+                            "site": site,
+                            "orientation": orientation,
+                            "range": [range_start, range_end],
+                            "timestamp_col": timestamp_col,
+                        },
+                        "outputs": {
+                            "interim_path": str(out_path)
+                        },
+                        "run": {
+                            "run_id": os.getenv("RUN_ID"),
+                            "sub_dir": sub_dir
+                        }
+                    }
+                )
+                logger.info(f"Ingest manifest written to [{man}].")
+            except Exception as exc:
+                logger.warning(f"Failed to write manifest [{man}]: {exc}")
+
+        # Volume traité pour la métrique
+        m["records"] = int(len(df_counter))
 
     logger.info("Data ingestion ended successfully.")
     sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except click.ClickException as e:
+        # click gère le message; on force un code retour 1
+        logger.error(str(e))
+        sys.exit(1)
