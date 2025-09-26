@@ -359,7 +359,6 @@ services:
     volumes:
       # Bind host for external exchanges
       - ./src/airflow/dags:/opt/airflow/dags
-      - ./src/airflow/dags_common:/opt/airflow/dags_common
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
