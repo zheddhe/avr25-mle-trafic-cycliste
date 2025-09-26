@@ -64,7 +64,7 @@ services:
     networks:
       - airflow_net
       - mlops_net
-    profiles: ["ml"]
+    profiles: ["ml", "all"]
 
   ml-features-dev:
     image: ml-features:dev
@@ -90,7 +90,7 @@ services:
     networks:
       - airflow_net
       - mlops_net
-    profiles: ["ml"]
+    profiles: ["ml", "all"]
 
   ml-models-dev:
     image: ml-models:dev
@@ -134,7 +134,7 @@ services:
       - mlflow_net
       - airflow_net
       - mlops_net
-    profiles: ["ml"]
+    profiles: ["ml", "all"]
 
   api-dev:
     image: api:dev
