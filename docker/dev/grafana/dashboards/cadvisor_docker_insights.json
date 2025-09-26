@@ -134,7 +134,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "count(count(container_last_seen) by (name))",
+          "expr": "count(count(container_last_seen{name!=\"\"}) by (name))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,

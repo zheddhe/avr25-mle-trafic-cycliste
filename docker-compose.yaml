@@ -140,6 +140,7 @@ services:
       DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
     networks:
       - airflow_net
+      - mlops_net
     profiles: ["all", "api"]
 
 # ========================
