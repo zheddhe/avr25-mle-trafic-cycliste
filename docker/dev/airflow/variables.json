@@ -8,14 +8,17 @@
   "container_repo_root": "/app",
   "airflow_repo_root": "/opt/airflow",
   "bike_dag_config": "/opt/airflow/config/bike_dag_config.json",
-  "airflow_uid": "0",
-  "airflow_gid": "0",
 
   "mlflow_tracking_uri": "http://mlflow-server:5000",
   "mlflow_s3_endpoint_url": "http://mlflow-minio:9000",
   "aws_access_key_id": "minio",
   "aws_secret_access_key": "minio123",
   "aws_default_region": "us-east-1",
+
+  "airflow_uid": 1000,
+  "airflow_gid": 1001,
+  
+  "pushgateway_addr": "monitoring-pushgateway:9091",
 
   "tz": "Europe/Paris"
 }

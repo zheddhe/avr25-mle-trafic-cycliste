@@ -46,10 +46,14 @@ AWS_ACCESS_KEY_ID = Variable.get("aws_access_key_id", default_var="minio")
 AWS_SECRET_ACCESS_KEY = Variable.get("aws_secret_access_key", default_var="minio123")
 AWS_DEFAULT_REGION = Variable.get("aws_default_region", default_var="us-east-1")
 
+# PushGateway configuration
+PUSHGATEWAY_ADDR = Variable.get("pushgateway_addr", default_var="pushgateway:9091")
+DISABLE_METRICS_PUSH = Variable.get("disable_metrics_push", default_var=0)
+
 # Airflow runtime configuration
 TZ = Variable.get("tz", default_var="Europe/Paris")
-AIRFLOW_UID = Variable.get("airflow_uid", default_var="0")
-AIRFLOW_GID = Variable.get("airflow_gid", default_var="0")
+AIRFLOW_UID = Variable.get("airflow_uid", default_var=1000)
+AIRFLOW_GID = Variable.get("airflow_gid", default_var=1001)
 
 # DAG parameters
 DAG_PARAMS: ParamsDict = ParamsDict(
@@ -100,8 +104,10 @@ def _make_env(sub_dir: str, run_id: str, window: Dict[str, float]) -> Dict[str, 
         "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
         "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
         "AWS_DEFAULT_REGION": AWS_DEFAULT_REGION,
-        "AIRFLOW_UID": str(AIRFLOW_UID),
-        "AIRFLOW_GID": str(AIRFLOW_GID),
+        "PUSHGATEWAY_ADDR": PUSHGATEWAY_ADDR,
+        "DISABLE_METRICS_PUSH": DISABLE_METRICS_PUSH,
+        "AIRFLOW_UID": AIRFLOW_UID,
+        "AIRFLOW_GID": AIRFLOW_GID,
     }
 
 
@@ -297,6 +303,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
             auto_remove=True,
+            user=f"{AIRFLOW_UID}:0",
             dag=dag,
         )
 
@@ -322,6 +329,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
             auto_remove=True,
+            user=f"{AIRFLOW_UID}:0",
             dag=dag,
         )
 
@@ -359,6 +367,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
             auto_remove=True,
+            user=f"{AIRFLOW_UID}:0",
             dag=dag,
         )
 

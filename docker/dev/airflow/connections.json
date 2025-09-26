@@ -2,7 +2,7 @@
   "api_dev": {
     "conn_type": "http",
     "schema": "http",
-    "host": "api_dev",
+    "host": "api-dev",
     "port": 8000,
     "login": "remy",
     "password": "remy"

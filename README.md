@@ -226,9 +226,9 @@ docker compose --profile api up -d
 
 # 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
 # profile ml : raw ingestion / features engineering / train and predict services
-docker compose --profile ml up ml_ingest_dev
-docker compose --profile ml up ml_features_dev
-docker compose --profile ml up ml_models_dev
+docker compose --profile ml up ml-ingest-dev
+docker compose --profile ml up ml-features-dev
+docker compose --profile ml up ml-models-dev
 
 # /!\ Stop everything (including networks but keep database volumes)
 docker compose --profile all down
@@ -274,7 +274,7 @@ echo \
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
-# Add current user authorization to docker engine
+# Add current user authorization to docker group
 sudo usermod -aG docker $USER
 newgrp docker
 ```

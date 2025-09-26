@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
 
 PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "pushgateway:9091")
-
+DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
 
 SEARCH_SPACES_XGB = {
     'n_estimators': Integer(300, 800),
@@ -560,7 +560,8 @@ def _push_metrics(step: str, duration_s: float, records: int, status: str, label
     pour segmenter par run.
     """
     # environment variable check to allow metric push
-    if os.getenv("DISABLE_METRICS_PUSH", "0") == "1":
+    if DISABLE_METRICS_PUSH == "1":
+        logger.info("Push metrics to gateway is disabled")
         return
 
     reg = CollectorRegistry()
@@ -581,12 +582,14 @@ def _push_metrics(step: str, duration_s: float, records: int, status: str, label
     g_dur.labels(step=step, status=status).set(float(duration_s))
     c_rec.labels(step=step).inc(int(max(records, 0)))
 
+    logger.info(f"Pusing metrics to [{PUSHGATEWAY_ADDR}]...")
     push_to_gateway(
         PUSHGATEWAY_ADDR,
         job="ml_pipeline",
         grouping_key=labels,
         registry=reg,
     )
+    logger.info("Metrics pushed to gateway")
 
 
 @contextmanager

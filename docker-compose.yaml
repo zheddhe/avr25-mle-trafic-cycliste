@@ -55,12 +55,16 @@ services:
       - --interim-name
       - ${INTERIM_NAME}
     restart: "no"
+    environment:
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
+      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
       - airflow_net
-    profiles: ["all", "ml"]
+      - mlops_net
+    profiles: ["ml"]
 
   ml-features-dev:
     image: ml-features:dev
@@ -77,12 +81,16 @@ services:
       - --timestamp-col
       - date_et_heure_de_comptage
     restart: "no"
+    environment:
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
+      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     networks:
       - airflow_net
-    profiles: ["all", "ml"]
+      - mlops_net
+    profiles: ["ml"]
 
   ml-models-dev:
     image: ml-models:dev
@@ -120,10 +128,13 @@ services:
       MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
+      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     networks:
       - mlflow_net
       - airflow_net
-    profiles: ["all", "ml"]
+      - mlops_net
+    profiles: ["ml"]
 
   api-dev:
     image: api:dev
@@ -294,7 +305,7 @@ services:
       AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
       _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME}
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD}
-    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+    user: "${AIRFLOW_UID:-50000}:0"
     depends_on:
       airflow-redis:
         condition: service_healthy
@@ -330,7 +341,9 @@ services:
       AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
       AIRFLOW__SMTP__SMTP_STARTTLS: "False"
       AIRFLOW__SMTP__SMTP_SSL: "False"
-    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+    user: "${AIRFLOW_UID:-1000}:0"
+    group_add:
+      - ${AIRFLOW_GID:-1001}
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -375,7 +388,9 @@ services:
       AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: 5
       AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 5
       AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 10
-    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+    user: "${AIRFLOW_UID:-1000}:0"
+    group_add:
+      - ${AIRFLOW_GID:-1001}
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -412,7 +427,9 @@ services:
       AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
       DOCKER_HOST: unix:///var/run/docker.sock
       AIRFLOW__CORE__WORKER_HEARTBEAT_INTERVAL: 10
-    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+    user: "${AIRFLOW_UID:-1000}:0"
+    group_add:
+      - ${AIRFLOW_GID:-1001}
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -446,7 +463,9 @@ services:
       AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
       AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
       AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-    user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
+    user: "${AIRFLOW_UID:-1000}:0"
+    group_add:
+      - ${AIRFLOW_GID:-1001}
     depends_on:
       airflow-init:
         condition: service_completed_successfully
