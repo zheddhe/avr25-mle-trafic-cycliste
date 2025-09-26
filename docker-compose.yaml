@@ -508,7 +508,7 @@ services:
     volumes:
       - monitoring-grafana-data:/var/lib/grafana
       - ./docker/dev/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./docker/dev/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./docker/dev/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - monitoring-prometheus
     networks:
