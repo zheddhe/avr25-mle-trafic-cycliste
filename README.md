@@ -150,17 +150,26 @@ Please refer to DagsHub remote setup actions. Example steps:
 - Git setup and cloning
 
 ```bash
+# Setup your local git and clone the repository
 git config --global user.name "your user"
-git config --global user.email "email@example.com" 
-git clone https://github.com/zheddhe/avr25-mle-trafic-cycliste.git
+git config --global user.email "your_email@example.com" 
+# Configure your VM public key on GitHub (using ed25519 key type)
+ssh-keygen -t ed25519 -C "your_email@example.com"
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+# Copy the content of your public key on GitHub > Settings > SSH and PGP keys > new key
+cat ~/.ssh/id_ed25519.pub
+# Check your connection
+ssh -T git@github.com
+
+# Finally clone the repository
+git clone git@github.com:zheddhe/avr25-mle-trafic-cycliste.git
 ```
 
 - DVC setup
 
 ```bash
-dvc remote add origin s3://dvc
-dvc remote modify origin endpointurl   https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
-
+# Setup your personal credentials for DagsHub
 dvc remote modify origin --local access_key_id [...]
 dvc remote modify origin --local secret_access_key [...]
 ```
