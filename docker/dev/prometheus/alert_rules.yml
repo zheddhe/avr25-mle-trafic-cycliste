@@ -1,20 +1,22 @@
 groups:
   - name: container_alerts
     rules:
-      - alert: ApiContainerDown
-        expr: up{job="api"} == 0
-        for: 1m
+      # utilisation du scraping processus API directement pour l'état
+      - alert: ApiServiceDown
+        expr: up{instance=~".*api-dev.*"} == 0
+        for: 30s
         labels:
           severity: critical
         annotations:
-          summary: "API container is down"
-          description: "The API container has been unreachable for 1 minutes."
+          summary: "API Service is down"
+          description: "The API Service has been unreachable for 30s."
 
-      - alert: ApiContainerRestartLoop
-        expr: rate(container_last_seen{job="cadvisor", name="avr25-mle-trafic-cycliste-api-dev-1"}[1m]) > 3
+      # utilisation du scraping processus API directement pour l'état
+      - alert: ApiServiceUnstable
+        expr: changes(up{instance=~".*api-dev.*"}[5m]) > 3
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "API container restart rate too high"
-          description: "The API container restarted more than 3 times in the last minute."
+          summary: "API Service is unstable"
+          description: "The API Service has been restarting more than 3 times in the last 30s"

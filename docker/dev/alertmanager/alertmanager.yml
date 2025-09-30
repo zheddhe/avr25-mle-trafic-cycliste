@@ -1,12 +1,37 @@
 global:
-  smtp_smarthost: 'airflow-mailhog:1025'
+  smtp_smarthost: 'monitoring-mailhog:1025'
   smtp_from: 'alerts@mlops.local'
   smtp_require_tls: false
 
 route:
   receiver: 'mailhog'
+  group_by: ['alertname']
+  group_wait: 30s         # attend 30s avant d’envoyer le premier mail
+  group_interval: 1m      # pas de nouveau mail avant 1 minute pour le même groupe
+  repeat_interval: 5m     # si l’alerte reste active, renvoyer un rappel toutes les 5 minutes
+  routes:
+    # 🔴 Critiques → envoi immédiat et répété plus souvent
+    - matchers:
+        - severity="critical"
+      receiver: 'critical-team'
+      group_wait: 5s
+      repeat_interval: 15s
+
+    # 🟠 Warnings → rappels moins fréquents
+    - matchers:
+        - severity="warning"
+      receiver: 'warning-team'
+      repeat_interval: 2h
 
 receivers:
   - name: 'mailhog'
     email_configs:
       - to: 'dev-team@mlops.local'
+
+  - name: 'critical-team'
+    email_configs:
+      - to: 'critical@mlops.local'
+
+  - name: 'warning-team'
+    email_configs:
+      - to: 'warning@mlops.local'
