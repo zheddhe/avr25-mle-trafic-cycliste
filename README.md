@@ -84,22 +84,36 @@ avr25-mle-trafic-cycliste/
 │   ├── dev/            <- Development setup
 │   │   ├── grafana/    <- Config for grafana (dashboard & provisionning)
 │   │   │   ├── dashboards/
+│   │   │   │   └── cadvisor_docker_insights.json
 │   │   │   └── provisioning/
 │   │   │       ├── dashboards.yaml
 │   │   │       └── datasource.yaml
 │   │   ├── prometheus/ <- Config for prometheus targets and general configuration
 │   │   │   └── prometheus.yml
-│   │   ├── airflow/    <- Config for airflow initialization (airflow-init)
+│   │   ├── airflow/    <- Config (business & technical) and DAGs for airflow
+│   │   │   ├── dags/
+│   │   │   │   ├── bike_traffic_orchestrator_dag.py
+│   │   │   │   ├── bike_traffic_pipeline_dag.py
+│   │   │   │   └── common
+│   │   │   │       └── utils.py
+│   │   │   ├── bike_dag_config.json
 │   │   │   ├── connections.json
 │   │   │   └── variables.json
-│   │   ├── mlflow/     <- Custom docker image for mlflow server
+│   │   ├── mlflow/     <- Custom docker image for mlflow service
 │   │   │   └── Dockerfile
-│   │   ├── api/
+│   │   ├── api/        <- Custom docker image for api service
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
-│   │   └── ml/
-│   │   │   ├── requirements.txt
-│   │   │   └── Dockerfile
+│   │   └── ml/         <- Custom docker images for ml pipeline services
+│   │       ├── ingest/
+│   │       │   ├── requirements.txt
+│   │       │   └── Dockerfile
+│   │       ├── features/
+│   │       │   ├── requirements.txt
+│   │       │   └── Dockerfile
+│   │       └── models/
+│   │           ├── requirements.txt
+│   │           └── Dockerfile
 │   └── prod/           <- Production setup
 │       └── ...
 └── tests/              
