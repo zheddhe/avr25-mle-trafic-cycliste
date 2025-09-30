@@ -2,7 +2,7 @@ groups:
   - name: container_alerts
     rules:
       - alert: ApiContainerDown
-        expr: up{container="api"} == 0
+        expr: up{job="api"} == 0
         for: 1m
         labels:
           severity: critical
@@ -11,7 +11,7 @@ groups:
           description: "The API container has been unreachable for 1 minutes."
 
       - alert: ApiContainerRestartLoop
-        expr: rate(container_restart_total{container="api"}[1m]) > 3
+        expr: rate(container_last_seen{job="cadvisor", name="avr25-mle-trafic-cycliste-api-dev-1"}[1m]) > 3
         for: 1m
         labels:
           severity: warning

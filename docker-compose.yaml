@@ -254,16 +254,6 @@ services:
 # ========================
 # AIRFLOW SERVICES
 # ========================
-  airflow-mailhog:
-    image: mailhog/mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    restart: always
-    networks:
-      - airflow_net
-    profiles: ["all", "airflow"]
-
   airflow-postgres:
     image: postgres:13
     environment:
@@ -540,11 +530,21 @@ services:
 
   monitoring-alertmanager:
     image: prom/alertmanager:v0.27.0
-    container_name: alertmanager
     volumes:
       - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
     ports:
       - "9093:9093"
     networks:
       - mlops_net
-      - airflow_net
+    profiles: ["all", "monitoring"]
+
+  monitoring-mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: always
+    networks:
+      - mlops_net
+    profiles: ["all", "monitoring"]
+
