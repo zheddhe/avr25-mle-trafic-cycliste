@@ -1,9 +1,0 @@
-{
-  "pools": [
-    {
-      "name": "sequential_counters",
-      "slots": 1,
-      "description": "Orchestrator: trigger child DAGs sequentially"
-    }
-  ]
-}

@@ -539,3 +539,14 @@ services:
     networks:
       - mlops_net
     profiles: ["monitoring", "all"]
+
+  monitoring-alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    volumes:
+      - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+    networks:
+      - mlops_net
+      - airflow_net

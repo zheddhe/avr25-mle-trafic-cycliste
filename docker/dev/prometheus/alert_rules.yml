@@ -1,0 +1,20 @@
+groups:
+  - name: container_alerts
+    rules:
+      - alert: ApiContainerDown
+        expr: up{container="api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API container is down"
+          description: "The API container has been unreachable for 1 minutes."
+
+      - alert: ApiContainerRestartLoop
+        expr: rate(container_restart_total{container="api"}[1m]) > 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API container restart rate too high"
+          description: "The API container restarted more than 3 times in the last minute."
