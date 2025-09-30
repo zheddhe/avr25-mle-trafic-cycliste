@@ -322,7 +322,7 @@ services:
         airflow pools set sequential_counters 2 'Orchestrator: trigger child DAGs sequentially'"
     restart: "no"
     volumes:
-      - ./docker/dev/airflow/:/opt/airflow/config/
+      - ./docker/dev/airflow/config/:/opt/airflow/config/
     profiles: ["all", "airflow"]
 
   airflow-webserver:
@@ -358,10 +358,10 @@ services:
     restart: always
     volumes:
       # Bind host for external exchanges
-      - ./src/airflow/dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      - ./docker/dev/airflow/dags:/opt/airflow/dags
+      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -404,11 +404,10 @@ services:
     restart: always
     volumes:
       # Bind host for external exchanges
-      - ./src/airflow/dags:/opt/airflow/dags
-      - ./src/airflow/dags_common:/opt/airflow/dags_common
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      - ./docker/dev/airflow/dags:/opt/airflow/dags
+      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -443,11 +442,10 @@ services:
     restart: always
     volumes:
       # Bind host for external exchanges
-      - ./src/airflow/dags:/opt/airflow/dags
-      - ./src/airflow/dags_common:/opt/airflow/dags_common
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      - ./docker/dev/airflow/dags:/opt/airflow/dags
+      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
