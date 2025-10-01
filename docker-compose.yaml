@@ -151,7 +151,7 @@ services:
     networks:
       - airflow_net
       - mlops_net
-    profiles: ["all", "api"]
+    profiles: ["all", "api", "ptf"]
 
 # ========================
 # MLFLOW SERVICES
@@ -172,7 +172,7 @@ services:
     restart: always
     networks:
       - mlflow_net
-    profiles: ["all", "mlflow"]
+    profiles: ["all", "mlflow", "ptf"]
 
   mlflow-minio:
     image: minio/minio
@@ -194,7 +194,7 @@ services:
     networks:
       - mlflow_net
       - mlops_net
-    profiles: ["all", "mlflow"]
+    profiles: ["all", "mlflow", "ptf"]
 
   mlflow-mc-init:
     image: minio/mc
@@ -210,7 +210,7 @@ services:
       "
     networks:
       - mlflow_net
-    profiles: ["all", "mlflow"]
+    profiles: ["all", "mlflow", "ptf"]
 
   mlflow-server:
     image: mlflow:dev
@@ -248,7 +248,7 @@ services:
     networks:
       - mlflow_net
       - mlops_net
-    profiles: ["all", "mlflow"]
+    profiles: ["all", "mlflow", "ptf"]
 
 # ========================
 # AIRFLOW SERVICES
@@ -268,7 +268,7 @@ services:
     restart: always
     networks:
       - airflow_net
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
     image: redis:latest
@@ -282,7 +282,7 @@ services:
     restart: always
     networks:
       - airflow_net
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
     image: apache/airflow:2.8.1
@@ -314,7 +314,7 @@ services:
     restart: "no"
     volumes:
       - ./docker/dev/airflow/config/:/opt/airflow/config/
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-webserver:
     image: apache/airflow:2.8.1
@@ -358,7 +358,7 @@ services:
     networks:
       - airflow_net
       - mlops_net
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-scheduler:
     image: apache/airflow:2.8.1
@@ -404,7 +404,7 @@ services:
     networks:
       - airflow_net
       - mlops_net
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-worker:
     image: apache/airflow:2.8.1
@@ -441,7 +441,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-flower:
     image: apache/airflow:2.8.1
@@ -463,7 +463,7 @@ services:
     restart: always
     networks:
       - airflow_net
-    profiles: ["all", "airflow"]
+    profiles: ["all", "airflow", "ptf"]
 
 # ========================
 # MONITORING SERVICES
@@ -481,7 +481,7 @@ services:
       - monitoring-prometheus-data:/prometheus
     networks:
       - mlops_net
-    profiles: ["monitoring", "all"]
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-grafana:
     image: grafana/grafana:11.2.0
@@ -501,7 +501,7 @@ services:
       - monitoring-prometheus
     networks:
       - mlops_net
-    profiles: ["monitoring", "all"]
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
@@ -516,7 +516,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mlops_net
-    profiles: ["monitoring", "all"]
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-pushgateway:
     image: prom/pushgateway:v1.9.0
@@ -524,7 +524,7 @@ services:
       - "9091:9091"
     networks:
       - mlops_net
-    profiles: ["monitoring", "all"]
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -534,7 +534,7 @@ services:
       - "9093:9093"
     networks:
       - mlops_net
-    profiles: ["all", "monitoring"]
+    profiles: ["all", "monitoring", "ptf"]
 
   monitoring-mailhog:
     image: mailhog/mailhog
@@ -544,5 +544,5 @@ services:
     restart: always
     networks:
       - mlops_net
-    profiles: ["all", "monitoring"]
+    profiles: ["all", "monitoring", "ptf"]
 

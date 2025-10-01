@@ -265,21 +265,35 @@ Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/wind
 
 > NB : all these unitary action are consolidated in a Makefile
 
+| Target       | Description                                                                 |
+|--------------|-----------------------------------------------------------------------------|
+| bootstrap    | Initialise les dépendances bootstrap nécessaires                            |
+| repo_setup   | Configure le repo DVC S3 (dagshub) et les credentials GitHub                |
+| rebuild_full | Recrée les images docker et relance les services complètement               |
+| start        | Démarre les services docker du profil choisi (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`) |
+| stop         | Stoppe les services docker du profil choisi (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`) |
+| sim_api_loop | Simule un arrêt/relance de l'API 10 fois à intervalle de 5s                 |
+| sim_api_down | Simule un arrêt temporaire de l'API pendant 2 minutes                       |
+| clean_full   | Nettoie les artefacts (images/volumes/networks)                             |
+| help         | Affiche cette aide                                                          |
+
 ```bash
 # 1) Init and build the docker images
 docker compose --profile all build
 
 # 2) Start all the backends services : 
 # profile mlflow : server / postgres / minio / mc-init in background
-docker compose --profile mlflow up -d
 # profile airflow : webserver / worker / scheduler / init / postgres / redis / mailhog in background
-docker compose --profile airflow up -d
 # profile monitoring : grafana / prometheus / cadvisor / node-exporter
+docker compose --profile mlflow up -d
+docker compose --profile airflow up -d
 docker compose --profile monitoring up -d
 
 # 3) Start all the permanent business services (ie. the API) in background
 # profile api : data api service
 docker compose --profile api up -d
+
+# NB : profile ptf (as for platform) = all the profile above combined (mlflow/airflow/monitoring/api)
 
 # 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
 # profile ml : raw ingestion / features engineering / train and predict services

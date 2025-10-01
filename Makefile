@@ -25,19 +25,19 @@ repo_setup: ## Configure le repo DVC S3 (dagshub) et les credentials github
 rebuild_full: ## Recrée les images docker et relance les services complètement
 	docker compose --profile all build
 	docker compose --profile all down
-	docker compose --profile all up -d
+	docker compose --profile ptf up -d
 
 PROFILE ?= all
 
-start: ## Démarre les services docker du profil choisi (PROFILE=all/mlflow/airflow/monitoring/api)
+start: ## Démarre les services docker du profil choisi (PROFILE=all/mlflow/airflow/monitoring/api/ptf)
 	@echo "==> Starting docker services with profile [$(PROFILE)]"
 	docker compose --profile $(PROFILE) start
 
-stop: ## Stoppe les services docker du profil choisi (PROFILE=all/mlflow/airflow/monitoring/api)
+stop: ## Stoppe les services docker du profil choisi (PROFILE=all/mlflow/airflow/monitoring/api/ptf)
 	@echo "==> Stopping docker services with profile [$(PROFILE)]"
 	docker compose --profile $(PROFILE) stop
 
-sim_api_reboot: ## simule un arrêt relance de l'API 10 fois a intervalle de 5s
+sim_api_loop: ## Simule un arrêt relance de l'API 10 fois a intervalle de 5s
 	@echo "==> Simulating API restart failure loop (10 restarts, 5s interval)"
 	for i in {1..10}; do \
 		echo "[restart $$i] stopping api-dev..."; \
@@ -50,7 +50,7 @@ sim_api_reboot: ## simule un arrêt relance de l'API 10 fois a intervalle de 5s
 	done
 	@echo "==> Simulation finished"
 
-sim_api_down: ## simule un arrêt temporaire de l'API pendant 2 minutes
+sim_api_down: ## Simule un arrêt temporaire de l'API pendant 2 minutes
 	@echo "==> Simulating API down for 2 min"
 	docker compose stop api-dev
 	sleep 120
