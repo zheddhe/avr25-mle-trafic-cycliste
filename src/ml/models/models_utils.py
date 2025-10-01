@@ -552,15 +552,13 @@ def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
     }
 
 
-def _push_metrics(step: str, duration_s: float, records: int, status: str, labels: dict):
+def _push_metrics(step: str, duration_s: float,
+                  records: int, status: str, labels: dict,
+                  site: str | None = None, orientation: str | None = None):
     """
-    Envoie:
-      - pipeline_task_duration_seconds{step, status}
-      - pipeline_new_records_total{step} (incrément)
-    Les 'labels' (ex: dag, task, run_id, site) sont passés en grouping_key
-    pour segmenter par run.
+    Push pipeline metrics (duration, records) to Pushgateway with
+    site/orientation in grouping key if available.
     """
-    # environment variable check to allow metric push
     if DISABLE_METRICS_PUSH == "1":
         logger.info("Push metrics to gateway is disabled")
         return
@@ -568,26 +566,42 @@ def _push_metrics(step: str, duration_s: float, records: int, status: str, label
     reg = CollectorRegistry()
 
     g_dur = Gauge(
-        "pipeline_task_duration_seconds",
+        "bike_task_duration_seconds",
         "Durée d'une étape batch",
-        ["step", "status"],
+        ["task", "status", "site", "orientation"],
         registry=reg,
     )
     c_rec = Counter(
-        "pipeline_new_records_total",
+        "bike_records",
         "Nouveaux enregistrements traités",
-        ["step"],
+        ["task", "site", "orientation"],
         registry=reg,
     )
 
-    g_dur.labels(step=step, status=status).set(float(duration_s))
-    c_rec.labels(step=step).inc(int(max(records, 0)))
+    g_dur.labels(
+        task=step, status=status,
+        site=site or "NA",
+        orientation=orientation or "NA"
+    ).set(float(duration_s))
+    c_rec.labels(
+        task=step,
+        site=site or "NA",
+        orientation=orientation or "NA"
+    ).inc(int(max(records, 0)))
 
-    logger.info(f"Pusing metrics to [{PUSHGATEWAY_ADDR}]...")
+    grouping_key = {
+        **labels,
+        "site": site or "NA",
+        "orientation": orientation or "NA",
+    }
+    logger.info(
+        f"Pushing metrics to [{PUSHGATEWAY_ADDR}] "
+        f"with grouping_key={grouping_key}"
+    )
     push_to_gateway(
         PUSHGATEWAY_ADDR,
-        job="ml_pipeline",
-        grouping_key=labels,
+        job="bike-traffic",
+        grouping_key=grouping_key,
         registry=reg,
     )
     logger.info("Metrics pushed to gateway")
@@ -632,12 +646,22 @@ def push_once(step: str, records: int, duration_s: float, status: str, labels: d
 
 
 def push_business_metrics(
-    site: str, orientation: str,
-    rmse: float, mape: float,
-    y_last: float, yhat_last: float,
+    site: str,
+    orientation: str,
+    rmse: float,
+    mape: float,
+    r2: float,
+    n_obs_true: int,
+    n_obs_pred: int,
     last_ts: datetime,
+    day_offset: int,
 ) -> None:
-    # environment variable check to allow metric push
+    """
+    Push business KPIs for TEST split:
+      - RMSE / MAPE / R2
+      - counts of true/pred observations
+      - freshness (real) and simulated freshness (dayX)
+    """
     if DISABLE_METRICS_PUSH == "1":
         logger.info("Push metrics to gateway is disabled")
         return
@@ -646,24 +670,56 @@ def push_business_metrics(
         last_ts = last_ts.replace(tzinfo=timezone.utc)
 
     reg = CollectorRegistry()
+
     Gauge(
-        'bike_rmse', 'RMSE', ['site', 'orientation'], registry=reg
+        "bike_rmse",
+        "RMSE (test)",
+        ["site", "orientation"],
+        registry=reg
     ).labels(site, orientation).set(rmse)
     Gauge(
-        'bike_mape', 'MAPE_%', ['site', 'orientation'], registry=reg
+        "bike_mape",
+        "MAPE_% (test)",
+        ["site", "orientation"],
+        registry=reg
     ).labels(site, orientation).set(mape)
     Gauge(
-        'bike_y_last', 'Observed last', ['site', 'orientation'], registry=reg
-    ).labels(site, orientation).set(y_last)
+        "bike_r2",
+        "R2 (test)",
+        ["site", "orientation"],
+        registry=reg
+    ).labels(site, orientation).set(r2)
+
+    g_cnt = Gauge(
+        "bike_obs_count",
+        "Observations count (test)",
+        ["site", "orientation", "kind"],
+        registry=reg
+    )
+    g_cnt.labels(site, orientation, "true").set(n_obs_true)
+    g_cnt.labels(site, orientation, "pred").set(n_obs_pred)
+
+    # Freshness (réelle) - conservé
+    freshness_days = (datetime.now(timezone.utc) - last_ts).total_seconds() / 86400.0
     Gauge(
-        'bike_yhat_last', 'Predicted last', ['site', 'orientation'], registry=reg
-    ).labels(site, orientation).set(yhat_last)
+        "bike_data_freshness_days",
+        "Data freshness (real, days)",
+        ["site", "orientation"],
+        registry=reg
+    ).labels(site, orientation).set(freshness_days)
+
+    # Freshness "simulée" via dayX (décalage)
     Gauge(
-        'bike_last_ts_epoch', 'Last timestamp epoch', ['site', 'orientation'], registry=reg
-    ).labels(site, orientation).set(int(last_ts.timestamp()))
+        "bike_data_day_offset_days",
+        "Data anchor offset (sim, days)",
+        ["site", "orientation"],
+        registry=reg
+    ).labels(site, orientation).set(float(day_offset))
 
     push_to_gateway(
         PUSHGATEWAY_ADDR,
-        job='bike-traffic',
-        registry=reg
+        job="bike-traffic",
+        grouping_key={"site": site, "orientation": orientation},
+        registry=reg,
     )
+    logger.info("Business metrics pushed to gateway")

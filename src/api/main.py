@@ -224,7 +224,7 @@ app = FastAPI(
 instrumentator = Instrumentator(
     should_group_status_codes=True,
     should_ignore_untemplated=True,
-    excluded_handlers={"/metrics"},
+    excluded_handlers=["/metrics"],
 )
 instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 

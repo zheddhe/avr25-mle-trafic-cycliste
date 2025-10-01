@@ -121,6 +121,8 @@ def main(
         "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.features"),
         "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
+        "site": os.getenv("SITE", "NA"),
+        "orientation": os.getenv("ORIENTATION", "NA"),
     }
 
     with track_pipeline_step("features", labels) as m:

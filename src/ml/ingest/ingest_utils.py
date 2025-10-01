@@ -56,27 +56,31 @@ def _push_metrics(step: str, duration_s: float, records: int, status: str, label
     reg = CollectorRegistry()
 
     g_dur = Gauge(
-        "pipeline_task_duration_seconds",
-        "Durée d'une étape batch",
-        ["step", "status"],
+        "bike_task_duration_seconds",
+        "Batch step duration (seconds)",
+        ["task", "status", "site", "orientation"],
         registry=reg,
     )
     c_rec = Counter(
-        "pipeline_new_records_total",
-        "Nouveaux enregistrements traités",
-        ["step"],
+        "bike_records",
+        "Processed records",
+        ["task", "site", "orientation"],
         registry=reg,
     )
 
-    g_dur.labels(step=step, status=status).set(float(duration_s))
-    c_rec.labels(step=step).inc(int(max(records, 0)))
+    site = labels.get("site", "NA")
+    orientation = labels.get("orientation", "NA")
 
+    g_dur.labels(step, status, site, orientation).set(float(duration_s))
+    c_rec.labels(step, site, orientation).inc(int(max(records, 0)))
+
+    grouping_key = {**labels, "site": site, "orientation": orientation}
     logger.info(f"Pusing metrics to [{PUSHGATEWAY_ADDR}]...")
     push_to_gateway(
         PUSHGATEWAY_ADDR,
-        job="ml_pipeline",
-        grouping_key=labels,
-        registry=reg,
+        job="bike-traffic",
+        grouping_key=grouping_key,
+        registry=reg
     )
     logger.info("Metrics pushed to gateway")
 

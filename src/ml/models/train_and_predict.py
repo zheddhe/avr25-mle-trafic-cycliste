@@ -174,6 +174,8 @@ def main(
         "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.models"),
         "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
+        "site": os.getenv("SITE", "NA"),
+        "orientation": os.getenv("ORIENTATION", "NA"),
     }
 
     with track_pipeline_step("models", labels) as m:
@@ -261,9 +263,11 @@ def main(
             mape = float(
                 np.mean(np.abs((y_true - y_pred) / np.clip(np.abs(y_true), 1e-6, None))) * 100
             )
+            r2 = float(report["metrics"]["test"].get("R2", np.nan))
 
-            y_last = float(y_true[-1]) if y_true.size else float("nan")
-            yhat_last = float(y_pred[-1]) if y_pred.size else float("nan")
+            n_true = int(y_true.size)
+            n_pred = int(y_pred.size)
+            day_offset = int(os.getenv("DAY_OFFSET", "0"))
 
             # Dernier timestamp connu côté données
             last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
@@ -275,13 +279,16 @@ def main(
                 orientation=orientation,
                 rmse=rmse,
                 mape=mape,
-                y_last=y_last,
-                yhat_last=yhat_last,
-                last_ts=last_ts,
+                r2=r2,
+                n_obs_true=n_true,
+                n_obs_pred=n_pred,
+                last_ts=last_ts,           # fraîcheur “réelle”
+                day_offset=day_offset,     # fraîcheur “simulée” (dayX)
             )
             logger.info(
                 f"Pushed business metrics to Pushgateway: site={site}, ori={orientation}, "
-                f"rmse={rmse:.3f}, mape={mape:.2f}, y_last={y_last}, yhat_last={yhat_last}"
+                f"RMSE={rmse:.3f}, MAPE={mape:.2f}, R²={r2}, "
+                f"last_ts={last_ts}, day_offset={day_offset}"
             )
         except Exception as exc:
             logger.warning(f"Failed to push business metrics: {exc}")

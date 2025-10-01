@@ -228,7 +228,13 @@ def _prepare_args_common(
     ti.xcom_push(key="TEST_RATIO", value=str(counter.modeling.test_ratio))
     ti.xcom_push(key="GRID_ITER", value=str(counter.modeling.grid_iter))
 
-    return _make_env(effective_sub_dir, run_id, window)
+    env = _make_env(effective_sub_dir, run_id, window)
+    env.update({
+        "SITE": counter.site,
+        "ORIENTATION": counter.orientation,
+        "DAY_OFFSET": str(delta_days),  # <- dayX simulé
+    })
+    return env
 
 
 def _prepare_args_callable(mode: str):
