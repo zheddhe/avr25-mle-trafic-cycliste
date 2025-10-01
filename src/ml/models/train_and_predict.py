@@ -18,6 +18,7 @@ from src.ml.models.models_utils import (
     train_timeseries_model,
     save_artefacts,
     track_pipeline_step,
+    push_business_metrics
 )
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
@@ -26,7 +27,6 @@ from src.ml.models.mlflow_tracking import (
     log_model_with_signature,
     log_local_artifacts,
 )
-from src.ml.metrics.business_metrics import push_business_metrics
 
 
 # -------------------------------------------------------------------
