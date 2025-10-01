@@ -1,0 +1,22 @@
+groups:
+  - name: container_alerts
+    rules:
+      # utilisation du scraping processus API directement pour l'état
+      - alert: ApiServiceDown
+        expr: up{instance=~".*api-dev.*"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "API Service is down"
+          description: "The API Service has been unreachable for 30s."
+
+      # utilisation du scraping processus API directement pour l'état
+      - alert: ApiServiceUnstable
+        expr: changes(up{instance=~".*api-dev.*"}[5m]) > 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API Service is unstable"
+          description: "The API Service has been restarting more than 3 times in the last 30s"

@@ -253,16 +253,6 @@ services:
 # ========================
 # AIRFLOW SERVICES
 # ========================
-  airflow-mailhog:
-    image: mailhog/mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    restart: always
-    networks:
-      - airflow_net
-    profiles: ["all", "airflow"]
-
   airflow-postgres:
     image: postgres:13
     environment:
@@ -323,7 +313,7 @@ services:
         airflow pools set sequential_counters 2 'Orchestrator: trigger child DAGs sequentially'"
     restart: "no"
     volumes:
-      - ./docker/dev/airflow/:/opt/airflow/config/
+      - ./docker/dev/airflow/config/:/opt/airflow/config/
     profiles: ["all", "airflow"]
 
   airflow-webserver:
@@ -358,10 +348,12 @@ services:
       retries: 5
     restart: always
     volumes:
-      - ./src/airflow/dags:/opt/airflow/dags
+      # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      - ./docker/dev/airflow/dags:/opt/airflow/dags
+      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
@@ -402,11 +394,12 @@ services:
       retries: 5
     restart: always
     volumes:
-      - ./src/airflow/dags:/opt/airflow/dags
-      - ./src/airflow/dags_common:/opt/airflow/dags_common
+      # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      - ./docker/dev/airflow/dags:/opt/airflow/dags
+      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
@@ -439,11 +432,12 @@ services:
       retries: 5
     restart: always
     volumes:
-      - ./src/airflow/dags:/opt/airflow/dags
-      - ./src/airflow/dags_common:/opt/airflow/dags_common
+      # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
-      - ./src/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      - ./docker/dev/airflow/dags:/opt/airflow/dags
+      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
@@ -531,3 +525,24 @@ services:
     networks:
       - mlops_net
     profiles: ["monitoring", "all"]
+
+  monitoring-alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+    networks:
+      - mlops_net
+    profiles: ["all", "monitoring"]
+
+  monitoring-mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: always
+    networks:
+      - mlops_net
+    profiles: ["all", "monitoring"]
+
