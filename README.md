@@ -218,46 +218,13 @@ uvicorn src.api.main:app --reload --port 10000
 >
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 
-```bash
-### NB : all these unitary action are consolidated in a Makefile
-
-# 1) Init and build the docker images
-docker compose --profile all build
-
-# 2) Start all the backends services : 
-# profile mlflow : server / postgres / minio / mc-init in background
-docker compose --profile mlflow up -d
-# profile airflow : webserver / worker / scheduler / init / postgres / redis / mailhog in background
-docker compose --profile airflow up -d
-# profile monitoring : grafana / prometheus / cadvisor / node-exporter
-docker compose --profile monitoring up -d
-
-# 3) Start all the permanent business services (ie. the API) in background
-# profile api : data api service
-docker compose --profile api up -d
-
-# 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
-# profile ml : raw ingestion / features engineering / train and predict services
-docker compose --profile ml up ml-ingest-dev
-docker compose --profile ml up ml-features-dev
-docker compose --profile ml up ml-models-dev
-
-# /!\ Stop everything (including networks but keep database volumes)
-docker compose --profile all down
-
-# /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
-docker compose --profile all down -v --rmi all && docker system prune -f
-```
-
-
-
-### 1. 🐳 Container manager
+### 1. 🐳 Service containerization
 
 We use **Docker** to simulate our production environment.
 
 #### Docker on virtual machine with Ubuntu distribution
 
-It is recommended to use a docker engine directly on an Ubuntu Virtual Machine, here are
+> It is the recommended setup to use a docker engine directly on an Ubuntu Virtual Machine, here are
 the installation steps
 
 ```bash
@@ -288,15 +255,69 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-#### (alternative) Local Docker Desktop with a virtual machine hypervisor
+#### (optional) Local Docker Desktop with a virtual machine hypervisor
+
+>As an alternative option, docker desktop can be used with additional support during development phase
 
 Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
+
+#### Exploitation commands
+
+> NB : all these unitary action are consolidated in a Makefile
+
+```bash
+# 1) Init and build the docker images
+docker compose --profile all build
+
+# 2) Start all the backends services : 
+# profile mlflow : server / postgres / minio / mc-init in background
+docker compose --profile mlflow up -d
+# profile airflow : webserver / worker / scheduler / init / postgres / redis / mailhog in background
+docker compose --profile airflow up -d
+# profile monitoring : grafana / prometheus / cadvisor / node-exporter
+docker compose --profile monitoring up -d
+
+# 3) Start all the permanent business services (ie. the API) in background
+# profile api : data api service
+docker compose --profile api up -d
+
+# 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
+# profile ml : raw ingestion / features engineering / train and predict services
+docker compose --profile ml up ml-ingest-dev
+docker compose --profile ml up ml-features-dev
+docker compose --profile ml up ml-models-dev
+
+# /!\ Stop everything (including networks but keep database volumes)
+docker compose --profile all down
+
+# /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
+docker compose --profile all down -v --rmi all && docker system prune -f
+```
 
 ### 2. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
 splits, predictions, metrics, and hyperparameters).
+
+#### DagsHub remote service
+
+```bash
+### Configure environment variables
+export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
+export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
+export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
+```
+
+#### Local service
+
+```bash
+### Configure environment variables
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
+export AWS_ACCESS_KEY_ID=minio
+export AWS_SECRET_ACCESS_KEY=minio123
+```
 
 ### 3. 🧩 Multi-counter orchestration
 
@@ -324,24 +345,16 @@ splits, predictions, metrics, and hyperparameters).
   - Every day: for each configured counter, trigger `init` then `daily`.
   - The `init` run is cheap if already done (short-circuited).
 
-#### DagsHub remote service
+### 4. 🧩 Monitoring and alerting
 
-```bash
-### Configure environment variables
-export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
-export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
-```
+The project has defined :
 
-#### Local service
-
-```bash
-### Configure environment variables
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
-export AWS_ACCESS_KEY_ID=minio
-export AWS_SECRET_ACCESS_KEY=minio123
-```
+- Grafana dashboards relying on prometheus collected metrics to
+  - Monitor the system itself (active container/restarts/memory usage/cpu usage)
+  - [ongoing] Monitor the business metrics
+- Alerts that can trigger email notification when detecting
+  - API service down for a configurable period of time (the core of our business service)
+  - API service is unstable (restarting in loop)
 
 ## 🤝 Team collaboration
 
