@@ -13,7 +13,7 @@
         "type": "query",
         "label": "Counter ID",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values({job=\"bike-traffic\"}, \"site\")",
+        "query": "label_values(bike_mape, site)",
         "includeAll": false,
         "multi": false,
         "refresh": 1
