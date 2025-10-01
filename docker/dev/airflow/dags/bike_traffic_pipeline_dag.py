@@ -297,8 +297,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
@@ -326,8 +325,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "date_et_heure_de_comptage",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
@@ -367,8 +365,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='GRID_ITER') }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
