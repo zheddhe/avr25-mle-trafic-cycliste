@@ -232,12 +232,20 @@ def main(
         )
 
         # MLflow
+        site_short = os.getenv("SITE_SHORT")
+        if not site_short:
+            site_short = sub_dir
+            logger.warning(
+                f"SITE_SHORT not set, fallback to sub_dir=[{sub_dir}] "
+                "to construct registration model name")
+
         tags = {
             "counter.subdir": sub_dir,
+            "site.short": site_short,
             "model.family": "XGBRegressor",
         }
         with start_run(
-            experiment_name=sub_dir,
+            experiment_name=site_short,
             run_name=os.path.basename(processed_path),
             tags=tags,
         ):
@@ -250,24 +258,49 @@ def main(
                 pipe_model=report["pipe_model"],
                 sample_input_df=x_sample,
                 artifact_path="model_pipeline",
-                registered_name=f"{sub_dir}-model",
+                registered_name=f"{site_short}-model",
             )
             log_local_artifacts(sub_dir)
 
+        # Automatic Model Registry Promotion
+        try:
+            model_name = f"{site_short}-model"
+            client = MlflowClient()
+
+            # Retrieve versions
+            versions = client.search_model_versions(f"name='{model_name}'")
+            if not versions:
+                logger.warning(f"No version found for model [{model_name}].")
+            else:
+                latest = max(versions, key=lambda v: int(v.version))
+                try:
+                    client.set_registered_model_alias(
+                        model_name, "prod", latest.version
+                    )
+                except Exception as exc:
+                    logger.warning(f"Alias 'prod' undefined: {exc}")
+                logger.info(
+                    f"Model [{model_name}] version {latest.version} "
+                    f"promoted to production."
+                )
+        except Exception as exc:
+            logger.warning(f"Model promotion failed: {exc}")
+
         # Métriques métier → Pushgateway
         try:
-            # y_test / y_test_pred attendus dans report
-            y_true = np.asarray(report["y_test"]).reshape(-1)
-            y_pred = np.asarray(report["y_test_pred"]).reshape(-1)
+            y_train_pred = np.asarray(report["y_train_pred"]).reshape(-1)
+            y_test = np.asarray(report["y_test"]).reshape(-1)
+            y_test_pred = np.asarray(report["y_test_pred"]).reshape(-1)
 
-            rmse = float(np.sqrt(np.mean((y_pred - y_true) ** 2)))
+            rmse = float(np.sqrt(np.mean((y_test_pred - y_test) ** 2)))
             mape = float(
-                np.mean(np.abs((y_true - y_pred) / np.clip(np.abs(y_true), 1e-6, None))) * 100
+                np.mean(np.abs((y_test - y_test_pred) / np.clip(np.abs(y_test), 1e-6, None))) * 100
             )
             r2 = float(report["metrics"]["test"].get("R2", np.nan))
 
-            n_true = int(y_true.size)
-            n_pred = int(y_pred.size)
+            # le nombre d'observation connues (train) et inconnue (test) prédites
+            n_true = int(y_train_pred.size)
+            n_pred = int(y_test_pred.size)
             day_offset = int(os.getenv("DAY_OFFSET", "0"))
 
             # Dernier timestamp connu côté données
@@ -324,49 +357,6 @@ def main(
                 logger.info(f"Models manifest written to [{man}]")
             except Exception as exc:
                 logger.warning(f"Failed to write models manifest [{man}]: {exc}")
-
-        # Automatic Model Registry Promotion (safe initialization if needed)
-        try:
-            model_name = f"{sub_dir}-model"
-            client = MlflowClient()
-
-            # Ensure the registered model exists
-            try:
-                client.get_registered_model(model_name)
-            except Exception:
-                try:
-                    client.create_registered_model(model_name)
-                    logger.info(f"Created new registered model [{model_name}].")
-                except Exception as exc:
-                    logger.warning(
-                        f"Failed to create registered model [{model_name}]: {exc}"
-                    )
-                    raise  # No point continuing without registry entry
-
-            # Retrieve versions
-            versions = client.search_model_versions(f"name='{model_name}'")
-            if not versions:
-                logger.warning(f"No version found for model [{model_name}].")
-            else:
-                latest = max(versions, key=lambda v: int(v.version))
-                client.transition_model_version_stage(
-                    name=model_name,
-                    version=latest.version,
-                    stage="Production",
-                    archive_existing_versions=True,
-                )
-                try:
-                    client.set_registered_model_alias(
-                        model_name, "prod", latest.version
-                    )
-                except Exception as exc:
-                    logger.warning(f"Alias 'prod' undefined: {exc}")
-                logger.info(
-                    f"Model [{model_name}] version {latest.version} "
-                    f"promoted to production."
-                )
-        except Exception as exc:
-            logger.warning(f"Model promotion failed: {exc}")
 
         # Volume traité pour la métrique: lignes de df
         m["records"] = int(len(df))

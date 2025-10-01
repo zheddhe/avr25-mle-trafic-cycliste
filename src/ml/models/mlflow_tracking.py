@@ -115,8 +115,8 @@ def log_model_with_signature(
         logger.warning("Signature inference failed: %s", exc)
         signature = None
 
-    # Heuristic: only try to register if a registry URI is configured
-    reg_enabled = bool(os.getenv("MLFLOW_REGISTRY_URI"))
+    # Heuristic: only try to register if a tracking URI is configured
+    reg_enabled = bool(os.getenv("MLFLOW_TRACKING_URI"))
     reg_name = registered_name if reg_enabled else None
 
     try:
