@@ -41,16 +41,19 @@ def write_manifest(path: str, payload: dict) -> None:
 
 def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
     """
-    Déduit (site, orientation) à partir d'un nom de sous-dossier de type
-    'Sebastopol_N-S_mlops' -> ('Sebastopol', 'N-S').
+    Déduit (site, orientation) à partir d'un nom de sous-dossier.
+    On ne garde que les deux premiers segments séparés par '_',
+    tout le reste est ignoré.
+
+    Exemples :
+        'Sebastopol_N-S_mlops' -> ('Sebastopol', 'N-S')
+        'Sebastopol_N-S_extra_suffix' -> ('Sebastopol', 'N-S')
+        'Sebastopol' -> ('Sebastopol', 'NA')
     """
-    base = sub_dir
-    if base.endswith("_mlops"):
-        base = base[: -len("_mlops")]
-    parts = base.split("_", 1)
-    if len(parts) == 2:
+    parts = sub_dir.split("_")
+    if len(parts) >= 2:
         return parts[0], parts[1]
-    return base, "NA"
+    return parts[0], "NA"
 
 
 # -------------------------------------------------------------------

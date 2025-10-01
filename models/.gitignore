@@ -1,5 +1,5 @@
 /Sebastopol_N-S_dvcrepro
 /Sebastopol_N-S_mlops
 /Sebastopol_N-S_integration
-/Sebastopol_N-S_integration_day1
-/Sebastopol_N-S_integration_day2
+/Sebastopol_N-S_airflow*
+/Sebastopol_S-N_airflow*

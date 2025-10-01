@@ -13,7 +13,7 @@
         "type": "query",
         "label": "Site",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(bike_yesterday_volume, site)",
+        "query": "label_values(bike_mape, site)",
         "includeAll": false,
         "multi": false,
         "refresh": 1
@@ -23,7 +23,7 @@
         "type": "query",
         "label": "Orientation",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(bike_yesterday_volume{site=\"$site\"}, orientation)",
+        "query": "label_values(bike_mape{site=\"$site\"}, orientation)",
         "includeAll": false,
         "multi": false,
         "refresh": 1
