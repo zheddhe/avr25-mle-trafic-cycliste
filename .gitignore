@@ -209,18 +209,3 @@ __marimo__/
 # mlflow
 mlruns
 logs
-# --- local artefacts (gardés par DVC uniquement) ---
-/data/**
-!/data/**/*.dvc
-!/data/**/.gitkeep
-
-/models/**
-!/models/**/.gitkeep
-
-/logs/**
-
-# autres fichiers locaux
-.env
-*.pkl
-*.parquet
-*.ipynb_checkpoints/
