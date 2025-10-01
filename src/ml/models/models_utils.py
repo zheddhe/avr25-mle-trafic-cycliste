@@ -25,7 +25,9 @@ from sklearn.metrics import (
     r2_score,
 )
 from contextlib import contextmanager
-from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
+from prometheus_client import (
+    CollectorRegistry, Gauge, Counter, push_to_gateway, pushadd_to_gateway,
+)
 
 PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
 DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
@@ -700,7 +702,7 @@ def push_business_metrics(
         registry=reg
     ).labels(site, orientation).set(float(day_offset))
 
-    push_to_gateway(
+    pushadd_to_gateway(
         PUSHGATEWAY_ADDR,
         job="bike-traffic",
         grouping_key={"site": site, "orientation": orientation},

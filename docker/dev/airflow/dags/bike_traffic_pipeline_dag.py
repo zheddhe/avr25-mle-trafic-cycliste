@@ -124,7 +124,7 @@ def _read_manifests(**ctx) -> Dict[str, Any]:
     run_id: str = ti.xcom_pull(key="RUN_ID", task_ids="etl.prepare_args")
     sub_dir: str = ti.xcom_pull(key="SUB_DIR", task_ids="etl.prepare_args")
 
-    artifact_root = Path(HOST_REPO) / "data" / "runs" / sub_dir / run_id
+    artifact_root = Path(HOST_REPO) / "logs" / "runs" / sub_dir / run_id
 
     def _try_load(p: Path):
         try:
@@ -231,7 +231,7 @@ def _prepare_args_common(
     env = _make_env(effective_sub_dir, run_id, window)
     env.update({
         "SITE": counter.site,
-        "SITE_SHORT": counter.site,
+        "SITE_SHORT": counter_id,
         "ORIENTATION": counter.orientation,
         "DAY_OFFSET": str(delta_days),  # <- dayX simulé
     })
