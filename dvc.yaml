@@ -17,7 +17,7 @@ stages:
         --interim-name ${files.interim}
       deps:
         - src/ml/ingest/import_raw_data.py
-        - src/ml/ingest/data_utils.py
+        - src/ml/ingest/ingest_utils.py
         - ${data.raw_csv}
       outs:
         - data/interim/${item.subdir}

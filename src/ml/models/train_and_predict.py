@@ -10,13 +10,15 @@ from typing import Optional
 
 import click
 import pandas as pd
+import numpy as np
 import pytz
 from mlflow.tracking import MlflowClient
 
 from src.ml.models.models_utils import (
     train_timeseries_model,
     save_artefacts,
-    track_pipeline_step
+    track_pipeline_step,
+    push_business_metrics
 )
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
@@ -35,6 +37,23 @@ def write_manifest(path: str, payload: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
+    """
+    Déduit (site, orientation) à partir d'un nom de sous-dossier.
+    On ne garde que les deux premiers segments séparés par '_',
+    tout le reste est ignoré.
+
+    Exemples :
+        'Sebastopol_N-S_mlops' -> ('Sebastopol', 'N-S')
+        'Sebastopol_N-S_extra_suffix' -> ('Sebastopol', 'N-S')
+        'Sebastopol' -> ('Sebastopol', 'NA')
+    """
+    parts = sub_dir.split("_")
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return parts[0], "NA"
 
 
 # -------------------------------------------------------------------
@@ -66,8 +85,10 @@ logger = logging.getLogger(__name__)
     "--sub-dir",
     type=str,
     default=None,
-    help=("ASCII Target <sub-dir> under data/processed. If not set, will write to "
-          "data/final/<sub-dir-from-processed-path>"),
+    help=(
+        "ASCII Target <sub-dir> under data/processed. If not set, will write to "
+        "data/final/<sub-dir-from-processed-path>"
+    ),
 )
 @click.option(
     "--target-col",
@@ -129,8 +150,7 @@ logger = logging.getLogger(__name__)
     "--mlflow-uri",
     type=str,
     default=None,
-    help=("Optional MLflow tracking URI (overrides env "
-          "MLFLOW_TRACKING_URI)."),
+    help=("Optional MLflow tracking URI (overrides env " "MLFLOW_TRACKING_URI)."),
 )
 def main(
     processed_path: str,
@@ -146,8 +166,8 @@ def main(
     mlflow_uri: Optional[str],
 ) -> None:
     """
-    Train a time-series model and produce recursive forecasts with MLflow logs.
-    Push batch metrics (duration, volume) to pushgateway.
+    Entraîne un modèle, journalise dans MLflow, puis pousse des métriques métier
+    (RMSE, MAPE, fraîcheur, dernière obs/pred) vers Pushgateway.
     """
     # Labels Prometheus (grouping_key)
     labels = {
@@ -193,9 +213,9 @@ def main(
                 df[ts_col_local], format="%Y-%m-%d %H:%M:%S%z", utc=True
             ).dt.tz_convert(pytz.timezone("Europe/Paris"))
         except Exception:
-            df[ts_col_local] = pd.to_datetime(
-                df[ts_col_local], utc=True
-            ).dt.tz_convert(pytz.timezone("Europe/Paris"))
+            df[ts_col_local] = pd.to_datetime(df[ts_col_local], utc=True).dt.tz_convert(
+                pytz.timezone("Europe/Paris")
+            )
 
         # Entraînement + forecast récursif
         ts_cols = [ts_col_local, ts_col_utc]
@@ -231,6 +251,43 @@ def main(
             )
             log_local_artifacts(sub_dir)
 
+        # -----------------------------
+        # Métriques métier → Pushgateway
+        # -----------------------------
+        try:
+            # y_test / y_test_pred attendus dans report
+            y_true = np.asarray(report["y_test"]).reshape(-1)
+            y_pred = np.asarray(report["y_test_pred"]).reshape(-1)
+
+            rmse = float(np.sqrt(np.mean((y_pred - y_true) ** 2)))
+            mape = float(
+                np.mean(np.abs((y_true - y_pred) / np.clip(np.abs(y_true), 1e-6, None))) * 100
+            )
+
+            y_last = float(y_true[-1]) if y_true.size else float("nan")
+            yhat_last = float(y_pred[-1]) if y_pred.size else float("nan")
+
+            # Dernier timestamp connu côté données
+            last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
+
+            site, orientation = _extract_site_orientation(sub_dir)
+
+            push_business_metrics(
+                site=site,
+                orientation=orientation,
+                rmse=rmse,
+                mape=mape,
+                y_last=y_last,
+                yhat_last=yhat_last,
+                last_ts=last_ts,
+            )
+            logger.info(
+                f"Pushed business metrics to Pushgateway: site={site}, ori={orientation}, "
+                f"rmse={rmse:.3f}, mape={mape:.2f}, y_last={y_last}, yhat_last={yhat_last}"
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to push business metrics: {exc}")
+
         # Manifest optionnel
         man = os.getenv("MANIFEST_MODELS")
         if man:
@@ -249,14 +306,9 @@ def main(
                             "test_ratio": test_ratio,
                             "grid_iter": grid_iter,
                         },
-                        "outputs": {
-                            "table": str(y_full_path)
-                        },
-                        "run": {
-                            "run_id": os.getenv("RUN_ID"),
-                            "sub_dir": sub_dir
-                        }
-                    }
+                        "outputs": {"table": str(y_full_path)},
+                        "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": sub_dir},
+                    },
                 )
                 logger.info(f"Models manifest written to [{man}]")
             except Exception as exc:
@@ -287,7 +339,7 @@ def main(
         except Exception as e:
             logger.warning(f"Model promotion failed: {e}")
 
-        # Volume traité pour la métrique: lignes de y_full
+        # Volume traité pour la métrique: lignes de df
         m["records"] = int(len(df))
 
     logger.info("Training and forecasting ended successfully.")
