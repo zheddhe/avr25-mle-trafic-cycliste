@@ -296,7 +296,9 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--interim-name",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
             ],
-            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_{{ ts_nodash }}",
+            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}_"
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
@@ -323,7 +325,9 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--timestamp-col",
                 "date_et_heure_de_comptage",
             ],
-            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_{{ ts_nodash }}",
+            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}_"
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
@@ -362,7 +366,9 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--grid-iter",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='GRID_ITER') }}",
             ],
-            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_{{ ts_nodash }}",
+            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}_"
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
