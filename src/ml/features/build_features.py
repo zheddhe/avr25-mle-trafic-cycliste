@@ -122,6 +122,7 @@ def main(
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.features"),
         "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
         "site": os.getenv("SITE", "NA"),
+        "site_short": os.getenv("SITE_SHORT", "NA"),
         "orientation": os.getenv("ORIENTATION", "NA"),
     }
 

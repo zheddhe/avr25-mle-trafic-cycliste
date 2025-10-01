@@ -175,6 +175,7 @@ def main(
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.models"),
         "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
         "site": os.getenv("SITE", "NA"),
+        "site_short": os.getenv("SITE_SHORT", "NA"),
         "orientation": os.getenv("ORIENTATION", "NA"),
     }
 
@@ -272,7 +273,7 @@ def main(
             # Dernier timestamp connu côté données
             last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
 
-            site_env = os.getenv("SITE")
+            site_env = os.getenv("SITE_SHORT")
             ori_env = os.getenv("ORIENTATION")
             if site_env and ori_env:
                 site, orientation = site_env, ori_env

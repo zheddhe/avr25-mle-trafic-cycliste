@@ -26,7 +26,7 @@ from sklearn.metrics import (
 )
 from contextlib import contextmanager
 from prometheus_client import (
-    CollectorRegistry, Gauge, Counter, push_to_gateway, pushadd_to_gateway,
+    CollectorRegistry, Gauge, Counter, pushadd_to_gateway,
 )
 
 PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
@@ -597,7 +597,7 @@ def push_step_metrics(
         f"Pushing metrics to [{PUSHGATEWAY_ADDR}] "
         f"with grouping_key=[{site} {orientation}]"
     )
-    push_to_gateway(
+    pushadd_to_gateway(
         PUSHGATEWAY_ADDR,
         job="bike-traffic",
         grouping_key={"site": site, "orientation": orientation},
