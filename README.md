@@ -215,13 +215,11 @@ uvicorn src.api.main:app --reload --port 10000
 > This section covers the project setup as a containerized microservices architecture from an MLOps point of view.
 >
 > - Custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
-> - Use **--build** extra option in the following commands to rebuild docker images prior to an execution
 >
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 
 ```bash
-### NB : toutes les commandes ont implicitement les arguments
-# -p avr25-mle-trafic-cycliste -f docker-compose.yaml --env-file .env
+### NB : all these unitary action are consolidated in a Makefile
 
 # 1) Init and build the docker images
 docker compose --profile all build
@@ -249,9 +247,9 @@ docker compose --profile all down
 
 # /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
 docker compose --profile all down -v --rmi all && docker system prune -f
-
-# Docs: http://localhost:8000/docs (Basic Auth required)
 ```
+
+
 
 ### 1. 🐳 Container manager
 
