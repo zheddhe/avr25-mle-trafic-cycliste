@@ -194,14 +194,14 @@ stages:
       hash: md5
       md5: e38aee22570ad4ab0b92d72dba3690cf
       size: 149464819
-    - path: src/ml/ingest/data_utils.py
-      hash: md5
-      md5: ab1ac9c70a3efdfb5ab8bf769df333df
-      size: 965
     - path: src/ml/ingest/import_raw_data.py
       hash: md5
-      md5: f79983b2e053f4c6f68eb2224671bee7
-      size: 6665
+      md5: 8171175cdf79b241ec8c20b222d4fa70
+      size: 7555
+    - path: src/ml/ingest/ingest_utils.py
+      hash: md5
+      md5: 5701677a091e0650ed4a5de9622e5e72
+      size: 3361
     params:
       params.yaml:
         data.raw_csv: 
@@ -215,8 +215,8 @@ stages:
     outs:
     - path: data/interim/Sebastopol_N-S_dvcrepro
       hash: md5
-      md5: a63a37b43985a1ca9d5d06681ca9ac23.dir
-      size: 1216943
+      md5: d876f3ac2b45c9a71ab7606e03b60f76.dir
+      size: 1209567
       nfiles: 1
   build_features@sebastopol_ns:
     cmd: "python -m src.ml.features.build_features --interim-path data/interim/Sebastopol_N-S_dvcrepro/initial.csv
@@ -224,25 +224,25 @@ stages:
     deps:
     - path: data/interim/Sebastopol_N-S_dvcrepro
       hash: md5
-      md5: a63a37b43985a1ca9d5d06681ca9ac23.dir
-      size: 1216943
+      md5: d876f3ac2b45c9a71ab7606e03b60f76.dir
+      size: 1209567
       nfiles: 1
     - path: src/ml/features/build_features.py
       hash: md5
-      md5: 99577b57188190dc2f78a7c3fb7c3145
-      size: 5611
+      md5: b95507e8466400a2fbafd3eafdc785fd
+      size: 6369
     - path: src/ml/features/features_utils.py
       hash: md5
-      md5: dcd8f42d3b6488f41db8a3057cd4147a
-      size: 3851
+      md5: 827e4300716bf56b8903cf0a4146e6ab
+      size: 6157
     params:
       params.yaml:
         files.processed: initial_with_feats.csv
     outs:
     - path: data/processed/Sebastopol_N-S_dvcrepro
       hash: md5
-      md5: 4d9ab96b3c2d455d51e270e02d34576e.dir
-      size: 1350050
+      md5: 129fe5f282cc36321a94d8877385d330.dir
+      size: 1342674
       nfiles: 1
   train_and_predict@sebastopol_ns:
     cmd: "python -m src.ml.models.train_and_predict --processed-path data/processed/Sebastopol_N-S_dvcrepro/initial_with_feats.csv
@@ -252,21 +252,21 @@ stages:
     deps:
     - path: data/processed/Sebastopol_N-S_dvcrepro
       hash: md5
-      md5: 4d9ab96b3c2d455d51e270e02d34576e.dir
-      size: 1350050
+      md5: 129fe5f282cc36321a94d8877385d330.dir
+      size: 1342674
       nfiles: 1
     - path: src/ml/models/mlflow_tracking.py
       hash: md5
-      md5: 1f546c4260492995302e2805070df906
-      size: 5226
+      md5: 36c05ce5f931cb315cc28df6e9cc1627
+      size: 5062
     - path: src/ml/models/models_utils.py
       hash: md5
-      md5: e13298f53db395dc878880eb04280478
-      size: 20246
+      md5: 837a892b4e68f0328b5d258dda9c28b4
+      size: 23369
     - path: src/ml/models/train_and_predict.py
       hash: md5
-      md5: e6bba7f9a4a6edc3b5f6c17ddd915f6a
-      size: 7364
+      md5: b47c173bcc3169abea58f5d1fa31296d
+      size: 11154
     params:
       params.yaml:
         train:
@@ -281,11 +281,11 @@ stages:
     outs:
     - path: data/final/Sebastopol_N-S_dvcrepro
       hash: md5
-      md5: 5dae20614df0af0c108d32a05e79307c.dir
-      size: 2400660
+      md5: 0ecb76c1f1016ed88b893750f7628e41.dir
+      size: 2363896
       nfiles: 9
     - path: models/Sebastopol_N-S_dvcrepro
       hash: md5
-      md5: e57a649816798c65bcca73c7e8e4cdc2.dir
-      size: 419068
+      md5: 03b3e5392e38048aa01ba7136de7dc6a.dir
+      size: 418993
       nfiles: 4

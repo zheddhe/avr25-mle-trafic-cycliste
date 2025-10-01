@@ -15,7 +15,7 @@ import pandas as pd
 
 from src.ml.ingest.ingest_utils import (
     apply_percent_range_selection,
-    track_pipeline_step
+    track_pipeline_step,  # <- pushes duration/status + your custom counters to Pushgateway
 )
 
 
@@ -30,6 +30,7 @@ def write_manifest(path: str, payload: dict) -> None:
 
 
 def slugify_ascii(text: str) -> str:
+    """ASCII-safe slug (keep [A-Za-z0-9_-], collapse underscores, max 64 chars)."""
     norm = unicodedata.normalize("NFKD", text)
     text_ascii = norm.encode("ascii", "ignore").decode("ascii")
     text_ascii = re.sub(r"[^A-Za-z0-9\-_]+", "_", text_ascii)
@@ -38,7 +39,7 @@ def slugify_ascii(text: str) -> str:
 
 
 # -------------------------------------------------------------------
-# Logs Management
+# Logs
 # -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
@@ -53,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------
-# Main script
+# CLI
 # -------------------------------------------------------------------
 @click.command()
 @click.option(
@@ -66,13 +67,13 @@ logger = logging.getLogger(__name__)
     "--site",
     type=str,
     required=True,
-    help="Exact value of 'nom_du_site_de_comptage'.",
+    help="Exact value of column 'nom_du_site_de_comptage'.",
 )
 @click.option(
     "--orientation",
     type=str,
     required=True,
-    help="Exact value of 'orientation_compteur' (e.g. 'N-S').",
+    help="Exact value of column 'orientation_compteur' (e.g. 'N-S').",
 )
 @click.option(
     "--range-start",
@@ -93,21 +94,20 @@ logger = logging.getLogger(__name__)
     type=str,
     default="date_et_heure_de_comptage",
     show_default=True,
-    help="ISO8601 timestamp column in raw CSV.",
+    help="Timestamp column in raw CSV (ISO8601, with or without timezone).",
 )
 @click.option(
     "--sub-dir",
     type=click.Path(file_okay=False),
     default=None,
-    help=("ASCII Target <sub-dir> under data/interim. Default derived from site and "
-          "orientation."),
+    help="Target subdir under data/interim (ASCII). Defaults to '<site>_<orientation>'.",
 )
 @click.option(
     "--interim-name",
     type=str,
     default="initial.csv",
     show_default=True,
-    help="interim CSV filename inside data/interim/<sub-dir>.",
+    help="Output CSV filename inside data/interim/<sub-dir>/",
 )
 def main(
     raw_path: str,
@@ -121,9 +121,9 @@ def main(
 ) -> None:
     """
     Extract a single counter from the raw dataset and save an interim slice.
-    Pushes batch metrics (duration, volume) to pushgateway.
+    Batch metrics (duration/status/records) are pushed via track_pipeline_step().
     """
-    # Labels de grouping pour Prometheus/Pushgateway
+    # Labels for Prometheus/Pushgateway
     labels = {
         "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.ingest"),
@@ -132,9 +132,8 @@ def main(
         "orientation": slugify_ascii(orientation),
     }
 
-    # Encapsule tout dans le context manager -> pousse metrics en fin (success/error)
     with track_pipeline_step("ingest", labels) as m:
-        # Validation paramètres
+        # Validate range
         if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
             raise click.BadParameter(
                 f"range-start/range-end must be within [0, 100]. Got ({range_start}, {range_end})."
@@ -144,48 +143,47 @@ def main(
                 f"range-start must be <= range-end. Got ({range_start}, {range_end})."
             )
 
-        # Lecture
+        # Load CSV
         try:
             logger.info(f"Loading raw CSV [{raw_path}] ...")
             df = pd.read_csv(raw_path, index_col=0)
         except Exception as exc:
-            logger.exception(f"Failed to load raw CSV: {exc}")
-            # Le context manager marquera 'error' et poussera les métriques
+            logger.exception("Failed to load raw CSV")
             raise click.ClickException(f"Failed to load raw CSV: {exc}")
 
-        # Colonnes requises
+        # Required columns
         key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
         missing = [c for c in key_cols + [timestamp_col] if c not in df.columns]
         if missing:
             raise click.ClickException(f"Missing required columns: {missing}")
 
-        # Filtre compteur
-        grp = df.groupby(key_cols)
+        # Filter selected counter
+        grp = df.groupby(key_cols, dropna=False)
         key = (site, orientation)
         if key not in grp.groups:
             raise click.ClickException(f"Counter not found: {key}")
 
         df_counter = grp.get_group(key).copy()
-        logger.info(f"Counter [{site} | {orientation}] has {len(df_counter)} rows.")
+        logger.info(f"Counter [{site} | {orientation}] rows: {len(df_counter)}")
 
-        # Tri chronologique
+        # Chronological sort
         try:
+            # Try strict ISO with tz first
             df_counter[timestamp_col] = pd.to_datetime(
-                df_counter[timestamp_col],
-                format="%Y-%m-%dT%H:%M:%S%z",
-                utc=True
+                df_counter[timestamp_col], format="%Y-%m-%dT%H:%M:%S%z", utc=True
             )
         except Exception:
+            # Fallback: let pandas parse (with/without tz)
             df_counter[timestamp_col] = pd.to_datetime(df_counter[timestamp_col], utc=True)
 
         df_counter = df_counter.sort_values(timestamp_col).reset_index(drop=True)
 
-        # Slice en pourcentage
+        # Percent slice
         df_counter = apply_percent_range_selection(df_counter, (range_start, range_end))
         if df_counter.empty:
             raise click.ClickException("Slice produced an empty DataFrame.")
 
-        # Sortie
+        # Output path
         if sub_dir is None:
             sub_dir = slugify_ascii(f"{site}_{orientation}")
         out_dir = os.path.join("data", "interim", sub_dir)
@@ -193,9 +191,9 @@ def main(
         out_path = os.path.join(out_dir, interim_name)
 
         df_counter.to_csv(out_path, index=True)
-        logger.info(f"Saved interim slice to [{out_path}] ({len(df_counter)} rows).")
+        logger.info(f"Saved interim slice -> [{out_path}] ({len(df_counter)} rows)")
 
-        # Manifest optionnel
+        # Optional manifest
         man = os.getenv("MANIFEST_INGEST")
         if man:
             try:
@@ -209,20 +207,15 @@ def main(
                             "range": [range_start, range_end],
                             "timestamp_col": timestamp_col,
                         },
-                        "outputs": {
-                            "interim_path": str(out_path)
-                        },
-                        "run": {
-                            "run_id": os.getenv("RUN_ID"),
-                            "sub_dir": sub_dir
-                        }
-                    }
+                        "outputs": {"interim_path": str(out_path)},
+                        "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": sub_dir},
+                    },
                 )
-                logger.info(f"Ingest manifest written to [{man}].")
+                logger.info(f"Wrote ingest manifest to [{man}]")
             except Exception as exc:
                 logger.warning(f"Failed to write manifest [{man}]: {exc}")
 
-        # Volume traité pour la métrique
+        # Business counter (volume) for metrics
         m["records"] = int(len(df_counter))
 
     logger.info("Data ingestion ended successfully.")
@@ -233,6 +226,5 @@ if __name__ == "__main__":
     try:
         main()
     except click.ClickException as e:
-        # click gère le message; on force un code retour 1
         logger.error(str(e))
         sys.exit(1)
