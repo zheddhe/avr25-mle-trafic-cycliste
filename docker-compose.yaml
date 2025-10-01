@@ -485,7 +485,7 @@ services:
   monitoring-grafana:
     image: grafana/grafana:11.2.0
     restart: unless-stopped
-    user: "472"  # grafana uid
+    # user: "472"  # grafana uid
     ports:
       - "3000:3000"
     environment:

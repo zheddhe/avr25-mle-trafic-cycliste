@@ -255,15 +255,12 @@ docker compose --profile all down -v --rmi all && docker system prune -f
 
 ### 1. 🐳 Container manager
 
-We use **Docker Desktop** to simulate local development and production.
+We use **Docker** to simulate our production environment.
 
-#### Local Docker Desktop with a virtual machine hypervisor
+#### Docker on virtual machine with Ubuntu distribution
 
-Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
-
-#### Virtual machine with Ubuntu distribution
-
-It is recommended however to install your dev env on a Virtual Machine using Ubuntu latest distribution
+It is recommended to use a docker engine directly on an Ubuntu Virtual Machine, here are
+the installation steps
 
 ```bash
 ### [On Ubuntu Virtual Machine] 
@@ -292,6 +289,10 @@ sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin dock
 sudo usermod -aG docker $USER
 newgrp docker
 ```
+
+#### (alternative) Local Docker Desktop with a virtual machine hypervisor
+
+Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
 
 ### 2. 📈 Experience tracker
 
