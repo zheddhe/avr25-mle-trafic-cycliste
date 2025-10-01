@@ -1,0 +1,180 @@
+{
+  "title": "Business KPIs – Bike Traffic",
+  "uid": "bike-business-kpis",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "site",
+        "type": "query",
+        "label": "Site",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(bike_yesterday_volume, site)",
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1
+      },
+      {
+        "name": "orientation",
+        "type": "query",
+        "label": "Orientation",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(bike_yesterday_volume{site=\"$site\"}, orientation)",
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Synthèse", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100 },
+    {
+      "type": "stat",
+      "title": "Fraîcheur des données (jours)",
+      "id": 1,
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(bike_data_freshness_days{site=\"$site\",orientation=\"$orientation\"}[6h])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green" }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "justifyMode": "auto" }
+    },
+    {
+      "type": "stat",
+      "title": "Volume d’hier (passages)",
+      "id": 2,
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(bike_yesterday_volume{site=\"$site\",orientation=\"$orientation\"}[24h])"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "MAPE (%) dernière exécution",
+      "id": 3,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(bike_mape{job=\"bike-traffic\",site=\"$site\",orientation=\"$orientation\"}[6h])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green" }, { "color": "yellow", "value": 0.1 }, { "color": "red", "value": 0.2 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "RMSE dernière exécution",
+      "id": 4,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(bike_rmse{job=\"bike-traffic\",site=\"$site\",orientation=\"$orientation\"}[6h])"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+
+    { "type": "row", "title": "Historique 24h", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }, "id": 200 },
+
+    {
+      "type": "timeseries",
+      "title": "Prévision vs Réalité – KPIs",
+      "id": 5,
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "bike_yesterday_volume{site=\"$site\",orientation=\"$orientation\"}" },
+        { "refId": "B", "expr": "bike_mape{job=\"bike-traffic\",site=\"$site\",orientation=\"$orientation\"}" },
+        { "refId": "C", "expr": "bike_rmse{job=\"bike-traffic\",site=\"$site\",orientation=\"$orientation\"}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": {
+        "legend": { "show": true, "placement": "right" },
+        "tooltip": { "mode": "single" },
+        "interval": "1m"
+      }
+    },
+
+    { "type": "row", "title": "Qualité d’exécution (pipeline)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "id": 300 },
+
+    {
+      "type": "stat",
+      "title": "Durée tâche Ingest (s) – last",
+      "id": 6,
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "last_over_time(bike_task_duration_seconds{task=\"ingest\",site=\"$site\",orientation=\"$orientation\"}[6h])" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Durée tâche Features (s) – last",
+      "id": 7,
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "last_over_time(bike_task_duration_seconds{task=\"features\",site=\"$site\",orientation=\"$orientation\"}[6h])" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Durée tâche Models (s) – last",
+      "id": 8,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "last_over_time(bike_task_duration_seconds{task=\"models\",site=\"$site\",orientation=\"$orientation\"}[6h])" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat",
+      "title": "Lignes traitées – last",
+      "id": 9,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "last_over_time(bike_records{site=\"$site\",orientation=\"$orientation\"}[6h])" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    }
+  ]
+}
