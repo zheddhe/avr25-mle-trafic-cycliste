@@ -342,7 +342,6 @@ services:
       AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
       AIRFLOW__SMTP__SMTP_STARTTLS: "False"
       AIRFLOW__SMTP__SMTP_SSL: "False"
-      DOCKER_HOST: unix:///var/run/docker.sock
     user: "${AIRFLOW_UID:-1000}:0"
     group_add:
       - ${AIRFLOW_GID:-1001}
