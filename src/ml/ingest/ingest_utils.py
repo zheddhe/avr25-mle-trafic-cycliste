@@ -108,6 +108,11 @@ def track_pipeline_step(step: str, labels: dict):
 
 def push_once(step: str, records: int, duration_s: float, status: str, labels: dict):
     """Alternative simple si vous ne voulez pas de context manager."""
+    # environment variable check to allow metric push
+    if DISABLE_METRICS_PUSH == "1":
+        logger.info("Push metrics to gateway is disabled")
+        return
+
     _push_metrics(
         step=step, duration_s=duration_s, records=records,
         status=status, labels=labels

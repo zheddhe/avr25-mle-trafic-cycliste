@@ -620,6 +620,11 @@ def track_pipeline_step(step: str, labels: dict):
 
 def push_once(step: str, records: int, duration_s: float, status: str, labels: dict):
     """Alternative simple si vous ne voulez pas de context manager."""
+    # environment variable check to allow metric push
+    if DISABLE_METRICS_PUSH == "1":
+        logger.info("Push metrics to gateway is disabled")
+        return
+
     _push_metrics(
         step=step, duration_s=duration_s, records=records,
         status=status, labels=labels
@@ -631,10 +636,12 @@ def push_business_metrics(
     rmse: float, mape: float,
     y_last: float, yhat_last: float,
     last_ts: datetime,
-    gateway: str = None,  # type: ignore
 ) -> None:
-    if push_to_gateway is None:
+    # environment variable check to allow metric push
+    if DISABLE_METRICS_PUSH == "1":
+        logger.info("Push metrics to gateway is disabled")
         return
+
     if isinstance(last_ts, datetime) and last_ts.tzinfo is None:
         last_ts = last_ts.replace(tzinfo=timezone.utc)
 
@@ -655,5 +662,8 @@ def push_business_metrics(
         'bike_last_ts_epoch', 'Last timestamp epoch', ['site', 'orientation'], registry=reg
     ).labels(site, orientation).set(int(last_ts.timestamp()))
 
-    gw = gateway or os.getenv('PUSHGATEWAY_ADDR', 'monitoring-pushgateway:9091')
-    push_to_gateway(gw, job='bike-traffic', registry=reg)
+    push_to_gateway(
+        PUSHGATEWAY_ADDR,
+        job='bike-traffic',
+        registry=reg
+    )

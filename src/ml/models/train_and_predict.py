@@ -251,9 +251,7 @@ def main(
             )
             log_local_artifacts(sub_dir)
 
-        # -----------------------------
         # Métriques métier → Pushgateway
-        # -----------------------------
         try:
             # y_test / y_test_pred attendus dans report
             y_true = np.asarray(report["y_test"]).reshape(-1)
@@ -314,10 +312,25 @@ def main(
             except Exception as exc:
                 logger.warning(f"Failed to write models manifest [{man}]: {exc}")
 
-        # Promotion automatique Model Registry
+        # Automatic Model Registry Promotion (safe initialization if needed)
         try:
             model_name = f"{sub_dir}-model"
             client = MlflowClient()
+
+            # Ensure the registered model exists
+            try:
+                client.get_registered_model(model_name)
+            except Exception:
+                try:
+                    client.create_registered_model(model_name)
+                    logger.info(f"Created new registered model [{model_name}].")
+                except Exception as exc:
+                    logger.warning(
+                        f"Failed to create registered model [{model_name}]: {exc}"
+                    )
+                    raise  # No point continuing without registry entry
+
+            # Retrieve versions
             versions = client.search_model_versions(f"name='{model_name}'")
             if not versions:
                 logger.warning(f"No version found for model [{model_name}].")
@@ -330,14 +343,17 @@ def main(
                     archive_existing_versions=True,
                 )
                 try:
-                    client.set_registered_model_alias(model_name, "prod", latest.version)
-                except Exception as e:
-                    logger.warning(f"'prod' undefined: {e}")
+                    client.set_registered_model_alias(
+                        model_name, "prod", latest.version
+                    )
+                except Exception as exc:
+                    logger.warning(f"Alias 'prod' undefined: {exc}")
                 logger.info(
-                    f"Model [{model_name}] version {latest.version} promoted to production."
+                    f"Model [{model_name}] version {latest.version} "
+                    f"promoted to production."
                 )
-        except Exception as e:
-            logger.warning(f"Model promotion failed: {e}")
+        except Exception as exc:
+            logger.warning(f"Model promotion failed: {exc}")
 
         # Volume traité pour la métrique: lignes de df
         m["records"] = int(len(df))
