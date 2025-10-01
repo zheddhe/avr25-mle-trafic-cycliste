@@ -47,7 +47,7 @@ AWS_SECRET_ACCESS_KEY = Variable.get("aws_secret_access_key", default_var="minio
 AWS_DEFAULT_REGION = Variable.get("aws_default_region", default_var="us-east-1")
 
 # PushGateway configuration
-PUSHGATEWAY_ADDR = Variable.get("pushgateway_addr", default_var="pushgateway:9091")
+PUSHGATEWAY_ADDR = Variable.get("pushgateway_addr", default_var="monitoring-pushgateway:9091")
 DISABLE_METRICS_PUSH = Variable.get("disable_metrics_push", default_var=0)
 
 # Airflow runtime configuration
@@ -231,6 +231,7 @@ def _prepare_args_common(
     env = _make_env(effective_sub_dir, run_id, window)
     env.update({
         "SITE": counter.site,
+        "SITE_SHORT": counter.site,
         "ORIENTATION": counter.orientation,
         "DAY_OFFSET": str(delta_days),  # <- dayX simulé
     })

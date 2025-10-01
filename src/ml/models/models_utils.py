@@ -8,8 +8,10 @@ import logging
 import joblib
 import json
 import time
+import unicodedata
+import re
 from datetime import datetime, timezone
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from skopt.space import Integer, Categorical, Real
 from skopt import BayesSearchCV
 from xgboost import XGBRegressor
@@ -25,7 +27,7 @@ from sklearn.metrics import (
 from contextlib import contextmanager
 from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
 
-PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "pushgateway:9091")
+PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
 DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
 
 SEARCH_SPACES_XGB = {
@@ -552,56 +554,51 @@ def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
     }
 
 
-def _push_metrics(step: str, duration_s: float,
-                  records: int, status: str, labels: dict,
-                  site: str | None = None, orientation: str | None = None):
+def push_step_metrics(
+    step: str,
+    duration_s: float,
+    records: int,
+    status: str,
+    labels: dict,
+) -> None:
     """
-    Push pipeline metrics (duration, records) to Pushgateway with
-    site/orientation in grouping key if available.
+    Push ETL metrics with unified labels.
+    Labels on series: task, status, site, orientation.
+    Grouping key: site, orientation (no task/dag/run_id).
     """
-    if DISABLE_METRICS_PUSH == "1":
+    if os.getenv("DISABLE_METRICS_PUSH") == "1":
         logger.info("Push metrics to gateway is disabled")
         return
 
-    reg = CollectorRegistry()
+    site = canonical_site(labels.get("site"))
+    orientation = labels.get("orientation") or os.getenv("ORIENTATION", "NA")
+    status = "success" if status == "success" else "failed"
 
+    reg = CollectorRegistry()
     g_dur = Gauge(
         "bike_task_duration_seconds",
-        "Durée d'une étape batch",
+        "Batch step duration (seconds)",
         ["task", "status", "site", "orientation"],
         registry=reg,
     )
     c_rec = Counter(
         "bike_records",
-        "Nouveaux enregistrements traités",
+        "Processed records",
         ["task", "site", "orientation"],
         registry=reg,
     )
 
-    g_dur.labels(
-        task=step, status=status,
-        site=site or "NA",
-        orientation=orientation or "NA"
-    ).set(float(duration_s))
-    c_rec.labels(
-        task=step,
-        site=site or "NA",
-        orientation=orientation or "NA"
-    ).inc(int(max(records, 0)))
+    g_dur.labels(step, status, site, orientation).set(float(duration_s))
+    c_rec.labels(step, site, orientation).inc(max(int(records), 0))
 
-    grouping_key = {
-        **labels,
-        "site": site or "NA",
-        "orientation": orientation or "NA",
-    }
     logger.info(
         f"Pushing metrics to [{PUSHGATEWAY_ADDR}] "
-        f"with grouping_key={grouping_key}"
+        f"with grouping_key=[{site} {orientation}]"
     )
     push_to_gateway(
         PUSHGATEWAY_ADDR,
         job="bike-traffic",
-        grouping_key=grouping_key,
+        grouping_key={"site": site, "orientation": orientation},
         registry=reg,
     )
     logger.info("Metrics pushed to gateway")
@@ -626,23 +623,10 @@ def track_pipeline_step(step: str, labels: dict):
         raise
     finally:
         duration = time.time() - start
-        _push_metrics(
+        push_step_metrics(
             step=step, duration_s=duration, records=payload["records"],
             status=status, labels=labels
         )
-
-
-def push_once(step: str, records: int, duration_s: float, status: str, labels: dict):
-    """Alternative simple si vous ne voulez pas de context manager."""
-    # environment variable check to allow metric push
-    if DISABLE_METRICS_PUSH == "1":
-        logger.info("Push metrics to gateway is disabled")
-        return
-
-    _push_metrics(
-        step=step, duration_s=duration_s, records=records,
-        status=status, labels=labels
-    )
 
 
 def push_business_metrics(
@@ -723,3 +707,37 @@ def push_business_metrics(
         registry=reg,
     )
     logger.info("Business metrics pushed to gateway")
+
+
+def _slug(value: str) -> str:
+    value = (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    value = re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_")
+    return value
+
+
+def canonical_site(raw: Optional[str]) -> str:
+    """
+    Return a canonical 'site' label, harmonized across all steps.
+    Priority:
+    1) explicit short name via SITE_SHORT (if provided)
+    2) SITE (env) as-is
+    3) best-effort slug from any raw value
+    """
+    site_short = os.getenv("SITE_SHORT")
+    if site_short:
+        return site_short
+
+    if raw:
+        return raw
+
+    site = os.getenv("SITE")
+    if site:
+        return site
+
+    # fallback: try to build something stable from a path-like
+    site_path = os.getenv("SITE_PATH", "")
+    return _slug(site_path) if site_path else "NA"

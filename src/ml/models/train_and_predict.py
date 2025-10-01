@@ -272,7 +272,12 @@ def main(
             # Dernier timestamp connu côté données
             last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
 
-            site, orientation = _extract_site_orientation(sub_dir)
+            site_env = os.getenv("SITE")
+            ori_env = os.getenv("ORIENTATION")
+            if site_env and ori_env:
+                site, orientation = site_env, ori_env
+            else:
+                site, orientation = _extract_site_orientation(sub_dir)
 
             push_business_metrics(
                 site=site,
