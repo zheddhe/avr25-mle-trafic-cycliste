@@ -4,7 +4,7 @@ global:
   smtp_require_tls: false
 
 route:
-  receiver: 'mailhog'
+  receiver: 'default'
   group_by: ['alertname']
   group_wait: 30s         # attend 30s avant d’envoyer le premier mail
   group_interval: 1m      # pas de nouveau mail avant 1 minute pour le même groupe
@@ -15,18 +15,19 @@ route:
         - severity="critical"
       receiver: 'critical-team'
       group_wait: 5s
+      group_interval: 15s
       repeat_interval: 15s
 
     # 🟠 Warnings → rappels moins fréquents
     - matchers:
         - severity="warning"
       receiver: 'warning-team'
-      repeat_interval: 2h
+      repeat_interval: 1h
 
 receivers:
-  - name: 'mailhog'
+  - name: 'default'
     email_configs:
-      - to: 'dev-team@mlops.local'
+      - to: 'default@mlops.local'
 
   - name: 'critical-team'
     email_configs:
