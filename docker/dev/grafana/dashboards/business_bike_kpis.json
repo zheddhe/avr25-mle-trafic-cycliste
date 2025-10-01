@@ -169,27 +169,55 @@
 
     {
       "type": "timeseries",
-      "title": "MAPE / RMSE / R² – 24h",
-      "id": 8,
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 15 },
+      "title": "MAPE – 24h",
+      "id": 801,
+      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
           "expr": "bike_mape{job=\"bike-traffic\",site=\"$site\"}"
-        },
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } },
+      "options": {
+        "legend": { "show": false },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "RMSE – 24h",
+      "id": 802,
+      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
         {
-          "refId": "B",
+          "refId": "A",
           "expr": "bike_rmse{job=\"bike-traffic\",site=\"$site\"}"
-        },
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": {
+        "legend": { "show": false },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "R² – 24h",
+      "id": 803,
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
         {
-          "refId": "C",
+          "refId": "A",
           "expr": "bike_r2{job=\"bike-traffic\",site=\"$site\"}"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "none" } },
       "options": {
-        "legend": { "show": true, "placement": "right" },
+        "legend": { "show": false },
         "tooltip": { "mode": "single" }
       }
     },
