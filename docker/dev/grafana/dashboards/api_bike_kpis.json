@@ -110,7 +110,7 @@
     },
     {
       "type": "stat",
-      "title": "Req/s – 5m",
+      "title": "Req/s – $__rate_interval",
       "id": 2,
       "gridPos": {
         "h": 6,
@@ -125,7 +125,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{job=\"$job\"}[5m]))"
+          "expr": "sum(rate(http_requests_total{job=\"$job\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -143,7 +143,7 @@
     },
     {
       "type": "stat",
-      "title": "Taux d'erreur (5xx) – 5m",
+      "title": "Taux d'erreur (5xx) – $__rate_interval",
       "id": 3,
       "gridPos": {
         "h": 6,
@@ -158,7 +158,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "100 * sum(rate(http_requests_total{job=\"$job\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"$job\"}[5m]))"
+          "expr": "100 * sum(rate(http_requests_total{job=\"$job\",status=~\"5..\"}[$__rate_interval])) / sum(rate(http_requests_total{job=\"$job\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -192,7 +192,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – moy 5m",
+      "title": "Préd/req – moy $__rate_interval",
       "id": 4,
       "gridPos": {
         "h": 6,
@@ -207,7 +207,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(api_predictions_per_response_sum{job=\"$job\"}[5m])) / sum(rate(api_predictions_per_response_count{job=\"$job\"}[5m]))"
+          "expr": "sum(rate(api_predictions_per_response_sum{job=\"$job\"}[$__rate_interval])) / sum(rate(api_predictions_per_response_count{job=\"$job\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -225,7 +225,7 @@
     },
     {
       "type": "row",
-      "title": "Latence (quantiles sur 5 minutes)",
+      "title": "Latence (quantiles sur $__rate_interval)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -237,7 +237,7 @@
     },
     {
       "type": "stat",
-      "title": "p50 latence – 5m",
+      "title": "p50 latence – $__rate_interval",
       "id": 10,
       "gridPos": {
         "h": 6,
@@ -252,7 +252,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])) by (le))"
+          "expr": "histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket{job=\"$job\"}[$__rate_interval])) by (le))"
         }
       ],
       "fieldConfig": {
@@ -270,7 +270,7 @@
     },
     {
       "type": "stat",
-      "title": "p90 latence – 5m",
+      "title": "p90 latence – $__rate_interval",
       "id": 11,
       "gridPos": {
         "h": 6,
@@ -285,7 +285,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.9, sum(rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])) by (le))"
+          "expr": "histogram_quantile(0.9, sum(rate(http_request_duration_seconds_bucket{job=\"$job\"}[$__rate_interval])) by (le))"
         }
       ],
       "fieldConfig": {
@@ -303,7 +303,7 @@
     },
     {
       "type": "stat",
-      "title": "p99 latence – 5m",
+      "title": "p99 latence – $__rate_interval",
       "id": 12,
       "gridPos": {
         "h": 6,
@@ -318,7 +318,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])) by (le))"
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job=\"$job\"}[$__rate_interval])) by (le))"
         }
       ],
       "fieldConfig": {
@@ -336,7 +336,7 @@
     },
     {
       "type": "row",
-      "title": "Débit & erreurs",
+      "title": "Débit & erreurs (prédictions uniquement)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -348,7 +348,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Requêtes par code – rate 5m",
+      "title": "Requêtes par code – rate $__rate_interval (predictions)",
       "id": 20,
       "gridPos": {
         "h": 8,
@@ -363,7 +363,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (rate(http_requests_total{job=\"$job\", handler=~\"$handler\"}[5m]))"
+          "expr": "sum by (status) (rate(http_requests_total{job=\"$job\", handler=~\".*predictions.*\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -386,7 +386,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Req/s total – 5m",
+      "title": "Req/s total – $__rate_interval (pred)",
       "id": 21,
       "gridPos": {
         "h": 8,
@@ -401,7 +401,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{job=\"$job\", handler=~\"$handler\"}[5m]))"
+          "expr": "sum(rate(http_requests_total{job=\"$job\", handler=~\".*predictions.*\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -435,7 +435,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "topk(5, sum by (handler) (rate(http_requests_total{job=\"$job\"}[5m])))"
+          "expr": "topk(5, sum by (handler) (rate(http_requests_total{job=\"$job\"}[$__rate_interval])))"
         }
       ],
       "options": {
@@ -456,7 +456,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – moy 5m",
+      "title": "Préd/req – moy $__rate_interval",
       "id": 30,
       "gridPos": {
         "h": 6,
@@ -471,7 +471,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(api_predictions_per_response_sum{job=\"$job\"}[5m])) / sum(rate(api_predictions_per_response_count{job=\"$job\"}[5m]))"
+          "expr": "sum(rate(api_predictions_per_response_sum{job=\"$job\"}[$__rate_interval])) / sum(rate(api_predictions_per_response_count{job=\"$job\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -489,7 +489,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – p90 5m",
+      "title": "Préd/req – p90 $__rate_interval",
       "id": 31,
       "gridPos": {
         "h": 6,
@@ -504,7 +504,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.9, sum(rate(api_predictions_per_response_bucket{job=\"$job\"}[5m])) by (le))"
+          "expr": "histogram_quantile(0.9, sum(rate(api_predictions_per_response_bucket{job=\"$job\"}[$__rate_interval])) by (le))"
         }
       ],
       "fieldConfig": {
@@ -522,7 +522,7 @@
     },
     {
       "type": "stat",
-      "title": "Prédictions/s – 5m",
+      "title": "Prédictions/s – $__rate_interval",
       "id": 32,
       "gridPos": {
         "h": 6,
@@ -537,7 +537,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(api_predictions_per_response_sum{job=\"$job\"}[5m]))"
+          "expr": "sum(rate(api_predictions_per_response_sum{job=\"$job\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -555,7 +555,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Préd/req – moyenne (24h)",
+      "title": "Préd/req – moyenne (24h) [utilise $__rate_interval]",
       "id": 33,
       "gridPos": {
         "h": 8,
@@ -570,7 +570,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(sum(rate(api_predictions_per_response_sum{job=\"$job\"}[5m])) /  sum(rate(api_predictions_per_response_count{job=\"$job\"}[5m])))"
+          "expr": "(sum(rate(api_predictions_per_response_sum{job=\"$job\"}[$__rate_interval])) / sum(rate(api_predictions_per_response_count{job=\"$job\"}[$__rate_interval])))"
         }
       ],
       "fieldConfig": {
@@ -601,7 +601,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Req/s – /predictions/* (5m)",
+      "title": "Req/s – /predictions/* ($__rate_interval)",
       "id": 40,
       "gridPos": {
         "h": 8,
@@ -616,7 +616,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{job=\"$job\", handler=~\".*predictions.*\"}[5m]))"
+          "expr": "sum(rate(http_requests_total{job=\"$job\", handler=~\".*predictions.*\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -635,7 +635,7 @@
     },
     {
       "type": "timeseries",
-      "title": "p90 latence – /predictions/* (5m)",
+      "title": "p90 latence – /predictions/* ($__rate_interval)",
       "id": 41,
       "gridPos": {
         "h": 8,
@@ -650,7 +650,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.9, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\", handler=~\".*predictions.*\"}[5m])))"
+          "expr": "histogram_quantile(0.9, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\", handler=~\".*predictions.*\"}[$__rate_interval])))"
         }
       ],
       "fieldConfig": {
