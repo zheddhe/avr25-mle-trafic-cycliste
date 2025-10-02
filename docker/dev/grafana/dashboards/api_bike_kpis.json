@@ -43,6 +43,31 @@
         "sort": 1,
         "multi": true,
         "includeAll": true
+      },
+      {
+        "type": "constant",
+        "name": "scrape_s",
+        "label": "Scrape (s)",
+        "query": "5",
+        "current": {
+          "text": "5",
+          "value": "5"
+        },
+        "hide": 0
+      },
+      {
+        "type": "query",
+        "name": "rate_interval_s",
+        "label": "Rate window (s)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "query_result(clamp_min($__interval_s + $scrape_s, 4*$scrape_s))",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false
       }
     ]
   },
@@ -110,7 +135,7 @@
     },
     {
       "type": "stat",
-      "title": "Req/s – $__rate_interval",
+      "title": "Req/s – (sur rate_interval_s)",
       "id": 2,
       "gridPos": {
         "h": 6,
@@ -143,7 +168,7 @@
     },
     {
       "type": "stat",
-      "title": "Taux d'erreur (5xx) – $__rate_interval",
+      "title": "Taux d'erreur (5xx) – (sur rate_interval_s)",
       "id": 3,
       "gridPos": {
         "h": 6,
@@ -192,7 +217,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – moy $__rate_interval",
+      "title": "Préd/req – moy (sur rate_interval_s)",
       "id": 4,
       "gridPos": {
         "h": 6,
@@ -225,7 +250,7 @@
     },
     {
       "type": "row",
-      "title": "Latence (quantiles sur $__rate_interval)",
+      "title": "Latence (quantiles sur rate_interval_s)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -237,7 +262,7 @@
     },
     {
       "type": "stat",
-      "title": "p50 latence – $__rate_interval",
+      "title": "p50 latence – (sur rate_interval_s)",
       "id": 10,
       "gridPos": {
         "h": 6,
@@ -270,7 +295,7 @@
     },
     {
       "type": "stat",
-      "title": "p90 latence – $__rate_interval",
+      "title": "p90 latence – (sur rate_interval_s)",
       "id": 11,
       "gridPos": {
         "h": 6,
@@ -303,7 +328,7 @@
     },
     {
       "type": "stat",
-      "title": "p99 latence – $__rate_interval",
+      "title": "p99 latence – (sur rate_interval_s)",
       "id": 12,
       "gridPos": {
         "h": 6,
@@ -348,7 +373,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Requêtes par code – rate $__rate_interval (predictions)",
+      "title": "Requêtes par code – (/predictions/) (sur rate_interval_s)",
       "id": 20,
       "gridPos": {
         "h": 8,
@@ -386,7 +411,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Req/s total – $__rate_interval (pred)",
+      "title": "Req/s total – (/predictions/) (sur rate_interval_s)",
       "id": 21,
       "gridPos": {
         "h": 8,
@@ -456,7 +481,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – moy $__rate_interval",
+      "title": "Préd/req – moy (sur rate_interval_s)",
       "id": 30,
       "gridPos": {
         "h": 6,
@@ -489,7 +514,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – p90 $__rate_interval",
+      "title": "Préd/req – p90 (sur rate_interval_s)",
       "id": 31,
       "gridPos": {
         "h": 6,
@@ -522,7 +547,7 @@
     },
     {
       "type": "stat",
-      "title": "Prédictions/s – $__rate_interval",
+      "title": "Prédictions/s – (sur rate_interval_s)",
       "id": 32,
       "gridPos": {
         "h": 6,
@@ -555,7 +580,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Préd/req – moyenne (24h) [utilise $__rate_interval]",
+      "title": "Préd/req – moyenne (24h) (sur rate_interval_s)",
       "id": 33,
       "gridPos": {
         "h": 8,
@@ -601,7 +626,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Req/s – /predictions/* ($__rate_interval)",
+      "title": "Req/s – /predictions/* (sur rate_interval_s)",
       "id": 40,
       "gridPos": {
         "h": 8,
@@ -635,7 +660,7 @@
     },
     {
       "type": "timeseries",
-      "title": "p90 latence – /predictions/* ($__rate_interval)",
+      "title": "p90 latence – /predictions/* (sur rate_interval_s)",
       "id": 41,
       "gridPos": {
         "h": 8,
