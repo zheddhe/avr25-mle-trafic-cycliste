@@ -56,6 +56,27 @@ sim_api_down: ## Simule un arrêt temporaire de l'API pendant 2 minutes
 	sleep 120
 	docker compose start api-dev
 
+URL         ?= http://localhost:8000
+N           ?= 100
+P_OK        ?= 0.80
+API_USER    ?= user1
+API_PASS    ?= user1
+LIMIT       ?= 10
+OFFSET      ?= 0
+COUNTER_IDS ?= Sebastopol_N-S_airflow_day0,Sebastopol_S-N_airflow_day0
+
+sim_api_req: ## %200, %4XX et volume (RPS & pred/s) sur /predictions/{counter}
+	@echo "==> Simulating /predictions/* traffic on $(URL)"
+	python3 tests/integration/test_load_api.py \
+		--url "$(URL)" \
+		--n $(N) \
+		--p-ok $(P_OK) \
+		--user "$(API_USER)" \
+		--password "$(API_PASS)" \
+		--limit $(LIMIT) \
+		--offset $(OFFSET) \
+		$(if $(COUNTER_IDS),--counter-ids "$(COUNTER_IDS)",)
+
 clean_full: ## Nettoie les artefacts (images/volumes/networks)
 	docker compose --profile all down -v --rmi all && docker system prune -f
 
