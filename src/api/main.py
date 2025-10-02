@@ -200,10 +200,27 @@ def _check_user_or_admin_role(user_info: dict = Depends(_check_credentials)) -> 
 # OpenAPI / tags
 # -------------------------------------------------------------------
 tags_metadata = [
-    {"name": "Admin", "description": "Service health and maintenance."},
+    {
+        "name": "Admin",
+        "description": (
+            "Restricted endpoints for administrators only. "
+            "Used for service health checks and data store management "
+            "(e.g., refresh operations)."
+        ),
+    },
+    {
+        "name": "Info",
+        "description": (
+            "General informational endpoints available to any authenticated user. "
+            "Provide details about the current session and user identity."
+        ),
+    },
     {
         "name": "Predictions",
-        "description": "Access cyclist traffic predictions.",
+        "description": (
+            "Endpoints to access cyclist traffic predictions, including available counters "
+            "and paginated prediction data. Accessible to users and administrators."
+        ),
     },
 ]
 
@@ -505,7 +522,7 @@ def get_predictions_by_counter(
 # Endpoint optionnel pour voir les informations de l'utilisateur connecté
 @app.get(
     "/me",
-    tags=["Admin"],
+    tags=["Info"],
     summary="Get current user info",
     description="Get information about the currently authenticated user.",
     responses=generic_responses,

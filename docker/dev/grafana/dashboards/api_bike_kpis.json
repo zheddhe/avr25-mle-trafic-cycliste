@@ -3,7 +3,7 @@
   "uid": "bike-api-kpis",
   "timezone": "browser",
   "schemaVersion": 39,
-  "refresh": "30s",
+  "refresh": "5s",
   "tags": [
     "mlops",
     "bike",
