@@ -1,10 +1,10 @@
 {
-  "title": "Bike Traffic – Business KPIs",
-  "uid": "bike-business-kpis",
+  "title": "Pipeline ML – Business KPIs",
+  "uid": "bike-pipelineml-kpis",
   "timezone": "browser",
   "schemaVersion": 39,
   "refresh": "5s",
-  "tags": ["mlops", "bike", "business"],
+  "tags": ["mlops", "bike", "pipelineML"],
   "templating": {
     "list": [
       {
