@@ -365,7 +365,7 @@ The project has defined :
 
 - Grafana dashboards relying on prometheus collected metrics to
   - Monitor the system itself (active container/restarts/memory usage/cpu usage)
-  - [ongoing] Monitor the business metrics
+  - Monitor the business metrics for the ML pipeline
 - Alerts that can trigger email notification when detecting
   - API service down for a configurable period of time (the core of our business service)
   - API service is unstable (restarting in loop)
