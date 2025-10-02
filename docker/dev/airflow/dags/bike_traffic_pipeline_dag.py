@@ -217,6 +217,7 @@ def _prepare_args_common(
     # Push container args in XCom
     ti.xcom_push(key="RAW_FILE_NAME", value=counter.raw_file_name)
     ti.xcom_push(key="SITE", value=counter.site)
+    ti.xcom_push(key="SITE_SHORT", value=counter_id)
     ti.xcom_push(key="ORIENTATION", value=counter.orientation)
     ti.xcom_push(key="INTERIM_NAME", value=counter.interim_name)
     ti.xcom_push(key="PROCESSED_NAME", value=counter.processed_name)
@@ -304,7 +305,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
@@ -332,7 +333,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "date_et_heure_de_comptage",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
@@ -372,7 +373,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='GRID_ITER') }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
+            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
             environment=prepare_args.output,
             mounts=MOUNTS,
             docker_url="unix://var/run/docker.sock",
