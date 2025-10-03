@@ -187,16 +187,16 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
 
-    { "type": "row", "title": "Historique 24h (test)", "collapsed": false,
+    { "type": "row", "title": "Historique des métriques", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "id": 300
     },
 
     {
-      "type": "timeseries", "title": "MAPE – 24h", "id": 801,
+      "type": "timeseries", "title": "MAPE – lissé par minute", "id": 801,
       "gridPos": { "h": 9, "w": 8, "x": 0, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "refId": "A",
-        "expr": "avg_over_time(bike_mape{job=\"bike-traffic\",site=\"$site\"}[1h])"
+        "expr": "avg_over_time(bike_mape{job=\"bike-traffic\",site=\"$site\"}[1m])"
       } ],
       "fieldConfig": { "defaults": {
         "unit": "percent",
@@ -222,11 +222,11 @@
     },
 
     {
-      "type": "timeseries", "title": "RMSE – 24h", "id": 802,
+      "type": "timeseries", "title": "RMSE – lissé par minute", "id": 802,
       "gridPos": { "h": 9, "w": 8, "x": 8, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "refId": "A",
-        "expr": "avg_over_time(bike_rmse{job=\"bike-traffic\",site=\"$site\"}[1h])"
+        "expr": "avg_over_time(bike_rmse{job=\"bike-traffic\",site=\"$site\"}[1m])"
       } ],
       "fieldConfig": { "defaults": {
         "unit": "none",
@@ -252,11 +252,11 @@
     },
 
     {
-      "type": "timeseries", "title": "R² – 24h", "id": 803,
+      "type": "timeseries", "title": "R² – lissé par minute", "id": 803,
       "gridPos": { "h": 9, "w": 8, "x": 16, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "refId": "A",
-        "expr": "avg_over_time(bike_r2{job=\"bike-traffic\",site=\"$site\"}[1h])"
+        "expr": "avg_over_time(bike_r2{job=\"bike-traffic\",site=\"$site\"}[1m])"
       } ],
       "fieldConfig": { "defaults": {
         "unit": "none",
@@ -347,20 +347,20 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
 
-    { "type": "row", "title": "Volumes traités", "collapsed": false,
+    { "type": "row", "title": "Volumes traités – last", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 }, "id": 500
     },
 
     {
       "type": "stat",
-      "title": "Observations traitées – 24h (ingest)",
+      "title": "Observations traitées (ingest)",
       "id": 501,
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 50 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "last_over_time(bike_records_total{job=\"bike-traffic\",task=\"ingest\",site=\"$site\"}[6h])"
+          "expr": "last_over_time(bike_records_total{job=\"bike-traffic\",task=\"ingest\",site=\"$site\"}[24h])"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "none" } },
@@ -368,14 +368,14 @@
     },
     {
       "type": "stat",
-      "title": "Observations traitées – 24h (features)",
+      "title": "Observations traitées (features)",
       "id": 502,
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 50 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "last_over_time(bike_records_total{job=\"bike-traffic\",task=\"features\",site=\"$site\"}[6h])"
+          "expr": "last_over_time(bike_records_total{job=\"bike-traffic\",task=\"features\",site=\"$site\"}[24h])"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "none" } },
@@ -383,14 +383,14 @@
     },
     {
       "type": "stat",
-      "title": "Observations traitées – 24h (models)",
+      "title": "Observations traitées (models)",
       "id": 503,
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 50 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "last_over_time(bike_records_total{job=\"bike-traffic\",task=\"models\",site=\"$site\"}[6h])"
+          "expr": "last_over_time(bike_records_total{job=\"bike-traffic\",task=\"models\",site=\"$site\"}[24h])"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "none" } },
