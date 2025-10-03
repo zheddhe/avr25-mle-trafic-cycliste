@@ -138,7 +138,7 @@
     },
     {
       "type": "stat",
-      "title": "Req/s – (lissé sur fenêtre temporelle)",
+      "title": "Requêtes/s – (lissé sur fenêtre temporelle)",
       "id": 2,
       "gridPos": {
         "h": 6,
@@ -220,7 +220,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – moy (lissé sur fenêtre temporelle)",
+      "title": "Prédictions/req – moy (lissé sur fenêtre temporelle)",
       "id": 4,
       "gridPos": {
         "h": 6,
@@ -364,7 +364,7 @@
     },
     {
       "type": "row",
-      "title": "Débit & erreurs (prédictions uniquement)",
+      "title": "Débit & erreurs",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -376,7 +376,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Requêtes par code – (/predictions/) (lissé sur fenêtre temporelle)",
+      "title": "Requêtes/s – par code (lissé sur fenêtre temporelle)",
       "id": 20,
       "gridPos": {
         "h": 8,
@@ -391,7 +391,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (rate(http_requests_total{job=\"$job\", handler=~\".*predictions.*\"}[$__rate_interval]))"
+          "expr": "sum by (status) (rate(http_requests_total{job=\"$job\", handler!=\"/metrics\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -414,7 +414,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Req/s total – (/predictions/) (lissé sur fenêtre temporelle)",
+      "title": "Requêtes/s – total (lissé sur fenêtre temporelle)",
       "id": 21,
       "gridPos": {
         "h": 8,
@@ -429,7 +429,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{job=\"$job\", handler=~\".*predictions.*\"}[$__rate_interval]))"
+          "expr": "sum(rate(http_requests_total{job=\"$job\", handler!=\"/metrics\"}[$__rate_interval]))"
         }
       ],
       "fieldConfig": {
@@ -448,7 +448,7 @@
     },
     {
       "type": "bargauge",
-      "title": "Top 5 endpoints (Req/s)",
+      "title": "Top 5 endpoints (Requêtes/s)",
       "id": 22,
       "gridPos": {
         "h": 6,
@@ -484,7 +484,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – moy (lissé sur fenêtre temporelle)",
+      "title": "Prédictions/req – moy (lissé sur fenêtre temporelle)",
       "id": 30,
       "gridPos": {
         "h": 6,
@@ -517,7 +517,7 @@
     },
     {
       "type": "stat",
-      "title": "Préd/req – p90 (lissé sur fenêtre temporelle)",
+      "title": "Prédictions/req – p90 (lissé sur fenêtre temporelle)",
       "id": 31,
       "gridPos": {
         "h": 6,
@@ -583,7 +583,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Préd/req – moyenne (24h) (lissé sur fenêtre temporelle)",
+      "title": "Prédictions/req – moyenne (24h) (lissé sur fenêtre temporelle)",
       "id": 33,
       "gridPos": {
         "h": 8,
@@ -629,7 +629,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Req/s – /predictions/* (lissé sur fenêtre temporelle)",
+      "title": "Requêtes/s – /predictions/* (lissé sur fenêtre temporelle)",
       "id": 40,
       "gridPos": {
         "h": 8,
