@@ -169,7 +169,7 @@ services:
       retries: 20
     volumes:
       - mlflow-postgres-db:/var/lib/postgresql/data
-    restart: always
+    restart: unless-stopped
     networks:
       - mlflow_net
     profiles: ["all", "mlflow", "ptf"]
@@ -190,7 +190,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    restart: always
+    restart: unless-stopped
     networks:
       - mlflow_net
       - mlops_net
@@ -265,7 +265,7 @@ services:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
       retries: 5
-    restart: always
+    restart: unless-stopped
     networks:
       - airflow_net
     profiles: ["all", "airflow", "ptf"]
@@ -279,7 +279,7 @@ services:
       interval: 5s
       timeout: 30s
       retries: 50
-    restart: always
+    restart: unless-stopped
     networks:
       - airflow_net
     profiles: ["all", "airflow", "ptf"]
@@ -346,7 +346,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-    restart: always
+    restart: unless-stopped
     volumes:
       # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
@@ -392,7 +392,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-    restart: always
+    restart: unless-stopped
     volumes:
       # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
@@ -430,7 +430,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-    restart: always
+    restart: unless-stopped
     volumes:
       # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
@@ -460,7 +460,7 @@ services:
     command: ["celery", "flower"]
     ports:
       - "5555:5555"
-    restart: always
+    restart: unless-stopped
     networks:
       - airflow_net
     profiles: ["all", "airflow", "ptf"]
@@ -541,7 +541,7 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
-    restart: always
+    restart: unless-stopped
     networks:
       - mlops_net
     profiles: ["all", "monitoring", "ptf"]
