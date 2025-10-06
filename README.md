@@ -32,8 +32,8 @@ This project implements a complete machine learning and MLOps architecture in th
 > The MLOps architecture we designed focuses on interactions between components
 > to achieve our main business case: an external user can access daily refreshed
 > bike traffic predictions.
-
-[![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1aglCRFaxXRVEEEwtE5ePFnW-vjE8CYa-/view?usp=sharing)
+>
+>[![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1aglCRFaxXRVEEEwtE5ePFnW-vjE8CYa-/view?usp=sharing)
 
 ## 🧱 GitHub Structure
 
@@ -212,11 +212,11 @@ uvicorn src.api.main:app --reload --port 10000
 
 ## MLOps setup
 
-> This section covers the project setup as a containerized microservices architecture from an MLOps point of view.
->
-> - Custom your **.env** file to populate environment variables needed at startup (an .env.template is provided)
->
+> This section covers the project setup as a containerized microservices architecture from an MLOps point of view as illustrated in the schemas below.
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
+> [![Docker Compose Monitoring](references/Docker_Compose_Monitoring.drawio.png)](https://drive.google.com/file/d/14DbcNiD3w7nrdkPiIymbMpX0-vzXRupW/view?usp=drive_link)
+>
+> You'll need to create and customize your own **.env** file to populate environment variables that are required at startup (a template file `.env.template` is provided)
 
 ### 1. 🐳 Service containerization
 
