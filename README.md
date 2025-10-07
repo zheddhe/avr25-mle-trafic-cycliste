@@ -408,3 +408,4 @@ Continuous Integration workflows are handled with GitHub Actions:
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
 - Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
+- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofiabouizzoul98@gmail.com)
