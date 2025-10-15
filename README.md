@@ -274,6 +274,7 @@ Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/wind
 | stop         | Stoppe les services docker du profil choisi (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`) |
 | sim_api_loop | Simule un arrêt/relance de l'API 10 fois à intervalle de 5s                 |
 | sim_api_down | Simule un arrêt temporaire de l'API pendant 2 minutes                       |
+| sim_api_req  | %200, %4XX et volume (RPS & pred/s) sur /predictions/{counter}              |
 | clean_full   | Nettoie les artefacts (images/volumes/networks)                             |
 | help         | Affiche cette aide                                                          |
 
@@ -318,19 +319,23 @@ splits, predictions, metrics, and hyperparameters).
 
 ```bash
 ### Configure environment variables
+# it is recommended to store this within a .env.local file so that you can source it
 export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
 export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
+# source .env.local
 ```
 
 #### Local service
 
 ```bash
 ### Configure environment variables
+# it is recommended to store this within a .env.local file so that you can source it
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_ACCESS_KEY_ID=minio
 export AWS_SECRET_ACCESS_KEY=minio123
+# source .env.local
 ```
 
 ### 3. 🧩 Multi-counter orchestration
@@ -370,6 +375,15 @@ The project has defined :
   - API service down for a configurable period of time (the core of our business service)
   - API service is unstable (restarting in loop)
 
+#### Push Gateway configuration
+
+```bash
+### Inhibit push metrics to push gateway (1 = disabled, other values = enable)
+# it is recommended to store this within a .env.local file so that you can source it
+export DISABLE_METRICS_PUSH=1
+# source .env.local
+```
+
 ## 🤝 Team collaboration
 
 ### 1. 📖 External Documentation
@@ -408,3 +422,4 @@ Continuous Integration workflows are handled with GitHub Actions:
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
 - Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
+- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofiabouizzoul98@gmail.com)
