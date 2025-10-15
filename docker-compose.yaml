@@ -353,8 +353,6 @@ services:
       - ./data:/opt/airflow/data
       - ./docker/dev/airflow/dags:/opt/airflow/dags
       - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      # socket bind for container exchanges with docker desktop
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
       - mlops_net
@@ -399,8 +397,6 @@ services:
       - ./data:/opt/airflow/data
       - ./docker/dev/airflow/dags:/opt/airflow/dags
       - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      # socket bind for container exchanges with docker desktop
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - airflow_net
       - mlops_net
@@ -416,20 +412,16 @@ services:
       AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
       DOCKER_HOST: unix:///var/run/docker.sock
       AIRFLOW__CORE__WORKER_HEARTBEAT_INTERVAL: 10
-    user: "${AIRFLOW_UID:-1000}:0"
+      AIRFLOW_UID: ${AIRFLOW_UID:-1000}
+      AIRFLOW_GID: ${AIRFLOW_GID:-1001}
+    user: "0:0"  # we grant the entry point script root mode to initiate the correct groups
+    entrypoint: ["/opt/airflow/scripts/airflow-entrypoint.sh"]
     group_add:
       - ${AIRFLOW_GID:-1001}
     depends_on:
       airflow-init:
         condition: service_completed_successfully
     command: ["celery", "worker"]
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"
-      interval: 10s
-      timeout: 10s
-      retries: 5
     restart: unless-stopped
     volumes:
       # Bind host for external exchanges
@@ -439,6 +431,7 @@ services:
       - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/dev/airflow/scripts/airflow-entrypoint.sh:/opt/airflow/scripts/airflow-entrypoint.sh:ro
     networks:
       - airflow_net
     profiles: ["all", "airflow", "ptf"]
@@ -461,6 +454,15 @@ services:
     ports:
       - "5555:5555"
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          celery --app airflow.executors.celery_executor.app status 2>&1 | grep -q "OK" || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     networks:
       - airflow_net
     profiles: ["all", "airflow", "ptf"]

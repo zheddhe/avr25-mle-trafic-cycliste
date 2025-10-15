@@ -1,6 +1,8 @@
 # src/airflow/dags/bike_traffic_pipeline_dag.py
 from __future__ import annotations
 
+import os
+import logging
 import json
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +15,8 @@ from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import SimpleHttpOperator
 from airflow.utils.task_group import TaskGroup
+from airflow.exceptions import AirflowException
+from docker import from_env as docker_from_env
 from docker.types import Mount
 from common.utils import _load_config
 
@@ -167,6 +171,68 @@ def _read_manifests(**ctx) -> Dict[str, Any]:
     return {"ingest": ing, "features": fea, "models": mod}
 
 
+def _check_docker_access(**_):
+    """
+    Vérifie que le socket Docker est accessible pour le même utilisateur
+    que celui utilisé par les DockerOperator (AIRFLOW_UID:AIRFLOW_GID).
+    """
+    logger = logging.getLogger("airflow.task")
+
+    uid_effective = int(AIRFLOW_UID)
+    gid_effective = int(AIRFLOW_GID)
+    sock_path = "/var/run/docker.sock"
+
+    logger.info(f"[Docker Check] AIRFLOW_UID={AIRFLOW_UID}, AIRFLOW_GID={AIRFLOW_GID}")
+    logger.info(f"[Docker Check] Simulation d'accès avec UID={uid_effective}, GID={gid_effective}")
+
+    if not os.path.exists(sock_path):
+        raise AirflowException(
+            f"[Docker Check] Le socket Docker n'existe pas à l'emplacement {sock_path}"
+        )
+
+    st = os.stat(sock_path)
+    perms = oct(st.st_mode)[-3:]
+    owner_uid, owner_gid = st.st_uid, st.st_gid
+    logger.info(
+        f"[Docker Check] Socket: {sock_path}, permissions={perms}, "
+        f"propriétaire={owner_uid}:{owner_gid}"
+    )
+
+    # Vérifie les permissions en fonction des bits d'accès
+    can_read = False
+    can_write = False
+
+    # Cas 1 : l'utilisateur est propriétaire
+    if uid_effective == owner_uid:
+        can_read = bool(st.st_mode & 0o400)
+        can_write = bool(st.st_mode & 0o200)
+    # Cas 2 : l'utilisateur fait partie du groupe
+    elif gid_effective == owner_gid:
+        can_read = bool(st.st_mode & 0o040)
+        can_write = bool(st.st_mode & 0o020)
+    # Cas 3 : droits "others"
+    else:
+        can_read = bool(st.st_mode & 0o004)
+        can_write = bool(st.st_mode & 0o002)
+
+    if not (can_read and can_write):
+        raise AirflowException(
+            f"[Docker Check] L'utilisateur simulé {uid_effective}:{gid_effective} "
+            f"n'a pas les droits lecture/écriture sur {sock_path}. "
+            f"Permissions={perms}, propriétaire={owner_uid}:{owner_gid}. "
+            f"Vérifiez que le groupe {gid_effective} correspond bien au groupe docker."
+        )
+
+    # Vérifie la connexion Docker réelle
+    try:
+        client = docker_from_env()
+        client.ping()
+        logger.info("[Docker Check] Accès Docker confirmé : le socket est accessible.")
+    except Exception as e:
+        logger.error(f"[Docker Check] Échec de la connexion Docker : {e}")
+        raise AirflowException(f"[Docker Check] Le socket Docker est inaccessible : {e}")
+
+
 # --------------------------------------------------------------------------- #
 # Prepare args
 # --------------------------------------------------------------------------- #
@@ -264,6 +330,12 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
     Build the ETL task group: prepare_args → ingest → features → models → read_manifests.
     """
     with TaskGroup(group_id="etl", dag=dag) as etl:
+        # --- Docker sanity check ---
+        docker_check = PythonOperator(
+            task_id="check_docker_access",
+            python_callable=_check_docker_access,
+            dag=dag,
+        )
         prepare_args = PythonOperator(
             task_id="prepare_args",
             python_callable=_prepare_args_callable(mode),
@@ -276,9 +348,10 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 return bool(ti.xcom_pull(task_ids="etl.prepare_args", key="PROCEED"))
 
             gate = ShortCircuitOperator(task_id="gate", python_callable=_gate, dag=dag)
-            prepare_args >> gate  # type: ignore
+            docker_check >> prepare_args >> gate  # type: ignore
             upstream = gate
         else:
+            docker_check >> prepare_args  # type: ignore
             upstream = prepare_args
 
         # Docker tasks, dynamically parameterized via XCom
@@ -313,7 +386,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
             auto_remove=True,
-            user=f"{AIRFLOW_UID}:0",
+            user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
             dag=dag,
         )
 
@@ -341,7 +414,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
             auto_remove=True,
-            user=f"{AIRFLOW_UID}:0",
+            user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
             dag=dag,
         )
 
@@ -381,7 +454,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
             auto_remove=True,
-            user=f"{AIRFLOW_UID}:0",
+            user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
             dag=dag,
         )
 

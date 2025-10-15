@@ -16,7 +16,7 @@
   "aws_default_region": "us-east-1",
 
   "airflow_uid": 1000,
-  "airflow_gid": 1001,
+  "airflow_gid": 989,
   
   "pushgateway_addr": "monitoring-pushgateway:9091",
 
