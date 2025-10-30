@@ -214,6 +214,7 @@ def main() -> None:
     print(f"Other/Unknown  : {stats.other}")
     print(f"Predictions/s  : {preds_per_sec:.2f} "
           f"(total {stats.predictions_returned})")
+    LOGGER.info("Simulation done")
 
 
 if __name__ == "__main__":
