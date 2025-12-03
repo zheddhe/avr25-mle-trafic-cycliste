@@ -78,7 +78,7 @@ sim_api_req: ## %200, %4XX et volume (RPS & pred/s) sur /predictions/{counter}
 		$(if $(COUNTER_IDS),--counter-ids "$(COUNTER_IDS)",)
 
 clean_full: ## Nettoie les artefacts (images/volumes/networks)
-	docker compose --profile all down -v --rmi all && docker system prune -f
+	docker compose --profile all down -v --rmi all && docker system prune -f && docker volume prune -f
 
 help: ## Affiche cette aide
 	@awk 'BEGIN{FS=":.*##"; printf "\nTargets disponibles:\n\n"} /^[a-zA-Z0-9_.-]+:.*##/{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2} /^.DEFAULT_GOAL/{print ""} ' $(MAKEFILE_LIST)
