@@ -41,162 +41,120 @@ This project implements a complete machine learning and MLOps architecture in th
 avr25-mle-trafic-cycliste/
 ├── LICENSE             <- MIT license
 ├── README.md           <- This top-level README for developers using this project
+├── Makefile            <- Local developer and Docker Compose operation targets
+├── .env.template       <- Template for local secrets and runtime variables
 ├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff configuration
 ├── uv.lock             <- uv lockfile for the local development environment
 ├── data                <- Data shared with host (read/write)
-│   ├── raw             <- Original, immutable data dumps (e.g., external sources)
-│   ├── interim         <- Intermediate data derived from raw (goal-specific)
-│   ├── processed       <- Processed data (e.g., feature-enriched)
-│   └── final           <- Final stage data (e.g., train/test and predictions)
 ├── logs                <- Logs shared with host (read/write)
-│   ├── ml              <- ML pipeline logs
-│   ├── api             <- Data API logs
-│   ├── scheduler       <- Airflow scheduler logs
-│   └── dag[...]        <- Unit DAG run logs
 ├── models              <- Model artifacts shared with host (read/write)
-│   └── ...
 ├── references          <- Data dictionaries, manuals, other explanatory material
-│   └── ...
-├── src/                <- All source code used in this project
-│   ├── airflow/        <- Airflow orchestration management
-│   │   ├── dags        <- Orchestrator DAGs code shared with host
-│   │   │   ├── bike_traffic_pipeline_dag.py
-│   │   │   └── bike_traffic_orchestrator_dag.py
-│   │   │   ├── common
-│   │   │   │   └── utils.py
-│   │   ├── config      <- Orchestrator config shared with host (read-only)
-│   │   │   └── bike_dag_config.json
-│   ├── api/            <- FastAPI service (prediction readout)
-│   │   └── main.py
-│   └── ml/             <- Machine learning pipeline
-│       ├── ingest      <- Scripts to ingest initial raw data or daily data
-│       │   ├── data_utils.py
-│       │   └── import_raw_data.py
-│       ├── features    <- Scripts to turn raw data into modeling-ready data
-│       │   ├── features_utils.py
-│       │   └── build_features.py
-│       └── models      <- Train models and compute batch predictions
-│           ├── models_utils.py
-│           └── train_and_predict.py
+├── src/                <- API, Airflow DAGs, and ML pipeline source code
 ├── docker/             <- Container architecture
-│   ├── dev/            <- Development setup
-│   │   ├── grafana/    <- Config for Grafana dashboards and provisioning
-│   │   │   ├── dashboards/
-│   │   │   │   └── cadvisor_docker_insights.json
-│   │   │   └── provisioning/
-│   │   │       ├── dashboards.yaml
-│   │   │       └── datasource.yaml
-│   │   ├── prometheus/ <- Config for Prometheus targets and general configuration
-│   │   │   └── prometheus.yml
-│   │   ├── airflow/    <- Config and DAGs for Airflow
-│   │   │   ├── dags/
-│   │   │   │   ├── bike_traffic_orchestrator_dag.py
-│   │   │   │   ├── bike_traffic_pipeline_dag.py
-│   │   │   │   └── common
-│   │   │   │       └── utils.py
-│   │   │   ├── bike_dag_config.json
-│   │   │   ├── connections.json
-│   │   │   └── variables.json
-│   │   ├── mlflow/     <- Custom Docker image for MLflow service
-│   │   │   └── Dockerfile
-│   │   ├── api/        <- Custom Docker image for API service
-│   │   │   ├── requirements.txt
-│   │   │   └── Dockerfile
-│   │   └── ml/         <- Custom Docker images for ML pipeline services
-│   │       ├── ingest/
-│   │       │   ├── requirements.txt
-│   │       │   └── Dockerfile
-│   │       ├── features/
-│   │       │   ├── requirements.txt
-│   │       │   └── Dockerfile
-│   │       └── models/
-│   │           ├── requirements.txt
-│   │           └── Dockerfile
-│   └── prod/           <- Production setup
-│       └── ...
-└── tests/
-    ├── unitary/        <- Unit tests (pytest for source code coverage)
-    │   └── ...
-    └── integration/    <- Integration tests
-        └── ...
+└── tests/              <- Unit and integration tests
 ```
 
 ## ⚙️ Installation
 
-### 🔧 Prerequisites
+The installation flow is split in two parts:
 
-Initialize the development environment with Python, pipx, and uv, preferably from a
-Linux virtual machine on your operating system.
+1. **Pre-clone bootstrap**, before this repository is available locally.
+2. **Post-clone setup**, once the Makefile is available and should be preferred.
+
+### 1. Pre-clone bootstrap
+
+These commands are intentionally shown explicitly because the repository and its
+Makefile are not available yet.
 
 #### Optional virtual machine creation on Windows
 
 ```powershell
-# Check and activate the local virtual machine hypervisor.
 Set-Service -Name WSLService -StartupType Automatic
 Start-Service -Name WSLService
 Get-Service WSLService
-
-# Install an Ubuntu distribution.
 wsl --install -d Ubuntu
 ```
 
-#### Linux, through a virtual machine or directly
-
-All commands in this README are provided from a Linux operating system point of view.
+#### Linux bootstrap dependencies
 
 ```bash
-# Check and update your VM libraries, Python, pip, and pipx.
 sudo apt update
 sudo apt install --fix-missing
-sudo apt install -y python3 python3-pip pipx
+sudo apt install -y python3 python3-pip pipx git
 pipx ensurepath
-
-# Install uv as the local project environment and dependency manager.
 pipx install uv
 ```
 
-### 🔧 Repository cloning and DVC setup (one-time init)
-
-Please refer to DagsHub remote setup actions. Example steps:
-
-- Git setup and cloning
+#### GitHub SSH access and repository cloning
 
 ```bash
-# Set up your local Git identity and clone the repository.
-git config --global user.name "your user"
-git config --global user.email "your_email@example.com"
-
-# Configure your VM public key on GitHub by using an ed25519 key.
 ssh-keygen -t ed25519 -C "your_email@example.com"
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
-
-# Copy the content of your public key to GitHub > Settings > SSH and GPG keys.
 cat ~/.ssh/id_ed25519.pub
-
-# Check your connection.
 ssh -T git@github.com
 
-# Clone the repository.
 git clone git@github.com:zheddhe/avr25-mle-trafic-cycliste.git
 cd avr25-mle-trafic-cycliste
 ```
 
-- DVC setup
+### 2. Post-clone project setup
+
+From this point, prefer Makefile targets over raw commands.
 
 ```bash
-# Set up your personal credentials for DagsHub.
-dvc remote modify origin --local access_key_id [...]
-dvc remote modify origin --local secret_access_key [...]
+make help
+make env
+make setup
+```
+
+`make env` creates `.env` from `.env.template` if it does not already exist.
+Replace every `[replace_me]` placeholder in `.env` before running targets that
+need secrets or user-specific values.
+
+The `.env` file is intentionally not tracked by Git because it may contain
+secrets. Docker Compose reads `.env` automatically from the repository root.
+Makefile targets that need repository secrets can load it internally.
+
+Configure local Git identity and DVC credentials with:
+
+```bash
+make git-setup
+make dvc-setup
+```
+
+`make dvc-setup` does not run `dvc init` on this repository because DVC is
+already initialized and `.dvc/config` is versioned. It only writes local DVC S3
+credentials to `.dvc/config.local`, which is ignored by `.dvc/.gitignore`.
+
+Use this convenience target when both steps are needed:
+
+```bash
+make repo_setup
+```
+
+The versioned DVC remote is defined in `.dvc/config`:
+
+```ini
+[core]
+    remote = origin
+['remote "origin"']
+    url = s3://dvc
+    endpointurl = https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
+```
+
+The matching local `.env` variables are:
+
+```bash
+DAGSHUB_ACCESS_KEY_ID="[replace_me]"
+DAGSHUB_SECRET_ACCESS_KEY="[replace_me]"
 ```
 
 ## 🚀 DevOps setup
 
-> This section covers the project setup as a monolithic architecture from a DevOps point of view.
-
-This repository is not packaged as a Python distribution. The local Python environment
-is managed by uv and is used for developer tooling, static analysis, tests, Pylance
-import resolution, and local execution of the application code.
+This repository is not packaged as a Python distribution. The local Python
+environment is managed by uv and is used for developer tooling, static analysis,
+tests, Pylance import resolution, and local execution of the application code.
 
 ### uv dependency groups
 
@@ -206,30 +164,32 @@ import resolution, and local execution of the application code.
 | `test` | Test and lint harness. Includes `app`. |
 | `dev` | Full development harness. Includes `test` and DVC tooling. |
 
+### Local validation targets
+
+Prefer these Makefile targets for day-to-day local validation:
+
 ```bash
-# Synchronize the complete local development environment from uv.lock.
-uv sync --locked --group dev
-
-# Run the current lint gate.
-uv run --locked --group test ruff check .
-
-# Run unit tests while excluding integration tests.
-uv run --locked --group test pytest -m "not integration"
-
-# Activate the uv-managed virtual environment in a command-line session.
-source .venv/bin/activate
-
-# Optional cleanup of local Python artifacts.
-rm -rf .venv .pytest_cache .coverage htmlcov build dist *.egg-info
-find . -type d -name "__pycache__" -prune -exec rm -rf {} +
-
-# Execute the DVC pipeline.
-uv run --locked --group dev dvc repro
-
-# Launch the data API locally.
-# The API will be available at http://localhost:10000/docs.
-uv run --locked --group app uvicorn src.api.main:app --reload --port 10000
+make sync
+make lock-check
+make lint
+make test
+make ci
 ```
+
+`make ci` chains the lock check, Ruff linting, and unit tests while excluding
+integration tests. This mirrors the local validation path used by CI without
+requiring Docker services.
+
+Useful maintenance targets:
+
+```bash
+make clean
+make clean_env
+```
+
+`make clean` removes local Python caches and test artifacts only. It does not
+remove Docker volumes. Use `make clean_env` only when you want to recreate the
+uv-managed virtual environment from scratch.
 
 ## MLOps setup
 
@@ -237,129 +197,135 @@ uv run --locked --group app uvicorn src.api.main:app --reload --port 10000
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 > [![Docker Compose Monitoring](references/Docker_Compose_Monitoring.drawio.png)](https://drive.google.com/file/d/14DbcNiD3w7nrdkPiIymbMpX0-vzXRupW/view?usp=drive_link)
 >
-> You'll need to create and customize your own **.env** file to populate environment variables that are required at startup. A template file `.env.template` is provided.
+> Create and customize your own `.env` file from `.env.template` before starting
+> the stack. The file contains Docker Compose variables, Makefile defaults,
+> local credentials, and optional remote MLflow/DagsHub settings.
 
-### 1. 🐳 Service containerization
+### 1. Docker engine setup
 
-We use **Docker** to simulate our production environment.
-
-#### Docker on a virtual machine with Ubuntu distribution
-
-> It is recommended to use a Docker engine directly on an Ubuntu virtual machine.
-
-```bash
-# Add official GPG key for Docker distribution.
-sudo apt update
-sudo apt install ca-certificates curl gnupg lsb-release -y
-
-# Add official GPG key for Docker distribution.
-sudo mkdir -m 0755 -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-# Add official Docker repository.
-echo \
-  "deb [arch=$(dpkg --print-architecture) \
-  signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Update packages list and install Docker components.
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-
-# Add current user authorization to Docker group.
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-#### Optional local Docker Desktop with a virtual machine hypervisor
-
-> As an alternative option, Docker Desktop can be used with additional support during the development phase.
-
-Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
-
-#### Operation commands
-
-> All these unit actions are consolidated in the Makefile.
-
-| Target       | Description |
-|--------------|-------------|
-| bootstrap    | Initialize bootstrap dependencies. |
-| repo_setup   | Configure the DVC S3 remote and GitHub credentials. |
-| rebuild_full | Rebuild Docker images and fully restart services. |
-| start        | Start Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
-| stop         | Stop Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
-| sim_api_loop | Simulate 10 API stop/start cycles with a 5-second interval. |
-| sim_api_down | Simulate a temporary API outage for 2 minutes. |
-| sim_api_req  | Simulate response status mix and request volume on `/predictions/{counter}`. |
-| clean_full   | Remove Docker artifacts, including images, volumes, and networks. |
-| help         | Show Makefile help. |
+For a first Docker installation on Ubuntu, use the dedicated Makefile target
+after cloning the repository:
 
 ```bash
-# 1) Initialize and build the Docker images.
-docker compose --profile all build
-
-# 2) Start all backend services.
-# profile mlflow: server / postgres / minio / mc-init in background
-# profile airflow: webserver / worker / scheduler / init / postgres / redis / mailhog in background
-# profile monitoring: grafana / prometheus / cadvisor / node-exporter
-docker compose --profile mlflow up -d
-docker compose --profile airflow up -d
-docker compose --profile monitoring up -d
-
-# 3) Start all permanent business services in background.
-# profile api: data API service
-docker compose --profile api up -d
-
-# The API will be available at http://localhost:10000/docs.
-
-# NB: profile ptf (platform) combines mlflow, airflow, monitoring, and API profiles.
-
-# 4) Start a pipeline run in interactive mode.
-# profile ml: raw ingestion / features engineering / train and predict services
-docker compose --profile ml up ml-ingest-dev
-docker compose --profile ml up ml-features-dev
-docker compose --profile ml up ml-models-dev
-
-# Stop everything, including networks, while keeping database volumes.
-docker compose --profile all down
-
-# Stop everything and remove all images, volumes, networks, and orphan items.
-docker compose --profile all down -v --rmi all && docker system prune -f
+make docker-install
 ```
 
-### 2. 📈 Experience tracker
+This installs Docker Engine, the Compose plugin, and adds the current user to
+the `docker` group. Open a new shell, or run `newgrp docker`, before using Docker.
+Docker Desktop can also be used during development on Windows, macOS, or Linux.
+
+### 2. Docker Compose operation targets
+
+The project is assumed to be cloned when running operational commands. Prefer
+Makefile targets for project-level Docker operations:
+
+```bash
+make compose-config
+make build
+make ops
+```
+
+`make ops` validates the Compose configuration and starts the default platform
+profile. The default profile is `ptf`, which combines MLflow, Airflow,
+monitoring, and API services.
+
+Targeted operations remain available when needed:
+
+```bash
+make start PROFILE=api
+make stop PROFILE=api
+make logs SERVICE=api-dev
+make rebuild_full
+make clean_full
+```
+
+`make start` uses `docker compose up -d` so it works from a clean environment
+where containers have not been created yet. `make clean_full` is intentionally
+destructive: it removes Docker images, volumes, and networks.
+
+For one-off ML pipeline containers, use the dedicated targets:
+
+```bash
+make ml-ingest
+make ml-features
+make ml-models
+make ml-pipeline
+```
+
+The API is exposed at:
+
+```text
+http://localhost:10000/docs
+```
+
+### 3. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
 splits, predictions, metrics, and hyperparameters).
 
-#### DagsHub remote service
+The MLflow-related environment variables are centralized in `.env.template` and
+should be customized in your local `.env` file.
+
+#### Mode 1: Docker Compose MLflow service
+
+This is the default MLOps mode. The default `.env.template` values target the
+local Docker Compose MLflow and MinIO services from inside the Compose network:
 
 ```bash
-# Configure environment variables.
-# It is recommended to store this within a .env.local file so that you can source it.
-export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
-export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN, preferably over a personal password>
-# source .env.local
+MLFLOW_TRACKING_URI="http://mlflow-server:5000"
+MLFLOW_S3_ENDPOINT_URL="http://mlflow-minio:9000"
+AWS_ACCESS_KEY_ID="minio"
+AWS_SECRET_ACCESS_KEY="[replace_me]"
 ```
 
-#### Local service
+Start it with the platform services:
 
 ```bash
-# Configure environment variables.
-# It is recommended to store this within a .env.local file so that you can source it.
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
-export AWS_ACCESS_KEY_ID=minio
-export AWS_SECRET_ACCESS_KEY=minio123
-# source .env.local
+make ops
 ```
 
-### 3. 🧩 Multi-counter orchestration
+#### Mode 2: Host-side MLflow server for data science experiments
+
+This mode is useful for preliminary local data science experiments without the
+full Docker Compose stack. Start a host-side MLflow server with:
+
+```bash
+make mlflow-host
+```
+
+By default, it starts on `http://127.0.0.1:5000` with a local SQLite backend and
+local `./mlruns` artifact directory. Override these values if needed:
+
+```bash
+make mlflow-host \
+  MLFLOW_HOST_PORT=5010 \
+  MLFLOW_BACKEND_STORE=sqlite:///mlflow.db \
+  MLFLOW_ARTIFACT_ROOT=./mlruns
+```
+
+For host-side scripts targeting the Compose MLflow service, use the exposed
+Compose endpoint instead:
+
+```bash
+MLFLOW_TRACKING_URI="http://127.0.0.1:5001"
+MLFLOW_S3_ENDPOINT_URL="http://127.0.0.1:9000"
+AWS_ACCESS_KEY_ID="minio"
+AWS_SECRET_ACCESS_KEY="[replace_me]"
+```
+
+#### Mode 3: DagsHub remote MLflow service
+
+To use the DagsHub remote service instead of local MLflow, override these values
+in your local `.env` or shell session:
+
+```bash
+MLFLOW_TRACKING_URI="https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow"
+MLFLOW_TRACKING_USERNAME="[replace_me]"
+MLFLOW_TRACKING_PASSWORD="[replace_me]"
+```
+
+### 4. 🧩 Multi-counter orchestration
 
 - The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`). It configures especially:
   - The host repository root, to adjust to your production or development environment.
@@ -384,7 +350,7 @@ export AWS_SECRET_ACCESS_KEY=minio123
   - Every day, for each configured counter, trigger `init` then `daily`.
   - The `init` run is cheap if already done because it is short-circuited.
 
-### 4. 🧩 Monitoring and alerting
+### 5. 🧩 Monitoring and alerting
 
 The project has defined:
 
@@ -395,13 +361,12 @@ The project has defined:
   - API service down for a configurable period of time.
   - API service instability, such as restart loops.
 
-#### Push Gateway configuration
+The Pushgateway behavior is controlled by the `DISABLE_METRICS_PUSH` variable in
+`.env`:
 
 ```bash
 # Inhibit push metrics to Pushgateway: 1 = disabled, other values = enabled.
-# It is recommended to store this within a .env.local file so that you can source it.
-export DISABLE_METRICS_PUSH=1
-# source .env.local
+DISABLE_METRICS_PUSH=1
 ```
 
 ## 🤝 Team collaboration
@@ -444,4 +409,4 @@ The CI environment uses uv dependency groups directly and runs Ruff before pytes
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
 - Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
-- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofiabouizzoul98@gmail.com)
+- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofia.bouizzoul@gmail.com)
