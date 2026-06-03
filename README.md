@@ -41,8 +41,7 @@ This project implements a complete machine learning and MLOps architecture in th
 avr25-mle-trafic-cycliste/
 ├── LICENSE             <- MIT license
 ├── README.md           <- This top-level README for developers using this project
-├── .flake8             <- Linter configuration rules
-├── pyproject.toml      <- Python development project configuration
+├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff configuration
 ├── uv.lock             <- uv lockfile for the local development environment
 ├── data                <- Data shared with host (read/write)
 │   ├── raw             <- Original, immutable data dumps (e.g., external sources)
@@ -212,7 +211,7 @@ import resolution, and local execution of the application code.
 uv sync --locked --group dev
 
 # Run the current lint gate.
-uv run --locked --group test flake8
+uv run --locked --group test ruff check .
 
 # Run unit tests while excluding integration tests.
 uv run --locked --group test pytest -m "not integration"
@@ -438,7 +437,7 @@ Continuous Integration workflows are handled with GitHub Actions:
 - `ci_main.yml`: runs on every push or pull request to the `main` branch  
 - `ci_branch.yml`: runs on every push to any other branch
 
-The CI environment uses uv dependency groups directly and no longer relies on Nox.
+The CI environment uses uv dependency groups directly and runs Ruff before pytest.
 
 ### 5. 👥 Contributors
 
