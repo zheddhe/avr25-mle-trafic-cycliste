@@ -5,14 +5,15 @@ SHELL := /bin/bash
 # Default make target.
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap repo_setup
+.PHONY: help bootstrap env setup repo_setup
 .PHONY: sync lock-check lint test ci compose-config
-.PHONY: build rebuild_full start stop logs
+.PHONY: build rebuild_full ops start stop logs
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
 
 UV ?= uv
 DOCKER_COMPOSE ?= docker compose
+ENV_FILE ?= .env
 PROFILE ?= ptf
 SERVICE ?= api-dev
 URL ?= http://localhost:10000
@@ -25,6 +26,7 @@ OFFSET ?= 0
 COUNTER_IDS ?= Sebastopol_N-S_airflow_day0,Sebastopol_S-N_airflow_day0
 
 log_test = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
+load_env = if [ -f "$(ENV_FILE)" ]; then set -a; source "$(ENV_FILE)"; set +a; fi
 
 help: ## Display this help
 	@awk ' \
@@ -44,14 +46,34 @@ bootstrap: ## Install bootstrap dependencies
 	@echo "==> Install uv"
 	pipx install uv
 
-repo_setup: ## Configure Git identity and local DVC S3 credentials
-	@echo "==> Set up Git user name and email"
-	git config --global user.name "$${GIT_USER:-change_me}"
-	git config --global user.email "$${GIT_EMAIL:-change_me@mail.com}"
-	@if [ -z "$${DAGSHUB_KEY:-}" ]; then \
-		echo "Error: DAGSHUB_KEY is not set."; \
+env: ## Create a local .env file from .env.template if missing
+	@if [ -f "$(ENV_FILE)" ]; then \
+		echo "==> $(ENV_FILE) already exists. Nothing to do."; \
+	else \
+		cp .env.template "$(ENV_FILE)"; \
+		echo "==> Created $(ENV_FILE) from .env.template"; \
+		echo "==> Replace [replace_me] placeholders before running secret-based targets."; \
+	fi
+
+setup: env sync compose-config ## Prepare the local project after cloning
+
+repo_setup: env ## Configure Git identity and local DVC S3 credentials
+	@$(load_env)
+	@if [ -z "$${GIT_USER:-}" ] || [ "$${GIT_USER}" = "[replace_me]" ]; then \
+		echo "Error: GIT_USER is not set in $(ENV_FILE)."; \
 		exit 1; \
 	fi
+	@if [ -z "$${GIT_EMAIL:-}" ] || [ "$${GIT_EMAIL}" = "[replace_me]" ]; then \
+		echo "Error: GIT_EMAIL is not set in $(ENV_FILE)."; \
+		exit 1; \
+	fi
+	@if [ -z "$${DAGSHUB_KEY:-}" ] || [ "$${DAGSHUB_KEY}" = "[replace_me]" ]; then \
+		echo "Error: DAGSHUB_KEY is not set in $(ENV_FILE)."; \
+		exit 1; \
+	fi
+	@echo "==> Set up Git user name and email"
+	git config --global user.name "$${GIT_USER}"
+	git config --global user.email "$${GIT_EMAIL}"
 	@echo "==> Set up local DVC credentials"
 	$(UV) run --locked --group dev dvc remote modify origin --local \
 		access_key_id "$${DAGSHUB_KEY}"
@@ -77,19 +99,21 @@ test: ## Run unit tests while excluding integration tests
 
 ci: lock-check lint test ## Run local CI checks
 
-compose-config: ## Validate the Docker Compose configuration
+compose-config: env ## Validate the Docker Compose configuration
 	@$(call log_test,compose-config)
 	$(DOCKER_COMPOSE) --profile all config >/dev/null
 
-build: ## Build Docker images for all profiles
+build: env ## Build Docker images for all profiles
 	$(DOCKER_COMPOSE) --profile all build
 
-rebuild_full: ## Rebuild Docker images and restart platform services
+rebuild_full: env ## Rebuild Docker images and restart platform services
 	$(DOCKER_COMPOSE) --profile all build
 	$(DOCKER_COMPOSE) --profile all down
 	$(DOCKER_COMPOSE) --profile ptf up -d
 
-start: ## Start Docker services for the selected profile
+ops: env compose-config start ## Validate and start platform services
+
+start: env ## Start Docker services for the selected profile
 	@echo "==> Starting Docker services with profile [$(PROFILE)]"
 	$(DOCKER_COMPOSE) --profile $(PROFILE) up -d
 
