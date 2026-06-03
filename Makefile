@@ -238,6 +238,7 @@ mlops-pipeline: mlops-ingest mlops-features mlops-models ## Run the full one-off
 
 dvc-pipeline: env ## Run the full DVC pipeline
 	@$(call log_test,dvc-pipeline)
+	eval "$$($(MAKE) --no-print-directory env-dagshub)"
 	$(UV) run --locked --group dev dvc repro
 
 local-ingest: env sync ## Run the ML ingestion step locally without containers
