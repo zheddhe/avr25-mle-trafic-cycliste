@@ -49,16 +49,15 @@ help: ## Display this help
 	' $(MAKEFILE_LIST)
 
 bootstrap: ## Install Python bootstrap dependencies
-	@echo "==> Install python3, pip, pipx, and git"
+	@$(call log_test,bootstrap)
 	sudo apt update
 	sudo apt install --fix-missing
 	sudo apt install -y python3 python3-pip pipx git
 	pipx ensurepath
-	@echo "==> Install uv"
 	pipx install uv
 
 docker-install: ## Install Docker Engine and Compose plugin on Ubuntu
-	@echo "==> Install Docker host dependencies"
+	@$(call log_test,docker-install)
 	sudo apt update
 	sudo apt install -y ca-certificates curl gnupg lsb-release
 	sudo install -m 0755 -d /etc/apt/keyrings
@@ -90,6 +89,7 @@ env: ## Create a local .env file from .env.template if missing
 setup: env sync compose-config ## Prepare the local project after cloning
 
 git-setup: env ## Configure local Git identity from .env
+	@$(call log_test,git-setup)
 	@$(load_env)
 	@if [ -z "$${GIT_USER:-}" ] || [ "$${GIT_USER}" = "[replace_me]" ]; then \
 		echo "Error: GIT_USER is not set in $(ENV_FILE)."; \
@@ -99,11 +99,11 @@ git-setup: env ## Configure local Git identity from .env
 		echo "Error: GIT_EMAIL is not set in $(ENV_FILE)."; \
 		exit 1; \
 	fi
-	@echo "==> Set up Git user name and email"
 	git config --global user.name "$${GIT_USER}"
 	git config --global user.email "$${GIT_EMAIL}"
 
 dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
+	@$(call log_test,dvc-setup)
 	@$(load_env)
 	@if [ ! -d ".dvc" ]; then \
 		echo "Error: .dvc directory is missing. Run 'dvc init' before configuring remotes."; \
@@ -117,7 +117,6 @@ dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
 		echo "Error: DAGSHUB_SECRET_ACCESS_KEY is not set in $(ENV_FILE)."; \
 		exit 1; \
 	fi
-	@echo "==> Set up local DVC remote credentials in .dvc/config.local"
 	$(UV) run --locked --group dev dvc remote modify origin --local \
 		access_key_id "$${DAGSHUB_ACCESS_KEY_ID}"
 	$(UV) run --locked --group dev dvc remote modify origin --local \
@@ -149,9 +148,11 @@ compose-config: env ## Validate the Docker Compose configuration
 	$(DOCKER_COMPOSE) --profile all config >/dev/null
 
 build: env ## Build Docker images for all profiles
+	@$(call log_test,build)
 	$(DOCKER_COMPOSE) --profile all build
 
 rebuild_full: env ## Rebuild Docker images and restart platform services
+	@$(call log_test,rebuild_full)
 	$(DOCKER_COMPOSE) --profile all build
 	$(DOCKER_COMPOSE) --profile all down
 	$(DOCKER_COMPOSE) --profile ptf up -d
@@ -159,28 +160,33 @@ rebuild_full: env ## Rebuild Docker images and restart platform services
 ops: env compose-config start ## Validate and start platform services
 
 start: env ## Start Docker services for the selected profile
-	@echo "==> Starting Docker services with profile [$(PROFILE)]"
+	@$(call log_test,start PROFILE=$(PROFILE))
 	$(DOCKER_COMPOSE) --profile $(PROFILE) up -d
 
 stop: ## Stop Docker services for the selected profile
-	@echo "==> Stopping Docker services with profile [$(PROFILE)]"
+	@$(call log_test,stop PROFILE=$(PROFILE))
 	$(DOCKER_COMPOSE) --profile $(PROFILE) stop
 
 logs: ## Show Docker Compose logs for SERVICE
+	@$(call log_test,logs SERVICE=$(SERVICE))
 	$(DOCKER_COMPOSE) logs -f -t $(SERVICE)
 
 ml-ingest: env ## Run the ML ingestion container once
+	@$(call log_test,ml-ingest)
 	$(DOCKER_COMPOSE) --profile ml up ml-ingest-dev
 
 ml-features: env ## Run the ML feature engineering container once
+	@$(call log_test,ml-features)
 	$(DOCKER_COMPOSE) --profile ml up ml-features-dev
 
 ml-models: env ## Run the ML training and prediction container once
+	@$(call log_test,ml-models)
 	$(DOCKER_COMPOSE) --profile ml up ml-models-dev
 
 ml-pipeline: ml-ingest ml-features ml-models ## Run the full one-off ML pipeline
 
 mlflow-host: sync ## Start a host-side MLflow server for local experiments
+	@$(call log_test,mlflow-host)
 	$(UV) run --locked --group app mlflow server \
 		--host $(MLFLOW_HOST) \
 		--port $(MLFLOW_HOST_PORT) \
@@ -188,7 +194,7 @@ mlflow-host: sync ## Start a host-side MLflow server for local experiments
 		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
 
 sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
-	@echo "==> Simulating API restart failure loop"
+	@$(call log_test,sim_api_loop)
 	for i in {1..10}; do \
 		echo "[restart $$i] stopping api-dev..."; \
 		$(DOCKER_COMPOSE) stop api-dev; \
@@ -201,13 +207,13 @@ sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@echo "==> Simulation finished"
 
 sim_api_down: ## Simulate a temporary API outage for 2 minutes
-	@echo "==> Simulating API down for 2 minutes"
+	@$(call log_test,sim_api_down)
 	$(DOCKER_COMPOSE) stop api-dev
 	sleep 120
 	$(DOCKER_COMPOSE) up -d api-dev
 
 sim_api_req: ## Simulate traffic on /predictions/{counter}
-	@echo "==> Simulating /predictions/* traffic on $(URL)"
+	@$(call log_test,sim_api_req)
 	$(UV) run --locked --group test python tests/integration/test_load_api.py \
 		--url "$(URL)" \
 		--n $(N) \
@@ -219,15 +225,18 @@ sim_api_req: ## Simulate traffic on /predictions/{counter}
 		$(if $(COUNTER_IDS),--counter-ids "$(COUNTER_IDS)",)
 
 clean: ## Remove local Python caches and test artifacts only
+	@$(call log_test,clean)
 	rm -rf .nox .pytest_cache .ruff_cache .coverage htmlcov build dist mlruns mlflow.db
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -prune -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
 clean_env: ## Remove the uv-managed virtual environment
+	@$(call log_test,clean_env)
 	rm -rf .venv
 
 clean_full: ## Remove Docker artifacts, including images, volumes, and networks
+	@$(call log_test,clean_full)
 	$(DOCKER_COMPOSE) --profile all down -v --rmi all
 	docker system prune -f
 	docker volume prune -f
