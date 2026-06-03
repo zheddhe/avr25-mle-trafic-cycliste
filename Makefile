@@ -6,9 +6,11 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo_setup
-.PHONY: sync lock-check lint test ci compose-config
+.PHONY: env-compose env-local env-dagshub
+.PHONY: sync lock-check lint tests ci compose-config
 .PHONY: build rebuild_full ops start stop logs
-.PHONY: ml-ingest ml-features ml-models ml-pipeline mlflow-host
+.PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
+.PHONY: local-ingest local-features local-models local-pipeline mlflow-local
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
 
@@ -32,12 +34,12 @@ DOCKER_GPG_URL := https://download.docker.com/linux/ubuntu/gpg
 DOCKER_REPO_URL := https://download.docker.com/linux/ubuntu
 
 MLFLOW_HOST ?= 127.0.0.1
-MLFLOW_HOST_PORT ?= 5000
-MLFLOW_BACKEND_STORE ?= sqlite:///mlflow.db
-MLFLOW_ARTIFACT_ROOT ?= ./mlruns
+MLFLOW_HOST_PORT ?= 5001
+MLFLOW_BACKEND_STORE ?= ./mlruns
 
 log_test = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
 load_env = if [ -f "$(ENV_FILE)" ]; then set -a; source "$(ENV_FILE)"; set +a; fi
+check_env = if [ ! -f "$(ENV_FILE)" ]; then echo "Error: $(ENV_FILE) is missing. Run: make env" >&2; exit 1; fi
 
 help: ## Display this help
 	@awk ' \
@@ -86,6 +88,46 @@ env: ## Create a local .env file from .env.template if missing
 		echo "==> Replace [replace_me] placeholders before running secret-based targets."; \
 	fi
 
+env-compose: ## Print shell exports for Docker Compose MLflow mode
+	@$(check_env)
+	@$(load_env); \
+	: "$${MLFLOW_TRACKING_URI_COMPOSE:?Missing MLFLOW_TRACKING_URI_COMPOSE}"; \
+	: "$${MLFLOW_S3_ENDPOINT_URL_COMPOSE:?Missing MLFLOW_S3_ENDPOINT_URL_COMPOSE}"; \
+	: "$${AWS_ACCESS_KEY_ID_COMPOSE:?Missing AWS_ACCESS_KEY_ID_COMPOSE}"; \
+	: "$${AWS_SECRET_ACCESS_KEY_COMPOSE:?Missing AWS_SECRET_ACCESS_KEY_COMPOSE}"; \
+	: "$${AWS_DEFAULT_REGION:?Missing AWS_DEFAULT_REGION}"; \
+	printf 'export MLFLOW_TRACKING_URI=%q\n' "$${MLFLOW_TRACKING_URI_COMPOSE}"; \
+	printf 'export MLFLOW_S3_ENDPOINT_URL=%q\n' "$${MLFLOW_S3_ENDPOINT_URL_COMPOSE}"; \
+	printf 'export AWS_ACCESS_KEY_ID=%q\n' "$${AWS_ACCESS_KEY_ID_COMPOSE}"; \
+	printf 'export AWS_SECRET_ACCESS_KEY=%q\n' "$${AWS_SECRET_ACCESS_KEY_COMPOSE}"; \
+	printf 'export AWS_DEFAULT_REGION=%q\n' "$${AWS_DEFAULT_REGION}"; \
+	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
+	printf 'unset MLFLOW_TRACKING_PASSWORD\n'
+
+env-local: ## Print shell exports for host-local MLflow mode
+	@$(check_env)
+	@$(load_env); \
+	: "$${MLFLOW_TRACKING_URI_LOCAL:?Missing MLFLOW_TRACKING_URI_LOCAL}"; \
+	printf 'unset MLFLOW_TRACKING_URI\n'; \
+	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
+	printf 'unset AWS_ACCESS_KEY_ID\n'; \
+	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
+	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
+	printf 'unset MLFLOW_TRACKING_PASSWORD\n'
+
+env-dagshub: ## Print shell exports for DagsHub MLflow mode
+	@$(check_env)
+	@$(load_env); \
+	: "$${MLFLOW_TRACKING_URI_DAGSHUB:?Missing MLFLOW_TRACKING_URI_DAGSHUB}"; \
+	: "$${MLFLOW_TRACKING_USERNAME_DAGSHUB:?Missing MLFLOW_TRACKING_USERNAME_DAGSHUB}"; \
+	: "$${MLFLOW_TRACKING_PASSWORD_DAGSHUB:?Missing MLFLOW_TRACKING_PASSWORD_DAGSHUB}"; \
+	printf 'export MLFLOW_TRACKING_URI=%q\n' "$${MLFLOW_TRACKING_URI_DAGSHUB}"; \
+	printf 'export MLFLOW_TRACKING_USERNAME=%q\n' "$${MLFLOW_TRACKING_USERNAME_DAGSHUB}"; \
+	printf 'export MLFLOW_TRACKING_PASSWORD=%q\n' "$${MLFLOW_TRACKING_PASSWORD_DAGSHUB}"; \
+	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
+	printf 'unset AWS_ACCESS_KEY_ID\n'; \
+	printf 'unset AWS_SECRET_ACCESS_KEY\n'
+
 setup: env sync compose-config ## Prepare the local project after cloning
 
 git-setup: env ## Configure local Git identity from .env
@@ -122,7 +164,7 @@ dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
 	$(UV) run --locked --group dev dvc remote modify origin --local \
 		secret_access_key "$${DAGSHUB_SECRET_ACCESS_KEY}"
 
-repo_setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
+repo-setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
 
 sync: ## Sync the local uv environment from uv.lock
 	@$(call log_test,sync)
@@ -136,12 +178,11 @@ lint: ## Run Ruff checks
 	@$(call log_test,lint)
 	$(UV) run --locked --group test ruff check .
 
-test: ## Run unit tests while excluding integration tests
-	@$(call log_test,test)
-	PYTEST_ADDOPTS='-m "not integration"' \
-		$(UV) run --locked --group test pytest
+tests: ## Run integration tests scope
+	@$(call log_test,integration-test)
+	$(UV) run --locked --group test pytest -m "integration" -v
 
-ci: lock-check lint test ## Run local CI checks
+ci: lock-check lint tests ## Run local CI checks
 
 compose-config: env ## Validate the Docker Compose configuration
 	@$(call log_test,compose-config)
@@ -153,11 +194,16 @@ build: env ## Build Docker images for all profiles
 
 rebuild_full: env ## Rebuild Docker images and restart platform services
 	@$(call log_test,rebuild_full)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
 	$(DOCKER_COMPOSE) --profile all build
 	$(DOCKER_COMPOSE) --profile all down
 	$(DOCKER_COMPOSE) --profile ptf up -d
 
-ops: env compose-config start ## Validate and start platform services
+ops: env ## Validate and start platform services with Compose MLflow variables
+	@$(call log_test,ops)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
+	$(DOCKER_COMPOSE) --profile all config >/dev/null
+	$(DOCKER_COMPOSE) --profile $(PROFILE) up -d
 
 start: env ## Start Docker services for the selected profile
 	@$(call log_test,start PROFILE=$(PROFILE))
@@ -171,27 +217,78 @@ logs: ## Show Docker Compose logs for SERVICE
 	@$(call log_test,logs SERVICE=$(SERVICE))
 	$(DOCKER_COMPOSE) logs -f -t $(SERVICE)
 
-ml-ingest: env ## Run the ML ingestion container once
-	@$(call log_test,ml-ingest)
+mlops-ingest: env ## Run the ML ingestion container once
+	@$(call log_test,mlops-ingest)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
 	$(DOCKER_COMPOSE) --profile ml up ml-ingest-dev
 
-ml-features: env ## Run the ML feature engineering container once
-	@$(call log_test,ml-features)
+mlops-features: env ## Run the ML feature engineering container once
+	@$(call log_test,mlops-features)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
 	$(DOCKER_COMPOSE) --profile ml up ml-features-dev
 
-ml-models: env ## Run the ML training and prediction container once
-	@$(call log_test,ml-models)
+mlops-models: env ## Run the ML training and prediction container once
+	@$(call log_test,mlops-models)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
 	$(DOCKER_COMPOSE) --profile ml up ml-models-dev
 
-ml-pipeline: ml-ingest ml-features ml-models ## Run the full one-off ML pipeline
+mlops-pipeline: mlops-ingest mlops-features mlops-models ## Run the full one-off ML pipeline
 
-mlflow-host: sync ## Start a host-side MLflow server for local experiments
-	@$(call log_test,mlflow-host)
+dvc-pipeline: env ## Run the full DVC pipeline
+	@$(call log_test,dvc-pipeline)
+	eval "$$($(MAKE) --no-print-directory env-dagshub)"
+	$(UV) run --locked --group dev dvc repro
+
+local-ingest: env sync ## Run the ML ingestion step locally without containers
+	@$(call log_test,local-ingest)
+	@$(load_env)
+	eval "$$($(MAKE) --no-print-directory env-local)"
+	$(UV) run --locked --group app python -m src.ml.ingest.import_raw_data \
+		--raw-path "data/raw/$${RAW_FILE_NAME}" \
+		--site "$${SITE}" \
+		--orientation "$${ORIENTATION}" \
+		--range-start "$${RANGE_START}" \
+		--range-end "$${RANGE_END}" \
+		--timestamp-col "date_et_heure_de_comptage" \
+		--sub-dir "$${SUB_DIR}_local" \
+		--interim-name "$${INTERIM_NAME}"
+
+local-features: env sync ## Run the ML feature step locally without containers
+	@$(call log_test,local-features)
+	@$(load_env)
+	eval "$$($(MAKE) --no-print-directory env-local)"
+	$(UV) run --locked --group test python -m src.ml.features.build_features \
+		--interim-path "data/interim/$${SUB_DIR}_local/$${INTERIM_NAME}" \
+		--sub-dir "$${SUB_DIR}_local" \
+		--processed-name "$${PROCESSED_NAME}" \
+		--timestamp-col "date_et_heure_de_comptage"
+
+local-models: env sync ## Run the ML training step locally without containers
+	@$(call log_test,local-models)
+	@$(load_env)
+	eval "$$($(MAKE) --no-print-directory env-local)"
+	$(UV) run --locked --group test python -m src.ml.models.train_and_predict \
+		--processed-path "data/processed/$${SUB_DIR}_local/$${PROCESSED_NAME}" \
+		--sub-dir "$${SUB_DIR}_local" \
+		--target-col "comptage_horaire" \
+		--ts-col-utc "date_et_heure_de_comptage_utc" \
+		--ts-col-local "date_et_heure_de_comptage_local" \
+		--ar "$${AR}" \
+		--mm "$${MM}" \
+		--roll "$${ROLL}" \
+		--test-ratio "$${TEST_RATIO}" \
+		--grid-iter "$${GRID_ITER}" \
+		--mlflow-uri ""
+
+local-pipeline: local-ingest local-features local-models ## Run the local ML pipeline without containers
+
+mlflow-local: env sync ## Start a host-side MLflow server for local experiments
+	@$(call log_test,mlflow-local)
+	eval "$$($(MAKE) --no-print-directory env-local)"
 	$(UV) run --locked --group app mlflow server \
 		--host $(MLFLOW_HOST) \
 		--port $(MLFLOW_HOST_PORT) \
-		--backend-store-uri $(MLFLOW_BACKEND_STORE) \
-		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
+		--backend-store-uri $(MLFLOW_BACKEND_STORE)
 
 sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@$(call log_test,sim_api_loop)
