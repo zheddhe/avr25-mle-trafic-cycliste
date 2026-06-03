@@ -8,7 +8,8 @@ SHELL := /bin/bash
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo_setup
 .PHONY: sync lock-check lint test ci compose-config
 .PHONY: build rebuild_full ops start stop logs
-.PHONY: ml-ingest ml-features ml-models ml-pipeline mlflow-host
+.PHONY: ml-ingest ml-features ml-models ml-pipeline
+.PHONY: mlflow-compose mlflow-local mlflow-host mlflow-dagshub
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
 
@@ -157,7 +158,7 @@ rebuild_full: env ## Rebuild Docker images and restart platform services
 	$(DOCKER_COMPOSE) --profile all down
 	$(DOCKER_COMPOSE) --profile ptf up -d
 
-ops: env compose-config start ## Validate and start platform services
+ops: mlflow-compose compose-config start ## Configure Compose MLflow mode and start platform services
 
 start: env ## Start Docker services for the selected profile
 	@$(call log_test,start PROFILE=$(PROFILE))
@@ -185,13 +186,30 @@ ml-models: env ## Run the ML training and prediction container once
 
 ml-pipeline: ml-ingest ml-features ml-models ## Run the full one-off ML pipeline
 
-mlflow-host: sync ## Start a host-side MLflow server for local experiments
-	@$(call log_test,mlflow-host)
+mlflow-compose: env ## Set canonical MLflow variables to Compose runtime mode
+	@$(call log_test,mlflow-compose)
+	$(UV) run --locked --group app python scripts/configure_mlflow_env.py \
+		--env-file $(ENV_FILE) \
+		--mode compose
+
+mlflow-local: env sync ## Set local mode and start a host-side MLflow server
+	@$(call log_test,mlflow-local)
+	$(UV) run --locked --group app python scripts/configure_mlflow_env.py \
+		--env-file $(ENV_FILE) \
+		--mode local
 	$(UV) run --locked --group app mlflow server \
 		--host $(MLFLOW_HOST) \
 		--port $(MLFLOW_HOST_PORT) \
 		--backend-store-uri $(MLFLOW_BACKEND_STORE) \
 		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
+
+mlflow-host: mlflow-local ## Alias for mlflow-local
+
+mlflow-dagshub: env ## Set canonical MLflow variables to DagsHub remote mode
+	@$(call log_test,mlflow-dagshub)
+	$(UV) run --locked --group app python scripts/configure_mlflow_env.py \
+		--env-file $(ENV_FILE) \
+		--mode dagshub
 
 sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@$(call log_test,sim_api_loop)
