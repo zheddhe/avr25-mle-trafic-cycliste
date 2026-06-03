@@ -5,7 +5,7 @@ SHELL := /bin/bash
 # Default make target.
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap docker-install env setup repo_setup
+.PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo_setup
 .PHONY: sync lock-check lint test ci compose-config
 .PHONY: build rebuild_full ops start stop logs
 .PHONY: ml-ingest ml-features ml-models ml-pipeline mlflow-host
@@ -89,7 +89,7 @@ env: ## Create a local .env file from .env.template if missing
 
 setup: env sync compose-config ## Prepare the local project after cloning
 
-repo_setup: env ## Configure Git identity and local DVC S3 credentials
+git-setup: env ## Configure local Git identity from .env
 	@$(load_env)
 	@if [ -z "$${GIT_USER:-}" ] || [ "$${GIT_USER}" = "[replace_me]" ]; then \
 		echo "Error: GIT_USER is not set in $(ENV_FILE)."; \
@@ -99,18 +99,31 @@ repo_setup: env ## Configure Git identity and local DVC S3 credentials
 		echo "Error: GIT_EMAIL is not set in $(ENV_FILE)."; \
 		exit 1; \
 	fi
-	@if [ -z "$${DAGSHUB_KEY:-}" ] || [ "$${DAGSHUB_KEY}" = "[replace_me]" ]; then \
-		echo "Error: DAGSHUB_KEY is not set in $(ENV_FILE)."; \
-		exit 1; \
-	fi
 	@echo "==> Set up Git user name and email"
 	git config --global user.name "$${GIT_USER}"
 	git config --global user.email "$${GIT_EMAIL}"
-	@echo "==> Set up local DVC credentials"
+
+dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
+	@$(load_env)
+	@if [ ! -d ".dvc" ]; then \
+		echo "Error: .dvc directory is missing. Run 'dvc init' before configuring remotes."; \
+		exit 1; \
+	fi
+	@if [ -z "$${DAGSHUB_ACCESS_KEY_ID:-}" ] || [ "$${DAGSHUB_ACCESS_KEY_ID}" = "[replace_me]" ]; then \
+		echo "Error: DAGSHUB_ACCESS_KEY_ID is not set in $(ENV_FILE)."; \
+		exit 1; \
+	fi
+	@if [ -z "$${DAGSHUB_SECRET_ACCESS_KEY:-}" ] || [ "$${DAGSHUB_SECRET_ACCESS_KEY}" = "[replace_me]" ]; then \
+		echo "Error: DAGSHUB_SECRET_ACCESS_KEY is not set in $(ENV_FILE)."; \
+		exit 1; \
+	fi
+	@echo "==> Set up local DVC remote credentials in .dvc/config.local"
 	$(UV) run --locked --group dev dvc remote modify origin --local \
-		access_key_id "$${DAGSHUB_KEY}"
+		access_key_id "$${DAGSHUB_ACCESS_KEY_ID}"
 	$(UV) run --locked --group dev dvc remote modify origin --local \
-		secret_access_key "$${DAGSHUB_KEY}"
+		secret_access_key "$${DAGSHUB_SECRET_ACCESS_KEY}"
+
+repo_setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
 
 sync: ## Sync the local uv environment from uv.lock
 	@$(call log_test,sync)
