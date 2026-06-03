@@ -7,7 +7,7 @@ SHELL := /bin/bash
 
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo_setup
 .PHONY: env-compose env-local env-dagshub
-.PHONY: sync lock-check lint test ci compose-config
+.PHONY: sync lock-check lint tests ci compose-config
 .PHONY: build rebuild_full ops start stop logs
 .PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
@@ -35,8 +35,7 @@ DOCKER_REPO_URL := https://download.docker.com/linux/ubuntu
 
 MLFLOW_HOST ?= 127.0.0.1
 MLFLOW_HOST_PORT ?= 5001
-MLFLOW_BACKEND_STORE ?= sqlite:///mlflow.db
-MLFLOW_ARTIFACT_ROOT ?= ./mlruns
+MLFLOW_BACKEND_STORE ?= ./mlruns
 
 log_test = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
 load_env = if [ -f "$(ENV_FILE)" ]; then set -a; source "$(ENV_FILE)"; set +a; fi
@@ -109,7 +108,7 @@ env-local: ## Print shell exports for host-local MLflow mode
 	@$(check_env)
 	@$(load_env); \
 	: "$${MLFLOW_TRACKING_URI_LOCAL:?Missing MLFLOW_TRACKING_URI_LOCAL}"; \
-	printf 'export MLFLOW_TRACKING_URI=%q\n' "$${MLFLOW_TRACKING_URI_LOCAL}"; \
+	printf 'unset MLFLOW_TRACKING_URI\n'; \
 	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
 	printf 'unset AWS_ACCESS_KEY_ID\n'; \
 	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
@@ -165,7 +164,7 @@ dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
 	$(UV) run --locked --group dev dvc remote modify origin --local \
 		secret_access_key "$${DAGSHUB_SECRET_ACCESS_KEY}"
 
-repo_setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
+repo-setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
 
 sync: ## Sync the local uv environment from uv.lock
 	@$(call log_test,sync)
@@ -179,12 +178,11 @@ lint: ## Run Ruff checks
 	@$(call log_test,lint)
 	$(UV) run --locked --group test ruff check .
 
-test: ## Run unit tests while excluding integration tests
-	@$(call log_test,test)
-	PYTEST_ADDOPTS='-m "not integration"' \
-		$(UV) run --locked --group test pytest
+tests: ## Run integration tests scope
+	@$(call log_test,integration-test)
+	$(UV) run --locked --group test pytest -m "integration" -v
 
-ci: lock-check lint test ## Run local CI checks
+ci: lock-check lint tests ## Run local CI checks
 
 compose-config: env ## Validate the Docker Compose configuration
 	@$(call log_test,compose-config)
@@ -245,41 +243,42 @@ local-ingest: env sync ## Run the ML ingestion step locally without containers
 	@$(call log_test,local-ingest)
 	@$(load_env)
 	eval "$$($(MAKE) --no-print-directory env-local)"
-	$(UV) run --locked --group app python src/ml/ingest/import_raw_data.py \
+	$(UV) run --locked --group app python -m src.ml.ingest.import_raw_data \
 		--raw-path "data/raw/$${RAW_FILE_NAME}" \
 		--site "$${SITE}" \
 		--orientation "$${ORIENTATION}" \
 		--range-start "$${RANGE_START}" \
 		--range-end "$${RANGE_END}" \
-		--timestamp-col date_et_heure_de_comptage \
-		--sub-dir "$${SUB_DIR}" \
+		--timestamp-col "date_et_heure_de_comptage" \
+		--sub-dir "$${SUB_DIR}_local" \
 		--interim-name "$${INTERIM_NAME}"
 
 local-features: env sync ## Run the ML feature step locally without containers
 	@$(call log_test,local-features)
 	@$(load_env)
 	eval "$$($(MAKE) --no-print-directory env-local)"
-	$(UV) run --locked --group app python src/ml/features/build_features.py \
-		--interim-path "data/interim/$${SUB_DIR}/$${INTERIM_NAME}" \
-		--sub-dir "$${SUB_DIR}" \
+	$(UV) run --locked --group test python -m src.ml.features.build_features \
+		--interim-path "data/interim/$${SUB_DIR}_local/$${INTERIM_NAME}" \
+		--sub-dir "$${SUB_DIR}_local" \
 		--processed-name "$${PROCESSED_NAME}" \
-		--timestamp-col date_et_heure_de_comptage
+		--timestamp-col "date_et_heure_de_comptage"
 
 local-models: env sync ## Run the ML training step locally without containers
 	@$(call log_test,local-models)
 	@$(load_env)
 	eval "$$($(MAKE) --no-print-directory env-local)"
-	$(UV) run --locked --group app python src/ml/models/train_and_predict.py \
-		--processed-path "data/processed/$${SUB_DIR}/$${PROCESSED_NAME}" \
-		--sub-dir "$${SUB_DIR}" \
-		--target-col comptage_horaire \
-		--ts-col-utc date_et_heure_de_comptage_utc \
-		--ts-col-local date_et_heure_de_comptage_local \
+	$(UV) run --locked --group test python -m src.ml.models.train_and_predict \
+		--processed-path "data/processed/$${SUB_DIR}_local/$${PROCESSED_NAME}" \
+		--sub-dir "$${SUB_DIR}_local" \
+		--target-col "comptage_horaire" \
+		--ts-col-utc "date_et_heure_de_comptage_utc" \
+		--ts-col-local "date_et_heure_de_comptage_local" \
 		--ar "$${AR}" \
 		--mm "$${MM}" \
 		--roll "$${ROLL}" \
 		--test-ratio "$${TEST_RATIO}" \
-		--grid-iter "$${GRID_ITER}"
+		--grid-iter "$${GRID_ITER}" \
+		--mlflow-uri ""
 
 local-pipeline: local-ingest local-features local-models ## Run the local ML pipeline without containers
 
@@ -289,8 +288,7 @@ mlflow-local: env sync ## Start a host-side MLflow server for local experiments
 	$(UV) run --locked --group app mlflow server \
 		--host $(MLFLOW_HOST) \
 		--port $(MLFLOW_HOST_PORT) \
-		--backend-store-uri $(MLFLOW_BACKEND_STORE) \
-		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
+		--backend-store-uri $(MLFLOW_BACKEND_STORE)
 
 sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@$(call log_test,sim_api_loop)

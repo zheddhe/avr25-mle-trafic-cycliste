@@ -29,14 +29,12 @@ jobs:
 
       - name: Sync locked dependencies
         run: |
-          uv sync --locked --group test --group dev
+          uv sync --locked --group test
 
       - name: Run Ruff checks
         run: |
           uv run --locked --group test ruff check .
 
       - name: Run unit tests
-        env:
-          PYTEST_ADDOPTS: -m "not integration"
         run: |
-          uv run --locked --group test pytest
+          uv run --locked --group test pytest -m "not integration" -v
