@@ -1,31 +1,30 @@
 # src/ml/models/train_and_predict.py
 from __future__ import annotations
 
-import os
 import json
+import logging
+import os
 import sys
 from pathlib import Path
-import logging
-from typing import Optional
 
 import click
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytz
 from mlflow.tracking import MlflowClient
 
-from src.ml.models.models_utils import (
-    train_timeseries_model,
-    save_artefacts,
-    track_pipeline_step,
-    push_business_metrics
-)
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
-    start_run,
-    log_report_content,
-    log_model_with_signature,
     log_local_artifacts,
+    log_model_with_signature,
+    log_report_content,
+    start_run,
+)
+from src.ml.models.models_utils import (
+    push_business_metrics,
+    save_artefacts,
+    track_pipeline_step,
+    train_timeseries_model,
 )
 
 
@@ -154,7 +153,7 @@ logger = logging.getLogger(__name__)
 )
 def main(
     processed_path: str,
-    sub_dir: Optional[str],
+    sub_dir: str | None,
     target_col: str,
     ts_col_utc: str,
     ts_col_local: str,
@@ -163,7 +162,7 @@ def main(
     roll: int,
     test_ratio: float,
     grid_iter: int,
-    mlflow_uri: Optional[str],
+    mlflow_uri: str | None,
 ) -> None:
     """
     Entraîne un modèle, journalise dans MLflow, puis pousse des métriques métier

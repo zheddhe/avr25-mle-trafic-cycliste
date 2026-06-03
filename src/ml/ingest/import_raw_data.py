@@ -1,14 +1,13 @@
 # src/ml/ingest/import_raw_data.py
 from __future__ import annotations
 
-import os
 import json
-import sys
-from pathlib import Path
-import re
 import logging
+import os
+import re
+import sys
 import unicodedata
-from typing import Optional
+from pathlib import Path
 
 import click
 import pandas as pd
@@ -116,7 +115,7 @@ def main(
     range_start: float,
     range_end: float,
     timestamp_col: str,
-    sub_dir: Optional[str],
+    sub_dir: str | None,
     interim_name: str,
 ) -> None:
     """

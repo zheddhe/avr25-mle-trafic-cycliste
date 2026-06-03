@@ -1,15 +1,17 @@
 # tests/integration/test_pipeline.py
 from __future__ import annotations
 
+import inspect
 import json
+import subprocess
+
 # import os
 import sys
-import subprocess
 from pathlib import Path
 from typing import Any
+
 import pandas as pd
 import pytest
-import inspect
 from click.testing import CliRunner
 
 MODULE_ALIASES = {
@@ -328,7 +330,7 @@ class TestPipelineE2E:
             assert (mdir / name).exists(), f"Missing model artifact: {name}"
 
         # Parse metrics.json for minimal structure
-        with open(mdir / "metrics.json", "r", encoding="utf-8") as f:
+        with open(mdir / "metrics.json", encoding="utf-8") as f:
             metrics = json.load(f)
         assert isinstance(metrics, dict), "metrics.json must be a dict"
         # Common metrics (keys may vary but usually exist)

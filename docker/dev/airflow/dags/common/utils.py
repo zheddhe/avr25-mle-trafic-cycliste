@@ -12,7 +12,6 @@ This file must not declare any DAG object.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple, Dict, List
 
 from airflow.models import Variable
 from pydantic import BaseModel, Field, ValidationError
@@ -53,14 +52,14 @@ class SchedulingCfg(BaseModel):
 class DagCfg(BaseModel):
     """Top-level DAG configuration."""
 
-    counters: Dict[str, CounterCfg]
+    counters: dict[str, CounterCfg]
     scheduling: SchedulingCfg
 
 
 # --------------------------------------------------------------------------- #
 # Functions
 # --------------------------------------------------------------------------- #
-def _load_config() -> Tuple[DagCfg, str]:
+def _load_config() -> tuple[DagCfg, str]:
     """
     Load DAG configuration from Airflow Variable ``bike_dag_config``.
 
@@ -102,7 +101,7 @@ def _load_config() -> Tuple[DagCfg, str]:
         raise ValueError(f"Invalid JSON content in {cfg_ref}: {exc}") from exc
 
 
-def _list_counters_payload() -> List[Dict[str, str]]:
+def _list_counters_payload() -> list[dict[str, str]]:
     """
     Build a list of payloads for TriggerDagRunOperator expansion.
 

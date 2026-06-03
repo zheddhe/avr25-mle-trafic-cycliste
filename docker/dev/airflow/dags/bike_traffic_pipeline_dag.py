@@ -1,25 +1,26 @@
 # src/airflow/dags/bike_traffic_pipeline_dag.py
 from __future__ import annotations
 
-import os
-import logging
 import json
+import logging
+import os
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Mapping, Optional
+from typing import Any
 
 from airflow import DAG
-from airflow.models import Variable, TaskInstance
+from airflow.exceptions import AirflowException
+from airflow.models import TaskInstance, Variable
 from airflow.models.param import Param, ParamsDict
 from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import SimpleHttpOperator
 from airflow.utils.task_group import TaskGroup
-from airflow.exceptions import AirflowException
-from docker import from_env as docker_from_env
-from docker.types import Mount
 from common.utils import _load_config
+from docker.types import Mount
 
+from docker import from_env as docker_from_env
 
 # --------------------------------------------------------------------------- #
 # Infra Variables
@@ -74,7 +75,7 @@ DAG_PARAMS: ParamsDict = ParamsDict(
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-def _make_env(sub_dir: str, run_id: str, window: Dict[str, float]) -> Dict[str, str]:
+def _make_env(sub_dir: str, run_id: str, window: dict[str, float]) -> dict[str, str]:
     """
     Build environment variables for Docker tasks.
 
@@ -115,7 +116,7 @@ def _make_env(sub_dir: str, run_id: str, window: Dict[str, float]) -> Dict[str, 
     }
 
 
-def _read_manifests(**ctx) -> Dict[str, Any]:
+def _read_manifests(**ctx) -> dict[str, Any]:
     """
     Read manifests (ingest, features, models) from previous tasks or build defaults.
 
@@ -239,7 +240,7 @@ def _check_docker_access(**_):
 def _prepare_args_common(
         ti: TaskInstance, exec_date: datetime,
         mode: str, counter_override=None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compute run context (IDs, window, subdir) and push it to XCom.
 
@@ -472,7 +473,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
 # --------------------------------------------------------------------------- #
 # Counter ID extraction and flags
 # --------------------------------------------------------------------------- #
-def _extract_counter_id(ctx: Mapping[str, Any]) -> Optional[str]:
+def _extract_counter_id(ctx: Mapping[str, Any]) -> str | None:
     """Extract counter_id from DAG params or dag_run.conf."""
     params_obj = ctx.get("params")
     if isinstance(params_obj, Mapping):

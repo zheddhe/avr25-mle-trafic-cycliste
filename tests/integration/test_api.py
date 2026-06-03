@@ -1,12 +1,14 @@
 # tests/integration/test_api.py
 from __future__ import annotations
 
+from pathlib import Path
+
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-from pathlib import Path
-import pandas as pd
-from src.api.main import app, df_predictions
+
 import src.api.main as main
+from src.api.main import app, df_predictions
 
 pytestmark = pytest.mark.integration
 

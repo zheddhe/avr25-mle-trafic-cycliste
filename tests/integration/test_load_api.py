@@ -20,12 +20,12 @@ import json
 import logging
 import random
 import time
-import pytest
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import List, Optional
+
+import pytest
 
 pytestmark = pytest.mark.integration
 
@@ -57,7 +57,7 @@ def build_url(base_url: str, path: str) -> str:
     return f"{base}{suffix}"
 
 
-def http_get(url: str, auth_header: Optional[str]) -> int | tuple[int, bytes]:
+def http_get(url: str, auth_header: str | None) -> int | tuple[int, bytes]:
     headers = {}
     if auth_header:
         headers["Authorization"] = auth_header
@@ -73,7 +73,7 @@ def http_get(url: str, auth_header: Optional[str]) -> int | tuple[int, bytes]:
         return 0
 
 
-def fetch_counters(url_base: str, auth_header: str) -> List[str]:
+def fetch_counters(url_base: str, auth_header: str) -> list[str]:
     url = build_url(url_base, "/counters")
     res = http_get(url, auth_header)
     if isinstance(res, tuple):
@@ -98,7 +98,7 @@ def fetch_counters(url_base: str, auth_header: str) -> List[str]:
     return counters
 
 
-def pick_counter(counters: List[str]) -> str:
+def pick_counter(counters: list[str]) -> str:
     return random.choice(counters)
 
 
@@ -116,7 +116,7 @@ def build_predictions_url(
 def run_request(
     url: str,
     with_auth: bool,
-    auth_header: Optional[str],
+    auth_header: str | None,
 ) -> tuple[int, int]:
     """
     Returns (status_code, predictions_count_in_body_if_200_else_0)

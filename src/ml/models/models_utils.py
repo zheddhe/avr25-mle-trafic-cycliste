@@ -1,33 +1,37 @@
 # src/ml/models/models_utils.py
 from __future__ import annotations
 
-import pandas as pd
-import numpy as np
-import os
-import logging
-import joblib
 import json
+import logging
+import os
+import re
 import time
 import unicodedata
-import re
-from datetime import datetime, timezone
-from typing import List, Tuple, Dict, Any, Optional
-from skopt.space import Integer, Categorical, Real
-from skopt import BayesSearchCV
-from xgboost import XGBRegressor
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.model_selection import TimeSeriesSplit
-from sklearn.pipeline import Pipeline
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from typing import Any
+
+import joblib
+import numpy as np
+import pandas as pd
+from prometheus_client import (
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    pushadd_to_gateway,
+)
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import (
     mean_absolute_error,
-    root_mean_squared_error,
     r2_score,
+    root_mean_squared_error,
 )
-from contextlib import contextmanager
-from prometheus_client import (
-    CollectorRegistry, Gauge, Counter, pushadd_to_gateway,
-)
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from skopt import BayesSearchCV
+from skopt.space import Categorical, Integer, Real
+from xgboost import XGBRegressor
 
 PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
 DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
@@ -58,7 +62,7 @@ def _auto_adjust_n_iter(search_space: dict, requested_iter: int) -> int:
     return min(requested_iter, total)
 
 
-def _extract_param_ranges(search_space) -> Dict[str, Dict[str, Any]]:
+def _extract_param_ranges(search_space) -> dict[str, dict[str, Any]]:
     """
     Extract min and max values from a BayesSearchCV search space.
 
@@ -95,7 +99,7 @@ def train_test_split_time_aware(
     timestamp_cols: list,
     target_col: str,
     test_size: float = 0.2,
-) -> Tuple[pd.DataFrame, pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame,
            pd.DataFrame, pd.DataFrame,
            pd.Series, pd.Series]:
     """
@@ -225,7 +229,7 @@ def recursive_forecast_model(
     last_window_df: pd.DataFrame,
     horizon: int,
     target_col: str
-) -> List[float]:
+) -> list[float]:
     """
     Efficient recursive forecast using AR/MM features and exogenous inputs.
 
@@ -290,7 +294,7 @@ def recursive_forecast_model(
 def train_timeseries_model(
     df_counter: pd.DataFrame,
     target_col: str = "comptage_horaire",
-    timestamp_cols: List[str] = ["date_et_heure_de_comptage_local"],
+    timestamp_cols: list[str] = ["date_et_heure_de_comptage_local"],
     temp_feats: list[int] = [0, 0, 1],
     test_ratio: float = 0.2,
     iter_grid_search: int = 0,
@@ -479,7 +483,7 @@ def train_timeseries_model(
     }
 
 
-def save_artefacts(report: Dict, save_dir):
+def save_artefacts(report: dict, save_dir):
     # save final training/test/predictions data from the results :
     save_data_path = os.path.join("data", "final", save_dir)
     os.makedirs(save_data_path, exist_ok=True)
@@ -544,7 +548,7 @@ def save_artefacts(report: Dict, save_dir):
     return y_full_path
 
 
-def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
+def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> dict[str, float]:
     yt = np.array(pd.Series(y_true).to_numpy(copy=False),
                   dtype=np.float64, copy=True, order="C")
     yp = np.array(pd.Series(y_pred).to_numpy(copy=False),
@@ -653,7 +657,7 @@ def push_business_metrics(
         return
 
     if isinstance(last_ts, datetime) and last_ts.tzinfo is None:
-        last_ts = last_ts.replace(tzinfo=timezone.utc)
+        last_ts = last_ts.replace(tzinfo=UTC)
 
     reg = CollectorRegistry()
 
@@ -686,7 +690,7 @@ def push_business_metrics(
     g_cnt.labels(site, orientation, "pred").set(n_obs_pred)
 
     # Freshness (réelle) - conservé
-    freshness_days = (datetime.now(timezone.utc) - last_ts).total_seconds() / 86400.0
+    freshness_days = (datetime.now(UTC) - last_ts).total_seconds() / 86400.0
     Gauge(
         "bike_data_freshness_days",
         "Data freshness (real, days)",
@@ -721,7 +725,7 @@ def _slug(value: str) -> str:
     return value
 
 
-def canonical_site(raw: Optional[str]) -> str:
+def canonical_site(raw: str | None) -> str:
     """
     Return a canonical 'site' label, harmonized across all steps.
     Priority:

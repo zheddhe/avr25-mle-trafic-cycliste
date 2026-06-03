@@ -1,12 +1,11 @@
 # src/ml/features/build_features.py
 from __future__ import annotations
 
-import os
 import json
+import logging
+import os
 import sys
 from pathlib import Path
-import logging
-from typing import Optional, List
 
 import click
 import pandas as pd
@@ -108,10 +107,10 @@ COLUMNS_TO_DROP = [
 )
 def main(
     interim_path: str,
-    sub_dir: Optional[str],
+    sub_dir: str | None,
     processed_name: str,
     timestamp_col: str,
-    extra_drop: List[str],
+    extra_drop: list[str],
 ) -> None:
     """
     Build periodic datetime features and save a processed CSV.
