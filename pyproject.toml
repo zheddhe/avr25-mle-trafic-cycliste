@@ -62,7 +62,6 @@ exclude = ["tests*", "logs*"]
 [tool.pytest.ini_options]
 addopts = [
     "--cov",
-    "--cov-report=html",
     "--cov-report=term",
 ]
 testpaths = ["tests"]
