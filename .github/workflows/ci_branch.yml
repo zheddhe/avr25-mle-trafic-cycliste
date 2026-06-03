@@ -28,9 +28,9 @@ jobs:
         run: |
           uv sync --locked --group test --group dev
 
-      - name: Run Flake8 checks
+      - name: Run Ruff checks
         run: |
-          uv run --locked --group test flake8
+          uv run --locked --group test ruff check .
 
       - name: Run unit tests
         env:
