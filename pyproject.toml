@@ -9,17 +9,24 @@ description = "bike trafic science project for MLE April 2025 promotion"
 authors = [
     { name = "Rémy CANAL", email = "remy.canal@live.fr" },
     { name = "Elias DJOUADI", email = "elias.djouadi@gmail.com" },
-    { name = "Koldé HOUESSOU", email = "koladehouessou@gmail.com" }
+    { name = "Koldé HOUESSOU", email = "koladehouessou@gmail.com" },
 ]
 license = "MIT"
 requires-python = "==3.12.*"
-
-# NOTE: no direct dependencies — all handled through optional profiles
 dependencies = []
 
-[project.optional-dependencies]
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
 
-py312 = [
+[project.urls]
+Source = "https://github.com/zheddhe/avr25-mle-trafic-cycliste"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+runtime = [
     "pandas==2.2.3",
     "scikit-learn==1.5.0",
     "xgboost==3.0.2",
@@ -34,6 +41,7 @@ py312 = [
 ]
 
 test = [
+    { include-group = "runtime" },
     "pytest==8.3.5",
     "coverage==7.8.2",
     "pytest-cov==6.1.1",
@@ -44,34 +52,24 @@ test = [
 
 dev = [
     "dvc-s3==3.2.2",
-    "nox==2025.5.1",
-    "uv==0.8.14",
-    "pip==25.2",
     "apache-airflow==3.0.6",
 ]
-
-[project.readme]
-file = "README.md"
-content-type = "text/markdown"
-
-[project.urls]
-Source = "https://github.com/zheddhe/avr25-mle-trafic-cycliste"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*", "logs*"]
 
 [tool.pytest.ini_options]
 addopts = [
-  "--cov",
-  "--cov-report=html",
-  "--cov-report=term"
+    "--cov",
+    "--cov-report=html",
+    "--cov-report=term",
 ]
 testpaths = ["tests"]
 markers = [
-  "integration: end-to-end pipeline tests"
+    "integration: end-to-end pipeline tests",
 ]
 env = [
-  "DISABLE_METRICS_PUSH=1",
+    "DISABLE_METRICS_PUSH=1",
 ]
 
 [tool.coverage.run]
