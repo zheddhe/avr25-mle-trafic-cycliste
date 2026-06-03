@@ -13,5 +13,5 @@ RUN mkdir -p /app/src/api
 COPY src/api/main.py \
      /app/src/api/main.py
 
-EXPOSE 8000
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 10000
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "10000"]

@@ -3,7 +3,7 @@
     "conn_type": "http",
     "schema": "http",
     "host": "api-dev",
-    "port": 8000,
+    "port": 10000,
     "login": "remy",
     "password": "remy"
   }

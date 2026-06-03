@@ -11,8 +11,8 @@ bootstrap: ## Initialise les dependances bootstrap nécessaires
 	sudo apt install --fix-missing
 	sudo apt install -y python3 python3-pip pipx
 	pipx ensurepath
-	@echo "==> Install nox/uv"
-	pipx install nox uv
+	@echo "==> Install uv"
+	pipx install uv
 
 repo_setup: ## Configure le repo DVC S3 (dagshub) et les credentials github
 	@echo "==> Set up GIT user name and email using ${GIT_USER:-change_me} and ${GIT_EMAIL:-change_me@mail.com}"
@@ -56,7 +56,7 @@ sim_api_down: ## Simule un arrêt temporaire de l'API pendant 2 minutes
 	sleep 120
 	docker compose start api-dev
 
-URL         ?= http://localhost:8000
+URL         ?= http://localhost:10000
 N           ?= 100
 P_OK        ?= 0.80
 API_USER    ?= user1

@@ -1,4 +1,4 @@
-# 🚲 Cyclist Traffic MLOPS Project
+# 🚲 Cyclist Traffic MLOps Project
 
 [![CI Main](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions/workflows/ci_main.yml/badge.svg)](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions)
 [![CI Branch](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions/workflows/ci_branch.yml/badge.svg)](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions)
@@ -33,7 +33,7 @@ This project implements a complete machine learning and MLOps architecture in th
 > to achieve our main business case: an external user can access daily refreshed
 > bike traffic predictions.
 >
->[![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1aglCRFaxXRVEEEwtE5ePFnW-vjE8CYa-/view?usp=sharing)
+> [![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1aglCRFaxXRVEEEwtE5ePFnW-vjE8CYa-/view?usp=sharing)
 
 ## 🧱 GitHub Structure
 
@@ -41,10 +41,9 @@ This project implements a complete machine learning and MLOps architecture in th
 avr25-mle-trafic-cycliste/
 ├── LICENSE             <- MIT license
 ├── README.md           <- This top-level README for developers using this project
-├── flake8              <- Linter configuration rules
+├── .flake8             <- Linter configuration rules
 ├── pyproject.toml      <- Python development project configuration
-├── uv.lock             <- UV lockfile for the dev environment
-├── noxfile.py          <- Nox dev sessions (build/clean)
+├── uv.lock             <- uv lockfile for the local development environment
 ├── data                <- Data shared with host (read/write)
 │   ├── raw             <- Original, immutable data dumps (e.g., external sources)
 │   ├── interim         <- Intermediate data derived from raw (goal-specific)
@@ -52,10 +51,10 @@ avr25-mle-trafic-cycliste/
 │   └── final           <- Final stage data (e.g., train/test and predictions)
 ├── logs                <- Logs shared with host (read/write)
 │   ├── ml              <- ML pipeline logs
-│   ├── api             <- data API logs
-│   ├── scheduler       <- airflow scheduler logs
-│   └── dag[...]        <- unitary dag run logs
-├── models              <- Models artefacts shared with host (read/write)
+│   ├── api             <- Data API logs
+│   ├── scheduler       <- Airflow scheduler logs
+│   └── dag[...]        <- Unit DAG run logs
+├── models              <- Model artifacts shared with host (read/write)
 │   └── ...
 ├── references          <- Data dictionaries, manuals, other explanatory material
 │   └── ...
@@ -82,15 +81,15 @@ avr25-mle-trafic-cycliste/
 │           └── train_and_predict.py
 ├── docker/             <- Container architecture
 │   ├── dev/            <- Development setup
-│   │   ├── grafana/    <- Config for grafana (dashboard & provisionning)
+│   │   ├── grafana/    <- Config for Grafana dashboards and provisioning
 │   │   │   ├── dashboards/
 │   │   │   │   └── cadvisor_docker_insights.json
 │   │   │   └── provisioning/
 │   │   │       ├── dashboards.yaml
 │   │   │       └── datasource.yaml
-│   │   ├── prometheus/ <- Config for prometheus targets and general configuration
+│   │   ├── prometheus/ <- Config for Prometheus targets and general configuration
 │   │   │   └── prometheus.yml
-│   │   ├── airflow/    <- Config (business & technical) and DAGs for airflow
+│   │   ├── airflow/    <- Config and DAGs for Airflow
 │   │   │   ├── dags/
 │   │   │   │   ├── bike_traffic_orchestrator_dag.py
 │   │   │   │   ├── bike_traffic_pipeline_dag.py
@@ -99,12 +98,12 @@ avr25-mle-trafic-cycliste/
 │   │   │   ├── bike_dag_config.json
 │   │   │   ├── connections.json
 │   │   │   └── variables.json
-│   │   ├── mlflow/     <- Custom docker image for mlflow service
+│   │   ├── mlflow/     <- Custom Docker image for MLflow service
 │   │   │   └── Dockerfile
-│   │   ├── api/        <- Custom docker image for api service
+│   │   ├── api/        <- Custom Docker image for API service
 │   │   │   ├── requirements.txt
 │   │   │   └── Dockerfile
-│   │   └── ml/         <- Custom docker images for ml pipeline services
+│   │   └── ml/         <- Custom Docker images for ML pipeline services
 │   │       ├── ingest/
 │   │       │   ├── requirements.txt
 │   │       │   └── Dockerfile
@@ -116,10 +115,10 @@ avr25-mle-trafic-cycliste/
 │   │           └── Dockerfile
 │   └── prod/           <- Production setup
 │       └── ...
-└── tests/              
+└── tests/
     ├── unitary/        <- Unit tests (pytest for source code coverage)
     │   └── ...
-    └── integration/    <- integration tests (pytest for integration test)
+    └── integration/    <- Integration tests
         └── ...
 ```
 
@@ -127,63 +126,67 @@ avr25-mle-trafic-cycliste/
 
 ### 🔧 Prerequisites
 
-Initialize the build environment with Python, pipx, Nox, and UV preferrably from a
-virtual Machine on your OS (with Ubuntu 22.04 ior latest distribution)
+Initialize the development environment with Python, pipx, and uv, preferably from a
+Linux virtual machine on your operating system.
 
-#### (optional) Virtual machine creation on Windows
+#### Optional virtual machine creation on Windows
 
-```bash
-### Check and activate the local virtual machine Hypervisor 
+```powershell
+# Check and activate the local virtual machine hypervisor.
 Set-Service -Name WSLService -StartupType Automatic
 Start-Service -Name WSLService
 Get-Service WSLService
 
-# install an Ubuntu distribution
+# Install an Ubuntu distribution.
 wsl --install -d Ubuntu
 ```
 
-#### Linux (through virtual machine or directly)
+#### Linux, through a virtual machine or directly
 
-All the commands in this readme will are provided from a "Linux" OS point of view
+All commands in this README are provided from a Linux operating system point of view.
 
 ```bash
-# Check and update your VM libraries/python/pip/pipx and ensure pipx path
+# Check and update your VM libraries, Python, pip, and pipx.
 sudo apt update
 sudo apt install --fix-missing
 sudo apt install -y python3 python3-pip pipx
 pipx ensurepath
 
-# Install Nox (multi-OS session runner) and UV (fast virtual env + resolver)
-pipx install nox uv
+# Install uv as the local project environment and dependency manager.
+pipx install uv
 ```
 
-### 🔧 Repository cloning and DVC setup (One-time init)
+### 🔧 Repository cloning and DVC setup (one-time init)
 
 Please refer to DagsHub remote setup actions. Example steps:
 
 - Git setup and cloning
 
 ```bash
-# Setup your local git and clone the repository
+# Set up your local Git identity and clone the repository.
 git config --global user.name "your user"
-git config --global user.email "your_email@example.com" 
-# Configure your VM public key on GitHub (using ed25519 key type)
+git config --global user.email "your_email@example.com"
+
+# Configure your VM public key on GitHub by using an ed25519 key.
 ssh-keygen -t ed25519 -C "your_email@example.com"
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
-# Copy the content of your public key on GitHub > Settings > SSH and PGP keys > new key
+
+# Copy the content of your public key to GitHub > Settings > SSH and GPG keys.
 cat ~/.ssh/id_ed25519.pub
-# Check your connection
+
+# Check your connection.
 ssh -T git@github.com
 
-# Finally clone the repository
+# Clone the repository.
 git clone git@github.com:zheddhe/avr25-mle-trafic-cycliste.git
+cd avr25-mle-trafic-cycliste
 ```
 
 - DVC setup
 
 ```bash
-# Setup your personal credentials for DagsHub
+# Set up your personal credentials for DagsHub.
 dvc remote modify origin --local access_key_id [...]
 dvc remote modify origin --local secret_access_key [...]
 ```
@@ -192,22 +195,41 @@ dvc remote modify origin --local secret_access_key [...]
 
 > This section covers the project setup as a monolithic architecture from a DevOps point of view.
 
+This repository is not packaged as a Python distribution. The local Python environment
+is managed by uv and is used for developer tooling, static analysis, tests, Pylance
+import resolution, and local execution of the application code.
+
+### uv dependency groups
+
+| Group | Purpose |
+|-------|---------|
+| `app` | Local application surface: API, DAGs, ML scripts, MLflow, metrics, and orchestration imports. |
+| `test` | Test and lint harness. Includes `app`. |
+| `dev` | Full development harness. Includes `test` and DVC tooling. |
+
 ```bash
-### Rebuild a complete virtual dev env (runs flake8 and pytest)
-nox -s build
+# Synchronize the complete local development environment from uv.lock.
+uv sync --locked --group dev
 
-### Activate the virtual environment in a command-line session
-source .nox/build/bin/activate
+# Run the current lint gate.
+uv run --locked --group test flake8
 
-### [Optional] Clean all generated files and all virtual envs (build included)
-nox -s cleanall
+# Run unit tests while excluding integration tests.
+uv run --locked --group test pytest -m "not integration"
 
-### Execute the DVC pipeline
-dvc repro
+# Activate the uv-managed virtual environment in a command-line session.
+source .venv/bin/activate
 
-### Launch the data API (use any free port)
-# The API will be available at http://localhost:10000/docs
-uvicorn src.api.main:app --reload --port 10000
+# Optional cleanup of local Python artifacts.
+rm -rf .venv .pytest_cache .coverage htmlcov build dist *.egg-info
+find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+
+# Execute the DVC pipeline.
+uv run --locked --group dev dvc repro
+
+# Launch the data API locally.
+# The API will be available at http://localhost:10000/docs.
+uv run --locked --group app uvicorn src.api.main:app --reload --port 10000
 ```
 
 ## MLOps setup
@@ -216,29 +238,27 @@ uvicorn src.api.main:app --reload --port 10000
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 > [![Docker Compose Monitoring](references/Docker_Compose_Monitoring.drawio.png)](https://drive.google.com/file/d/14DbcNiD3w7nrdkPiIymbMpX0-vzXRupW/view?usp=drive_link)
 >
-> You'll need to create and customize your own **.env** file to populate environment variables that are required at startup (a template file `.env.template` is provided)
+> You'll need to create and customize your own **.env** file to populate environment variables that are required at startup. A template file `.env.template` is provided.
 
 ### 1. 🐳 Service containerization
 
 We use **Docker** to simulate our production environment.
 
-#### Docker on virtual machine with Ubuntu distribution
+#### Docker on a virtual machine with Ubuntu distribution
 
-> It is the recommended setup to use a docker engine directly on an Ubuntu Virtual Machine, here are
-the installation steps
+> It is recommended to use a Docker engine directly on an Ubuntu virtual machine.
 
 ```bash
-### [On Ubuntu Virtual Machine] 
-# Add official GPG key for docker distribution
+# Add official GPG key for Docker distribution.
 sudo apt update
 sudo apt install ca-certificates curl gnupg lsb-release -y
 
-# Add official GPG key for docker distribution
+# Add official GPG key for Docker distribution.
 sudo mkdir -m 0755 -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-# Add official docker repository
+# Add official Docker repository.
 echo \
   "deb [arch=$(dpkg --print-architecture) \
   signed-by=/etc/apt/keyrings/docker.gpg] \
@@ -246,66 +266,68 @@ echo \
   $(lsb_release -cs) stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Update packages list and install Docker components
+# Update packages list and install Docker components.
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
-# Add current user authorization to docker group
+# Add current user authorization to Docker group.
 sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-#### (optional) Local Docker Desktop with a virtual machine hypervisor
+#### Optional local Docker Desktop with a virtual machine hypervisor
 
->As an alternative option, docker desktop can be used with additional support during development phase
+> As an alternative option, Docker Desktop can be used with additional support during the development phase.
 
 Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
 
-#### Exploitation commands
+#### Operation commands
 
-> NB : all these unitary action are consolidated in a Makefile
+> All these unit actions are consolidated in the Makefile.
 
-| Target       | Description                                                                 |
-|--------------|-----------------------------------------------------------------------------|
-| bootstrap    | Initialise les dépendances bootstrap nécessaires                            |
-| repo_setup   | Configure le repo DVC S3 (dagshub) et les credentials GitHub                |
-| rebuild_full | Recrée les images docker et relance les services complètement               |
-| start        | Démarre les services docker du profil choisi (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`) |
-| stop         | Stoppe les services docker du profil choisi (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`) |
-| sim_api_loop | Simule un arrêt/relance de l'API 10 fois à intervalle de 5s                 |
-| sim_api_down | Simule un arrêt temporaire de l'API pendant 2 minutes                       |
-| sim_api_req  | %200, %4XX et volume (RPS & pred/s) sur /predictions/{counter}              |
-| clean_full   | Nettoie les artefacts (images/volumes/networks)                             |
-| help         | Affiche cette aide                                                          |
+| Target       | Description |
+|--------------|-------------|
+| bootstrap    | Initialize bootstrap dependencies. |
+| repo_setup   | Configure the DVC S3 remote and GitHub credentials. |
+| rebuild_full | Rebuild Docker images and fully restart services. |
+| start        | Start Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
+| stop         | Stop Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
+| sim_api_loop | Simulate 10 API stop/start cycles with a 5-second interval. |
+| sim_api_down | Simulate a temporary API outage for 2 minutes. |
+| sim_api_req  | Simulate response status mix and request volume on `/predictions/{counter}`. |
+| clean_full   | Remove Docker artifacts, including images, volumes, and networks. |
+| help         | Show Makefile help. |
 
 ```bash
-# 1) Init and build the docker images
+# 1) Initialize and build the Docker images.
 docker compose --profile all build
 
-# 2) Start all the backends services : 
-# profile mlflow : server / postgres / minio / mc-init in background
-# profile airflow : webserver / worker / scheduler / init / postgres / redis / mailhog in background
-# profile monitoring : grafana / prometheus / cadvisor / node-exporter
+# 2) Start all backend services.
+# profile mlflow: server / postgres / minio / mc-init in background
+# profile airflow: webserver / worker / scheduler / init / postgres / redis / mailhog in background
+# profile monitoring: grafana / prometheus / cadvisor / node-exporter
 docker compose --profile mlflow up -d
 docker compose --profile airflow up -d
 docker compose --profile monitoring up -d
 
-# 3) Start all the permanent business services (ie. the API) in background
-# profile api : data api service
+# 3) Start all permanent business services in background.
+# profile api: data API service
 docker compose --profile api up -d
 
-# NB : profile ptf (as for platform) = all the profile above combined (mlflow/airflow/monitoring/api)
+# The API will be available at http://localhost:10000/docs.
 
-# 4) Start a pipeline run in interactive mode (they must be orchestrated in sequence)
-# profile ml : raw ingestion / features engineering / train and predict services
+# NB: profile ptf (platform) combines mlflow, airflow, monitoring, and API profiles.
+
+# 4) Start a pipeline run in interactive mode.
+# profile ml: raw ingestion / features engineering / train and predict services
 docker compose --profile ml up ml-ingest-dev
 docker compose --profile ml up ml-features-dev
 docker compose --profile ml up ml-models-dev
 
-# /!\ Stop everything (including networks but keep database volumes)
+# Stop everything, including networks, while keeping database volumes.
 docker compose --profile all down
 
-# /!\ Stop everything and remove all images/volumes/networks (full reset) and clean all orphan items
+# Stop everything and remove all images, volumes, networks, and orphan items.
 docker compose --profile all down -v --rmi all && docker system prune -f
 ```
 
@@ -318,19 +340,19 @@ splits, predictions, metrics, and hyperparameters).
 #### DagsHub remote service
 
 ```bash
-### Configure environment variables
-# it is recommended to store this within a .env.local file so that you can source it
+# Configure environment variables.
+# It is recommended to store this within a .env.local file so that you can source it.
 export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
 export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN (preferably over a personal password)>
+export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN, preferably over a personal password>
 # source .env.local
 ```
 
 #### Local service
 
 ```bash
-### Configure environment variables
-# it is recommended to store this within a .env.local file so that you can source it
+# Configure environment variables.
+# It is recommended to store this within a .env.local file so that you can source it.
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_ACCESS_KEY_ID=minio
@@ -340,46 +362,45 @@ export AWS_SECRET_ACCESS_KEY=minio123
 
 ### 3. 🧩 Multi-counter orchestration
 
-- The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`), it configures especially :
-  - The host repository root (to adjust to your production or dev environment)
-  - The mlflow server information (by default the one of the technical stack propose, could be a cloud hosted one)
-  - The images to use for the various container
-  - the API connection as an admin (to refresh the prediction)
+- The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`). It configures especially:
+  - The host repository root, to adjust to your production or development environment.
+  - The MLflow server information. By default, this uses the platform technical stack, but it can point to a cloud-hosted service.
+  - The images to use for the various containers.
+  - The API connection as an admin to refresh predictions.
 
 - The business configuration is mounted read-only in the Airflow containers (Scheduler / WebServer / Worker) into
-  `/opt/airflow/config/bike_dag_config.json` (repo source: `./src/airflow/config/`), it configures especially :
-  - The list counters managed (extracted from the original dataset)
-  - The anchor date (when do we start from to simulate our production)
-  - The daily increment (which portion of the original dataset is considered to shift the data of 1 production day)
+  `/opt/airflow/config/bike_dag_config.json` (repo source: `./src/airflow/config/`). It configures especially:
+  - The list of managed counters extracted from the original dataset.
+  - The anchor date used to simulate production startup.
+  - The daily increment, which defines which portion of the original dataset is considered to shift the data by one production day.
 
 - `bike_traffic_init`: one-shot historical bootstrap per counter.
-  - It short-circuits if the Airflow Variable `bike_init_done__<counter>`
-    equals `"1"`.
+  - It short-circuits if the Airflow Variable `bike_init_done__<counter>` equals `"1"`.
   - On success, it sets that variable to `"1"`.
 
 - `bike_traffic_daily`: rolling increment assuming init has been done.
-  - Triggered by the parent only (its `schedule` is `None`).
+  - Triggered by the parent only. Its `schedule` is `None`.
 
 - `bike_traffic_orchestrator`:
-  - Every day: for each configured counter, trigger `init` then `daily`.
-  - The `init` run is cheap if already done (short-circuited).
+  - Every day, for each configured counter, trigger `init` then `daily`.
+  - The `init` run is cheap if already done because it is short-circuited.
 
 ### 4. 🧩 Monitoring and alerting
 
-The project has defined :
+The project has defined:
 
-- Grafana dashboards relying on prometheus collected metrics to
-  - Monitor the system itself (active container/restarts/memory usage/cpu usage)
-  - Monitor the business metrics for the ML pipeline
-- Alerts that can trigger email notification when detecting
-  - API service down for a configurable period of time (the core of our business service)
-  - API service is unstable (restarting in loop)
+- Grafana dashboards relying on Prometheus collected metrics to:
+  - Monitor the system itself: active containers, restarts, memory usage, and CPU usage.
+  - Monitor business metrics for the ML pipeline.
+- Alerts that can trigger email notifications when detecting:
+  - API service down for a configurable period of time.
+  - API service instability, such as restart loops.
 
 #### Push Gateway configuration
 
 ```bash
-### Inhibit push metrics to push gateway (1 = disabled, other values = enable)
-# it is recommended to store this within a .env.local file so that you can source it
+# Inhibit push metrics to Pushgateway: 1 = disabled, other values = enabled.
+# It is recommended to store this within a .env.local file so that you can source it.
 export DISABLE_METRICS_PUSH=1
 # source .env.local
 ```
@@ -400,8 +421,8 @@ export DISABLE_METRICS_PUSH=1
 
 Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below:
 
-- Create one branch per story/bugfix and merge via pull requests
-- Tag stable versions ideally after each successful story/bugfix merge
+- Create one branch per story/bugfix and merge via pull requests.
+- Tag stable versions ideally after each successful story/bugfix merge.
 
 [![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
 
@@ -416,6 +437,8 @@ Continuous Integration workflows are handled with GitHub Actions:
 
 - `ci_main.yml`: runs on every push or pull request to the `main` branch  
 - `ci_branch.yml`: runs on every push to any other branch
+
+The CI environment uses uv dependency groups directly and no longer relies on Nox.
 
 ### 5. 👥 Contributors
 
