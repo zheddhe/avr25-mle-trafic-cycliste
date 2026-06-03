@@ -116,10 +116,38 @@ The `.env` file is intentionally not tracked by Git because it may contain
 secrets. Docker Compose reads `.env` automatically from the repository root.
 Makefile targets that need repository secrets can load it internally.
 
-Once `.env` is populated, configure Git identity and DVC credentials with:
+Configure local Git identity and DVC credentials with:
+
+```bash
+make git-setup
+make dvc-setup
+```
+
+`make dvc-setup` does not run `dvc init` on this repository because DVC is
+already initialized and `.dvc/config` is versioned. It only writes local DVC S3
+credentials to `.dvc/config.local`, which is ignored by `.dvc/.gitignore`.
+
+Use this convenience target when both steps are needed:
 
 ```bash
 make repo_setup
+```
+
+The versioned DVC remote is defined in `.dvc/config`:
+
+```ini
+[core]
+    remote = origin
+['remote "origin"']
+    url = s3://dvc
+    endpointurl = https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
+```
+
+The matching local `.env` variables are:
+
+```bash
+DAGSHUB_ACCESS_KEY_ID="[replace_me]"
+DAGSHUB_SECRET_ACCESS_KEY="[replace_me]"
 ```
 
 ## 🚀 DevOps setup
@@ -381,4 +409,4 @@ The CI environment uses uv dependency groups directly and runs Ruff before pytes
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
 - Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
-- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofiabouizzoul98@gmail.com)
+- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofia.bouizzoul@gmail.com)
