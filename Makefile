@@ -10,8 +10,7 @@ SHELL := /bin/bash
 .PHONY: sync lock-check lint test ci compose-config
 .PHONY: build rebuild_full ops start stop logs
 .PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
-.PHONY: ml-ingest ml-features ml-models ml-pipeline
-.PHONY: mlflow-compose mlflow-local mlflow-dagshub
+.PHONY: local-ingest local-features local-models local-pipeline mlflow-local
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
 
@@ -202,9 +201,10 @@ rebuild_full: env ## Rebuild Docker images and restart platform services
 	$(DOCKER_COMPOSE) --profile all down
 	$(DOCKER_COMPOSE) --profile ptf up -d
 
-ops: env compose-config ## Start platform services with Compose MLflow variables
+ops: env ## Validate and start platform services with Compose MLflow variables
 	@$(call log_test,ops)
 	eval "$$($(MAKE) --no-print-directory env-compose)"
+	$(DOCKER_COMPOSE) --profile all config >/dev/null
 	$(DOCKER_COMPOSE) --profile $(PROFILE) up -d
 
 start: env ## Start Docker services for the selected profile
@@ -221,10 +221,12 @@ logs: ## Show Docker Compose logs for SERVICE
 
 mlops-ingest: env ## Run the ML ingestion container once
 	@$(call log_test,mlops-ingest)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
 	$(DOCKER_COMPOSE) --profile ml up ml-ingest-dev
 
 mlops-features: env ## Run the ML feature engineering container once
 	@$(call log_test,mlops-features)
+	eval "$$($(MAKE) --no-print-directory env-compose)"
 	$(DOCKER_COMPOSE) --profile ml up ml-features-dev
 
 mlops-models: env ## Run the ML training and prediction container once
@@ -234,19 +236,51 @@ mlops-models: env ## Run the ML training and prediction container once
 
 mlops-pipeline: mlops-ingest mlops-features mlops-models ## Run the full one-off ML pipeline
 
-ml-ingest: mlops-ingest ## Alias for mlops-ingest
-
-ml-features: mlops-features ## Alias for mlops-features
-
-ml-models: mlops-models ## Alias for mlops-models
-
-ml-pipeline: mlops-pipeline ## Alias for mlops-pipeline
-
 dvc-pipeline: env ## Run the full DVC pipeline
 	@$(call log_test,dvc-pipeline)
 	$(UV) run --locked --group dev dvc repro
 
-mlflow-compose: env-compose ## Print shell exports for Docker Compose MLflow mode
+local-ingest: env sync ## Run the ML ingestion step locally without containers
+	@$(call log_test,local-ingest)
+	@$(load_env)
+	eval "$$($(MAKE) --no-print-directory env-local)"
+	$(UV) run --locked --group app python src/ml/ingest/import_raw_data.py \
+		--raw-path "data/raw/$${RAW_FILE_NAME}" \
+		--site "$${SITE}" \
+		--orientation "$${ORIENTATION}" \
+		--range-start "$${RANGE_START}" \
+		--range-end "$${RANGE_END}" \
+		--timestamp-col date_et_heure_de_comptage \
+		--sub-dir "$${SUB_DIR}" \
+		--interim-name "$${INTERIM_NAME}"
+
+local-features: env sync ## Run the ML feature step locally without containers
+	@$(call log_test,local-features)
+	@$(load_env)
+	eval "$$($(MAKE) --no-print-directory env-local)"
+	$(UV) run --locked --group app python src/ml/features/build_features.py \
+		--interim-path "data/interim/$${SUB_DIR}/$${INTERIM_NAME}" \
+		--sub-dir "$${SUB_DIR}" \
+		--processed-name "$${PROCESSED_NAME}" \
+		--timestamp-col date_et_heure_de_comptage
+
+local-models: env sync ## Run the ML training step locally without containers
+	@$(call log_test,local-models)
+	@$(load_env)
+	eval "$$($(MAKE) --no-print-directory env-local)"
+	$(UV) run --locked --group app python src/ml/models/train_and_predict.py \
+		--processed-path "data/processed/$${SUB_DIR}/$${PROCESSED_NAME}" \
+		--sub-dir "$${SUB_DIR}" \
+		--target-col comptage_horaire \
+		--ts-col-utc date_et_heure_de_comptage_utc \
+		--ts-col-local date_et_heure_de_comptage_local \
+		--ar "$${AR}" \
+		--mm "$${MM}" \
+		--roll "$${ROLL}" \
+		--test-ratio "$${TEST_RATIO}" \
+		--grid-iter "$${GRID_ITER}"
+
+local-pipeline: local-ingest local-features local-models ## Run the local ML pipeline without containers
 
 mlflow-local: env sync ## Start a host-side MLflow server for local experiments
 	@$(call log_test,mlflow-local)
@@ -256,8 +290,6 @@ mlflow-local: env sync ## Start a host-side MLflow server for local experiments
 		--port $(MLFLOW_HOST_PORT) \
 		--backend-store-uri $(MLFLOW_BACKEND_STORE) \
 		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
-
-mlflow-dagshub: env-dagshub ## Print shell exports for DagsHub MLflow mode
 
 sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@$(call log_test,sim_api_loop)
