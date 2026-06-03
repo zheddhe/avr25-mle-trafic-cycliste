@@ -46,55 +46,12 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff configuration
 ├── uv.lock             <- uv lockfile for the local development environment
 ├── data                <- Data shared with host (read/write)
-│   ├── raw             <- Original, immutable data dumps (e.g., external sources)
-│   ├── interim         <- Intermediate data derived from raw (goal-specific)
-│   ├── processed       <- Processed data (e.g., feature-enriched)
-│   └── final           <- Final stage data (e.g., train/test and predictions)
 ├── logs                <- Logs shared with host (read/write)
-│   ├── ml              <- ML pipeline logs
-│   ├── api             <- Data API logs
-│   ├── scheduler       <- Airflow scheduler logs
-│   └── dag[...]        <- Unit DAG run logs
 ├── models              <- Model artifacts shared with host (read/write)
-│   └── ...
 ├── references          <- Data dictionaries, manuals, other explanatory material
-│   └── ...
-├── src/                <- All source code used in this project
-│   ├── airflow/        <- Airflow orchestration management
-│   │   ├── dags        <- Orchestrator DAGs code shared with host
-│   │   │   ├── bike_traffic_pipeline_dag.py
-│   │   │   └── bike_traffic_orchestrator_dag.py
-│   │   │   ├── common
-│   │   │   │   └── utils.py
-│   │   ├── config      <- Orchestrator config shared with host (read-only)
-│   │   │   └── bike_dag_config.json
-│   ├── api/            <- FastAPI service (prediction readout)
-│   │   └── main.py
-│   └── ml/             <- Machine learning pipeline
-│       ├── ingest      <- Scripts to ingest initial raw data or daily data
-│       │   ├── data_utils.py
-│       │   └── import_raw_data.py
-│       ├── features    <- Scripts to turn raw data into modeling-ready data
-│       │   ├── features_utils.py
-│       │   └── build_features.py
-│       └── models      <- Train models and compute batch predictions
-│           ├── models_utils.py
-│           └── train_and_predict.py
+├── src/                <- API, Airflow DAGs, and ML pipeline source code
 ├── docker/             <- Container architecture
-│   ├── dev/            <- Development setup
-│   │   ├── grafana/    <- Config for Grafana dashboards and provisioning
-│   │   ├── prometheus/ <- Config for Prometheus targets and general configuration
-│   │   ├── airflow/    <- Config and DAGs for Airflow
-│   │   ├── mlflow/     <- Custom Docker image for MLflow service
-│   │   ├── api/        <- Custom Docker image for API service
-│   │   └── ml/         <- Custom Docker images for ML pipeline services
-│   └── prod/           <- Production setup
-│       └── ...
-└── tests/
-    ├── unitary/        <- Unit tests
-    │   └── ...
-    └── integration/    <- Integration tests
-        └── ...
+└── tests/              <- Unit and integration tests
 ```
 
 ## ⚙️ Installation
@@ -119,8 +76,6 @@ wsl --install -d Ubuntu
 ```
 
 #### Linux bootstrap dependencies
-
-All commands in this README are provided from a Linux operating system point of view.
 
 ```bash
 sudo apt update
@@ -169,11 +124,9 @@ make repo_setup
 
 ## 🚀 DevOps setup
 
-> This section covers the project setup as a monolithic architecture from a DevOps point of view.
-
-This repository is not packaged as a Python distribution. The local Python environment
-is managed by uv and is used for developer tooling, static analysis, tests, Pylance
-import resolution, and local execution of the application code.
+This repository is not packaged as a Python distribution. The local Python
+environment is managed by uv and is used for developer tooling, static analysis,
+tests, Pylance import resolution, and local execution of the application code.
 
 ### uv dependency groups
 
@@ -222,30 +175,15 @@ uv-managed virtual environment from scratch.
 
 ### 1. Docker engine setup
 
-For a first Docker installation on Ubuntu, install Docker Engine and add your
-user to the Docker group. This remains a host-level prerequisite and is not
-wrapped in the project Makefile.
+For a first Docker installation on Ubuntu, use the dedicated Makefile target
+after cloning the repository:
 
 ```bash
-sudo apt update
-sudo apt install ca-certificates curl gnupg lsb-release -y
-sudo mkdir -m 0755 -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-echo \
-  "deb [arch=$(dpkg --print-architecture) \
-  signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-sudo usermod -aG docker $USER
-newgrp docker
+make docker-install
 ```
 
+This installs Docker Engine, the Compose plugin, and adds the current user to
+the `docker` group. Open a new shell, or run `newgrp docker`, before using Docker.
 Docker Desktop can also be used during development on Windows, macOS, or Linux.
 
 ### 2. Docker Compose operation targets
@@ -277,12 +215,13 @@ make clean_full
 where containers have not been created yet. `make clean_full` is intentionally
 destructive: it removes Docker images, volumes, and networks.
 
-For one-off ML pipeline containers, run the existing Compose services directly:
+For one-off ML pipeline containers, use the dedicated targets:
 
 ```bash
-docker compose --profile ml up ml-ingest-dev
-docker compose --profile ml up ml-features-dev
-docker compose --profile ml up ml-models-dev
+make ml-ingest
+make ml-features
+make ml-models
+make ml-pipeline
 ```
 
 The API is exposed at:
@@ -300,10 +239,10 @@ splits, predictions, metrics, and hyperparameters).
 The MLflow-related environment variables are centralized in `.env.template` and
 should be customized in your local `.env` file.
 
-#### Local MLflow service
+#### Mode 1: Docker Compose MLflow service
 
-The default `.env.template` values target the local Docker Compose MLflow and
-MinIO services from inside the Compose network:
+This is the default MLOps mode. The default `.env.template` values target the
+local Docker Compose MLflow and MinIO services from inside the Compose network:
 
 ```bash
 MLFLOW_TRACKING_URI="http://mlflow-server:5000"
@@ -312,8 +251,33 @@ AWS_ACCESS_KEY_ID="minio"
 AWS_SECRET_ACCESS_KEY="[replace_me]"
 ```
 
-For host-side commands outside Docker Compose, use the exposed local endpoints in
-your shell or local `.env` when needed:
+Start it with the platform services:
+
+```bash
+make ops
+```
+
+#### Mode 2: Host-side MLflow server for data science experiments
+
+This mode is useful for preliminary local data science experiments without the
+full Docker Compose stack. Start a host-side MLflow server with:
+
+```bash
+make mlflow-host
+```
+
+By default, it starts on `http://127.0.0.1:5000` with a local SQLite backend and
+local `./mlruns` artifact directory. Override these values if needed:
+
+```bash
+make mlflow-host \
+  MLFLOW_HOST_PORT=5010 \
+  MLFLOW_BACKEND_STORE=sqlite:///mlflow.db \
+  MLFLOW_ARTIFACT_ROOT=./mlruns
+```
+
+For host-side scripts targeting the Compose MLflow service, use the exposed
+Compose endpoint instead:
 
 ```bash
 MLFLOW_TRACKING_URI="http://127.0.0.1:5001"
@@ -322,10 +286,10 @@ AWS_ACCESS_KEY_ID="minio"
 AWS_SECRET_ACCESS_KEY="[replace_me]"
 ```
 
-#### DagsHub remote MLflow service
+#### Mode 3: DagsHub remote MLflow service
 
-To use the DagsHub remote service instead of the local MLflow container, override
-these values in your local `.env` or shell session:
+To use the DagsHub remote service instead of local MLflow, override these values
+in your local `.env` or shell session:
 
 ```bash
 MLFLOW_TRACKING_URI="https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow"
