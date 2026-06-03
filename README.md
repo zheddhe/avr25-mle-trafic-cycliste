@@ -155,11 +155,7 @@ pipx ensurepath
 pipx install uv
 ```
 
-### 🔧 Repository cloning and DVC setup (one-time init)
-
-Please refer to DagsHub remote setup actions. Example steps:
-
-- Git setup and cloning
+### 🔧 Repository cloning and local environment setup
 
 ```bash
 # Set up your local Git identity and clone the repository.
@@ -182,12 +178,28 @@ git clone git@github.com:zheddhe/avr25-mle-trafic-cycliste.git
 cd avr25-mle-trafic-cycliste
 ```
 
-- DVC setup
+Create your local `.env` file from the tracked template before running Makefile
+or Docker Compose commands:
 
 ```bash
-# Set up your personal credentials for DagsHub.
-dvc remote modify origin --local access_key_id [...]
-dvc remote modify origin --local secret_access_key [...]
+cp .env.template .env
+```
+
+Then replace every `[replace_me]` value in `.env` with your local values. The
+`.env` file is intentionally not tracked by Git because it may contain secrets.
+Docker Compose reads `.env` automatically from the repository root. For shell
+commands such as `make repo_setup`, load it explicitly when needed:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+DVC setup can then be performed through the Makefile:
+
+```bash
+make repo_setup
 ```
 
 ## 🚀 DevOps setup
@@ -237,7 +249,9 @@ uv run --locked --group app uvicorn src.api.main:app --reload --port 10000
 > [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
 > [![Docker Compose Monitoring](references/Docker_Compose_Monitoring.drawio.png)](https://drive.google.com/file/d/14DbcNiD3w7nrdkPiIymbMpX0-vzXRupW/view?usp=drive_link)
 >
-> You'll need to create and customize your own **.env** file to populate environment variables that are required at startup. A template file `.env.template` is provided.
+> Create and customize your own `.env` file from `.env.template` before starting
+> the stack. The file contains Docker Compose variables, Makefile defaults,
+> local credentials, and optional remote MLflow/DagsHub settings.
 
 ### 1. 🐳 Service containerization
 
@@ -284,41 +298,46 @@ Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/wind
 
 > All these unit actions are consolidated in the Makefile.
 
-| Target       | Description |
-|--------------|-------------|
-| bootstrap    | Initialize bootstrap dependencies. |
-| repo_setup   | Configure the DVC S3 remote and GitHub credentials. |
-| rebuild_full | Rebuild Docker images and fully restart services. |
-| start        | Start Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
-| stop         | Stop Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
-| sim_api_loop | Simulate 10 API stop/start cycles with a 5-second interval. |
-| sim_api_down | Simulate a temporary API outage for 2 minutes. |
-| sim_api_req  | Simulate response status mix and request volume on `/predictions/{counter}`. |
-| clean_full   | Remove Docker artifacts, including images, volumes, and networks. |
-| help         | Show Makefile help. |
+| Target | Description |
+|--------|-------------|
+| `sync` | Sync the local uv environment from `uv.lock`. |
+| `lock-check` | Check that `uv.lock` is consistent with `pyproject.toml`. |
+| `lint` | Run Ruff checks. |
+| `test` | Run unit tests while excluding integration tests. |
+| `ci` | Run local CI checks. |
+| `compose-config` | Validate Docker Compose configuration. |
+| `bootstrap` | Initialize bootstrap dependencies. |
+| `repo_setup` | Configure Git identity and DVC S3 credentials. |
+| `build` | Build Docker images for all profiles. |
+| `rebuild_full` | Rebuild Docker images and fully restart platform services. |
+| `start` | Start Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
+| `stop` | Stop Docker services for the selected profile. |
+| `logs` | Show Docker Compose logs for `SERVICE`. |
+| `sim_api_loop` | Simulate 10 API stop/start cycles with a 5-second interval. |
+| `sim_api_down` | Simulate a temporary API outage for 2 minutes. |
+| `sim_api_req` | Simulate response status mix and request volume on `/predictions/{counter}`. |
+| `clean` | Remove local Python caches and test artifacts only. |
+| `clean_env` | Remove the uv-managed virtual environment. |
+| `clean_full` | Remove Docker artifacts, including images, volumes, and networks. |
+| `help` | Show Makefile help. |
 
 ```bash
-# 1) Initialize and build the Docker images.
-docker compose --profile all build
+# Validate the complete Docker Compose configuration.
+make compose-config
 
-# 2) Start all backend services.
-# profile mlflow: server / postgres / minio / mc-init in background
-# profile airflow: webserver / worker / scheduler / init / postgres / redis / mailhog in background
-# profile monitoring: grafana / prometheus / cadvisor / node-exporter
-docker compose --profile mlflow up -d
-docker compose --profile airflow up -d
-docker compose --profile monitoring up -d
+# Build every Docker image.
+make build
 
-# 3) Start all permanent business services in background.
-# profile api: data API service
-docker compose --profile api up -d
+# Start all permanent platform services.
+make start PROFILE=ptf
 
-# The API will be available at http://localhost:10000/docs.
+# Start only the API profile.
+make start PROFILE=api
 
-# NB: profile ptf (platform) combines mlflow, airflow, monitoring, and API profiles.
+# Show API logs.
+make logs SERVICE=api-dev
 
-# 4) Start a pipeline run in interactive mode.
-# profile ml: raw ingestion / features engineering / train and predict services
+# Start a pipeline run in interactive mode.
 docker compose --profile ml up ml-ingest-dev
 docker compose --profile ml up ml-features-dev
 docker compose --profile ml up ml-models-dev
@@ -327,7 +346,7 @@ docker compose --profile ml up ml-models-dev
 docker compose --profile all down
 
 # Stop everything and remove all images, volumes, networks, and orphan items.
-docker compose --profile all down -v --rmi all && docker system prune -f
+make clean_full
 ```
 
 ### 2. 📈 Experience tracker
@@ -336,27 +355,40 @@ We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
 splits, predictions, metrics, and hyperparameters).
 
-#### DagsHub remote service
+The MLflow-related environment variables are centralized in `.env.template` and
+should be customized in your local `.env` file.
+
+#### Local MLflow service
+
+The default `.env.template` values target the local Docker Compose MLflow and
+MinIO services from inside the Compose network:
 
 ```bash
-# Configure environment variables.
-# It is recommended to store this within a .env.local file so that you can source it.
-export MLFLOW_TRACKING_URI=https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow
-export MLFLOW_TRACKING_USERNAME=<DagsHub ACCOUNT>
-export MLFLOW_TRACKING_PASSWORD=<DagsHub TOKEN, preferably over a personal password>
-# source .env.local
+MLFLOW_TRACKING_URI="http://mlflow-server:5000"
+MLFLOW_S3_ENDPOINT_URL="http://mlflow-minio:9000"
+AWS_ACCESS_KEY_ID="minio"
+AWS_SECRET_ACCESS_KEY="[replace_me]"
 ```
 
-#### Local service
+For host-side commands outside Docker Compose, use the exposed local endpoints in
+your shell or local `.env` when needed:
 
 ```bash
-# Configure environment variables.
-# It is recommended to store this within a .env.local file so that you can source it.
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-export MLFLOW_S3_ENDPOINT_URL=http://127.0.0.1:9000
-export AWS_ACCESS_KEY_ID=minio
-export AWS_SECRET_ACCESS_KEY=minio123
-# source .env.local
+MLFLOW_TRACKING_URI="http://127.0.0.1:5001"
+MLFLOW_S3_ENDPOINT_URL="http://127.0.0.1:9000"
+AWS_ACCESS_KEY_ID="minio"
+AWS_SECRET_ACCESS_KEY="[replace_me]"
+```
+
+#### DagsHub remote MLflow service
+
+To use the DagsHub remote service instead of the local MLflow container, override
+these values in your local `.env` or shell session:
+
+```bash
+MLFLOW_TRACKING_URI="https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow"
+MLFLOW_TRACKING_USERNAME="[replace_me]"
+MLFLOW_TRACKING_PASSWORD="[replace_me]"
 ```
 
 ### 3. 🧩 Multi-counter orchestration
@@ -395,13 +427,12 @@ The project has defined:
   - API service down for a configurable period of time.
   - API service instability, such as restart loops.
 
-#### Push Gateway configuration
+The Pushgateway behavior is controlled by the `DISABLE_METRICS_PUSH` variable in
+`.env`:
 
 ```bash
 # Inhibit push metrics to Pushgateway: 1 = disabled, other values = enabled.
-# It is recommended to store this within a .env.local file so that you can source it.
-export DISABLE_METRICS_PUSH=1
-# source .env.local
+DISABLE_METRICS_PUSH=1
 ```
 
 ## 🤝 Team collaboration
