@@ -41,6 +41,8 @@ This project implements a complete machine learning and MLOps architecture in th
 avr25-mle-trafic-cycliste/
 ├── LICENSE             <- MIT license
 ├── README.md           <- This top-level README for developers using this project
+├── Makefile            <- Local developer and Docker Compose operation targets
+├── .env.template       <- Template for local secrets and runtime variables
 ├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff configuration
 ├── uv.lock             <- uv lockfile for the local development environment
 ├── data                <- Data shared with host (read/write)
@@ -81,41 +83,15 @@ avr25-mle-trafic-cycliste/
 ├── docker/             <- Container architecture
 │   ├── dev/            <- Development setup
 │   │   ├── grafana/    <- Config for Grafana dashboards and provisioning
-│   │   │   ├── dashboards/
-│   │   │   │   └── cadvisor_docker_insights.json
-│   │   │   └── provisioning/
-│   │   │       ├── dashboards.yaml
-│   │   │       └── datasource.yaml
 │   │   ├── prometheus/ <- Config for Prometheus targets and general configuration
-│   │   │   └── prometheus.yml
 │   │   ├── airflow/    <- Config and DAGs for Airflow
-│   │   │   ├── dags/
-│   │   │   │   ├── bike_traffic_orchestrator_dag.py
-│   │   │   │   ├── bike_traffic_pipeline_dag.py
-│   │   │   │   └── common
-│   │   │   │       └── utils.py
-│   │   │   ├── bike_dag_config.json
-│   │   │   ├── connections.json
-│   │   │   └── variables.json
 │   │   ├── mlflow/     <- Custom Docker image for MLflow service
-│   │   │   └── Dockerfile
 │   │   ├── api/        <- Custom Docker image for API service
-│   │   │   ├── requirements.txt
-│   │   │   └── Dockerfile
 │   │   └── ml/         <- Custom Docker images for ML pipeline services
-│   │       ├── ingest/
-│   │       │   ├── requirements.txt
-│   │       │   └── Dockerfile
-│   │       ├── features/
-│   │       │   ├── requirements.txt
-│   │       │   └── Dockerfile
-│   │       └── models/
-│   │           ├── requirements.txt
-│   │           └── Dockerfile
 │   └── prod/           <- Production setup
 │       └── ...
 └── tests/
-    ├── unitary/        <- Unit tests (pytest for source code coverage)
+    ├── unitary/        <- Unit tests
     │   └── ...
     └── integration/    <- Integration tests
         └── ...
@@ -123,80 +99,69 @@ avr25-mle-trafic-cycliste/
 
 ## ⚙️ Installation
 
-### 🔧 Prerequisites
+The installation flow is split in two parts:
 
-Initialize the development environment with Python, pipx, and uv, preferably from a
-Linux virtual machine on your operating system.
+1. **Pre-clone bootstrap**, before this repository is available locally.
+2. **Post-clone setup**, once the Makefile is available and should be preferred.
+
+### 1. Pre-clone bootstrap
+
+These commands are intentionally shown explicitly because the repository and its
+Makefile are not available yet.
 
 #### Optional virtual machine creation on Windows
 
 ```powershell
-# Check and activate the local virtual machine hypervisor.
 Set-Service -Name WSLService -StartupType Automatic
 Start-Service -Name WSLService
 Get-Service WSLService
-
-# Install an Ubuntu distribution.
 wsl --install -d Ubuntu
 ```
 
-#### Linux, through a virtual machine or directly
+#### Linux bootstrap dependencies
 
 All commands in this README are provided from a Linux operating system point of view.
 
 ```bash
-# Check and update your VM libraries, Python, pip, and pipx.
 sudo apt update
 sudo apt install --fix-missing
-sudo apt install -y python3 python3-pip pipx
+sudo apt install -y python3 python3-pip pipx git
 pipx ensurepath
-
-# Install uv as the local project environment and dependency manager.
 pipx install uv
 ```
 
-### 🔧 Repository cloning and local environment setup
+#### GitHub SSH access and repository cloning
 
 ```bash
-# Set up your local Git identity and clone the repository.
-git config --global user.name "your user"
-git config --global user.email "your_email@example.com"
-
-# Configure your VM public key on GitHub by using an ed25519 key.
 ssh-keygen -t ed25519 -C "your_email@example.com"
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
-
-# Copy the content of your public key to GitHub > Settings > SSH and GPG keys.
 cat ~/.ssh/id_ed25519.pub
-
-# Check your connection.
 ssh -T git@github.com
 
-# Clone the repository.
 git clone git@github.com:zheddhe/avr25-mle-trafic-cycliste.git
 cd avr25-mle-trafic-cycliste
 ```
 
-Create your local `.env` file from the tracked template before running Makefile
-or Docker Compose commands:
+### 2. Post-clone project setup
+
+From this point, prefer Makefile targets over raw commands.
 
 ```bash
-cp .env.template .env
+make help
+make env
+make setup
 ```
 
-Then replace every `[replace_me]` value in `.env` with your local values. The
-`.env` file is intentionally not tracked by Git because it may contain secrets.
-Docker Compose reads `.env` automatically from the repository root. For shell
-commands such as `make repo_setup`, load it explicitly when needed:
+`make env` creates `.env` from `.env.template` if it does not already exist.
+Replace every `[replace_me]` placeholder in `.env` before running targets that
+need secrets or user-specific values.
 
-```bash
-set -a
-source .env
-set +a
-```
+The `.env` file is intentionally not tracked by Git because it may contain
+secrets. Docker Compose reads `.env` automatically from the repository root.
+Makefile targets that need repository secrets can load it internally.
 
-DVC setup can then be performed through the Makefile:
+Once `.env` is populated, configure Git identity and DVC credentials with:
 
 ```bash
 make repo_setup
@@ -218,30 +183,32 @@ import resolution, and local execution of the application code.
 | `test` | Test and lint harness. Includes `app`. |
 | `dev` | Full development harness. Includes `test` and DVC tooling. |
 
+### Local validation targets
+
+Prefer these Makefile targets for day-to-day local validation:
+
 ```bash
-# Synchronize the complete local development environment from uv.lock.
-uv sync --locked --group dev
-
-# Run the current lint gate.
-uv run --locked --group test ruff check .
-
-# Run unit tests while excluding integration tests.
-uv run --locked --group test pytest -m "not integration"
-
-# Activate the uv-managed virtual environment in a command-line session.
-source .venv/bin/activate
-
-# Optional cleanup of local Python artifacts.
-rm -rf .venv .pytest_cache .coverage htmlcov build dist *.egg-info
-find . -type d -name "__pycache__" -prune -exec rm -rf {} +
-
-# Execute the DVC pipeline.
-uv run --locked --group dev dvc repro
-
-# Launch the data API locally.
-# The API will be available at http://localhost:10000/docs.
-uv run --locked --group app uvicorn src.api.main:app --reload --port 10000
+make sync
+make lock-check
+make lint
+make test
+make ci
 ```
+
+`make ci` chains the lock check, Ruff linting, and unit tests while excluding
+integration tests. This mirrors the local validation path used by CI without
+requiring Docker services.
+
+Useful maintenance targets:
+
+```bash
+make clean
+make clean_env
+```
+
+`make clean` removes local Python caches and test artifacts only. It does not
+remove Docker volumes. Use `make clean_env` only when you want to recreate the
+uv-managed virtual environment from scratch.
 
 ## MLOps setup
 
@@ -253,25 +220,19 @@ uv run --locked --group app uvicorn src.api.main:app --reload --port 10000
 > the stack. The file contains Docker Compose variables, Makefile defaults,
 > local credentials, and optional remote MLflow/DagsHub settings.
 
-### 1. 🐳 Service containerization
+### 1. Docker engine setup
 
-We use **Docker** to simulate our production environment.
-
-#### Docker on a virtual machine with Ubuntu distribution
-
-> It is recommended to use a Docker engine directly on an Ubuntu virtual machine.
+For a first Docker installation on Ubuntu, install Docker Engine and add your
+user to the Docker group. This remains a host-level prerequisite and is not
+wrapped in the project Makefile.
 
 ```bash
-# Add official GPG key for Docker distribution.
 sudo apt update
 sudo apt install ca-certificates curl gnupg lsb-release -y
-
-# Add official GPG key for Docker distribution.
 sudo mkdir -m 0755 -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-# Add official Docker repository.
 echo \
   "deb [arch=$(dpkg --print-architecture) \
   signed-by=/etc/apt/keyrings/docker.gpg] \
@@ -279,77 +240,58 @@ echo \
   $(lsb_release -cs) stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Update packages list and install Docker components.
 sudo apt update
 sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-
-# Add current user authorization to Docker group.
 sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-#### Optional local Docker Desktop with a virtual machine hypervisor
+Docker Desktop can also be used during development on Windows, macOS, or Linux.
 
-> As an alternative option, Docker Desktop can be used with additional support during the development phase.
+### 2. Docker Compose operation targets
 
-Installation guide: [Windows](https://docs.docker.com/desktop/setup/install/windows-install/) / [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) / [Linux](https://docs.docker.com/desktop/setup/install/linux/)
-
-#### Operation commands
-
-> All these unit actions are consolidated in the Makefile.
-
-| Target | Description |
-|--------|-------------|
-| `sync` | Sync the local uv environment from `uv.lock`. |
-| `lock-check` | Check that `uv.lock` is consistent with `pyproject.toml`. |
-| `lint` | Run Ruff checks. |
-| `test` | Run unit tests while excluding integration tests. |
-| `ci` | Run local CI checks. |
-| `compose-config` | Validate Docker Compose configuration. |
-| `bootstrap` | Initialize bootstrap dependencies. |
-| `repo_setup` | Configure Git identity and DVC S3 credentials. |
-| `build` | Build Docker images for all profiles. |
-| `rebuild_full` | Rebuild Docker images and fully restart platform services. |
-| `start` | Start Docker services for the selected profile (`PROFILE=all/mlflow/airflow/monitoring/api/ptf`). |
-| `stop` | Stop Docker services for the selected profile. |
-| `logs` | Show Docker Compose logs for `SERVICE`. |
-| `sim_api_loop` | Simulate 10 API stop/start cycles with a 5-second interval. |
-| `sim_api_down` | Simulate a temporary API outage for 2 minutes. |
-| `sim_api_req` | Simulate response status mix and request volume on `/predictions/{counter}`. |
-| `clean` | Remove local Python caches and test artifacts only. |
-| `clean_env` | Remove the uv-managed virtual environment. |
-| `clean_full` | Remove Docker artifacts, including images, volumes, and networks. |
-| `help` | Show Makefile help. |
+The project is assumed to be cloned when running operational commands. Prefer
+Makefile targets for project-level Docker operations:
 
 ```bash
-# Validate the complete Docker Compose configuration.
 make compose-config
-
-# Build every Docker image.
 make build
+make ops
+```
 
-# Start all permanent platform services.
-make start PROFILE=ptf
+`make ops` validates the Compose configuration and starts the default platform
+profile. The default profile is `ptf`, which combines MLflow, Airflow,
+monitoring, and API services.
 
-# Start only the API profile.
+Targeted operations remain available when needed:
+
+```bash
 make start PROFILE=api
-
-# Show API logs.
+make stop PROFILE=api
 make logs SERVICE=api-dev
-
-# Start a pipeline run in interactive mode.
-docker compose --profile ml up ml-ingest-dev
-docker compose --profile ml up ml-features-dev
-docker compose --profile ml up ml-models-dev
-
-# Stop everything, including networks, while keeping database volumes.
-docker compose --profile all down
-
-# Stop everything and remove all images, volumes, networks, and orphan items.
+make rebuild_full
 make clean_full
 ```
 
-### 2. 📈 Experience tracker
+`make start` uses `docker compose up -d` so it works from a clean environment
+where containers have not been created yet. `make clean_full` is intentionally
+destructive: it removes Docker images, volumes, and networks.
+
+For one-off ML pipeline containers, run the existing Compose services directly:
+
+```bash
+docker compose --profile ml up ml-ingest-dev
+docker compose --profile ml up ml-features-dev
+docker compose --profile ml up ml-models-dev
+```
+
+The API is exposed at:
+
+```text
+http://localhost:10000/docs
+```
+
+### 3. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
@@ -391,7 +333,7 @@ MLFLOW_TRACKING_USERNAME="[replace_me]"
 MLFLOW_TRACKING_PASSWORD="[replace_me]"
 ```
 
-### 3. 🧩 Multi-counter orchestration
+### 4. 🧩 Multi-counter orchestration
 
 - The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`). It configures especially:
   - The host repository root, to adjust to your production or development environment.
@@ -416,7 +358,7 @@ MLFLOW_TRACKING_PASSWORD="[replace_me]"
   - Every day, for each configured counter, trigger `init` then `daily`.
   - The `init` run is cheap if already done because it is short-circuited.
 
-### 4. 🧩 Monitoring and alerting
+### 5. 🧩 Monitoring and alerting
 
 The project has defined:
 
