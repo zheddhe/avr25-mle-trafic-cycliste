@@ -1,11 +1,12 @@
 # src/api/main.py
 from __future__ import annotations
 
-import os
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+import os
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Any
+
 import pandas as pd
 from fastapi import (
     Depends,
@@ -16,11 +17,9 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel, Field
-
-# Prometheus / FastAPI instrumentation
-from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Histogram
+from prometheus_fastapi_instrumentator import Instrumentator
+from pydantic import BaseModel, Field
 
 # -------------------------------------------------------------------
 # Logs configuration
@@ -48,7 +47,7 @@ DATA_FINAL_ROOT = os.path.abspath(
 
 # df_predictions: key = subdir (counter id), value = DataFrame loaded from
 # <DATA_FINAL_ROOT>/<subdir>/y_full.csv
-df_predictions: Dict[str, pd.DataFrame] = {}
+df_predictions: dict[str, pd.DataFrame] = {}
 
 REQUIRED_COLUMNS = {
     "date_et_heure_de_comptage_local",
@@ -59,7 +58,7 @@ REQUIRED_COLUMNS = {
 }
 
 
-def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
+def _safe_read_csv(path: str) -> pd.DataFrame | None:
     """
     Read a CSV with index_col=0 and validate required columns.
     Returns None if the file is invalid or unreadable.
@@ -82,12 +81,12 @@ def _safe_read_csv(path: str) -> Optional[pd.DataFrame]:
 
 def load_predictions_from_final(
     root_dir: str,
-) -> tuple[Dict[str, pd.DataFrame], int, int]:
+) -> tuple[dict[str, pd.DataFrame], int, int]:
     """
     Explore <root_dir> to find all subdirs containing a y_full.csv.
     Return (mapping, skipped_no_csv, invalid_csv).
     """
-    mapping: Dict[str, pd.DataFrame] = {}
+    mapping: dict[str, pd.DataFrame] = {}
     skipped_no_csv = 0
     invalid_csv = 0
 
@@ -117,7 +116,7 @@ def load_predictions_from_final(
     return mapping, skipped_no_csv, invalid_csv
 
 
-def refresh_store() -> Dict[str, pd.DataFrame]:
+def refresh_store() -> dict[str, pd.DataFrame]:
     """
     Rescan the filesystem and refresh the in-memory store.
     """
@@ -273,7 +272,7 @@ async def lifespan(app: FastAPI):
 # -------------------------------------------------------------------
 class ErrorResponse(BaseModel):
     type: str = Field(..., description="Business error type.")
-    message: Optional[str] = Field(
+    message: str | None = Field(
         ..., description="Optional detailed error message."
     )
     date: str = Field(..., description="Server-side timestamp.")
@@ -297,7 +296,7 @@ class PredictionList(BaseModel):
     total: int = Field(..., description="Total available predictions.")
     limit: int = Field(..., description="Max returned.")
     offset: int = Field(..., description="Pagination offset.")
-    item: List[PredictionItem] = Field(
+    item: list[PredictionItem] = Field(
         ..., description="Paginated list of predictions."
     )
 
@@ -348,7 +347,7 @@ def custom_exception_handler(
 # -------------------------------------------------------------------
 # Common responses
 # -------------------------------------------------------------------
-ResponsesDict = Dict[Union[int, str], Dict[str, Any]]
+ResponsesDict = dict[int | str, dict[str, Any]]
 generic_responses: ResponsesDict = {
     200: {"description": "Success"},
     400: {"description": "Bad request content."},
@@ -428,7 +427,7 @@ def post_refresh(user_info: dict = Depends(_check_admin_role)):
         "List all counters detected under data/final/<subdir>/y_full.csv "
         "(or under DATA_FINAL_ROOT). [USER or ADMIN]"
     ),
-    response_model=List[Counter],
+    response_model=list[Counter],
     responses=generic_responses,
 )
 def get_all_counters(user_info: dict = Depends(_check_user_or_admin_role)):

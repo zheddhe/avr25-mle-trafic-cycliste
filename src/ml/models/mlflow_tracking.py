@@ -1,20 +1,20 @@
 # src/ml/models/mlflow_tracking.py
 from __future__ import annotations
 
-import os
 import logging
-from typing import Any, Dict, Optional
+import os
+from typing import Any
 
 import mlflow
 import mlflow.sklearn
-from mlflow.models.signature import infer_signature
 from mlflow.exceptions import MlflowException
+from mlflow.models.signature import infer_signature
 
 logger = logging.getLogger(__name__)
 
 
 def configure_mlflow_from_env(
-    explicit_uri: Optional[str] = None,
+    explicit_uri: str | None = None,
 ) -> None:
     """
     Configure MLflow tracking URI from arg or env.
@@ -30,8 +30,8 @@ def configure_mlflow_from_env(
 
 def start_run(
     experiment_name: str,
-    run_name: Optional[str] = None,
-    tags: Optional[Dict[str, str]] = None,
+    run_name: str | None = None,
+    tags: dict[str, str] | None = None,
 ):
     """
     Set experiment and start a run with optional tags.
@@ -43,7 +43,7 @@ def start_run(
     return ctx
 
 
-def _log_params_flat(params: Optional[Dict[str, Any]]) -> None:
+def _log_params_flat(params: dict[str, Any] | None) -> None:
     """
     Log dict of hyperparams (if present), flattening as needed.
     """
@@ -61,7 +61,7 @@ def _log_params_flat(params: Optional[Dict[str, Any]]) -> None:
 
 
 def log_report_content(
-    report: Dict[str, Any],
+    report: dict[str, Any],
     target_col: str,
 ) -> None:
     """
@@ -97,7 +97,7 @@ def log_model_with_signature(
     pipe_model,
     sample_input_df,
     artifact_path: str = "model",
-    registered_name: Optional[str] = None,
+    registered_name: str | None = None,
 ) -> None:
     """
     Log the sklearn Pipeline with signature inferred from a sample row.

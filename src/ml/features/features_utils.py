@@ -1,20 +1,18 @@
 # src/ml/features/features_utils.py
 from __future__ import annotations
 
-import os
-import time
-import pandas as pd
-import numpy as np
 import logging
-import unicodedata
+import os
 import re
-from typing import Optional
-from sklearn.base import BaseEstimator, TransformerMixin
-import pytz
+import time
+import unicodedata
 from contextlib import contextmanager
-from prometheus_client import (
-    CollectorRegistry, Gauge, Counter, pushadd_to_gateway
-)
+
+import numpy as np
+import pandas as pd
+import pytz
+from prometheus_client import CollectorRegistry, Counter, Gauge, pushadd_to_gateway
+from sklearn.base import BaseEstimator, TransformerMixin
 
 PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
 DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
@@ -207,7 +205,7 @@ def _slug(value: str) -> str:
     return value
 
 
-def canonical_site(raw: Optional[str]) -> str:
+def canonical_site(raw: str | None) -> str:
     """
     Return a canonical 'site' label, harmonized across all steps.
     Priority:

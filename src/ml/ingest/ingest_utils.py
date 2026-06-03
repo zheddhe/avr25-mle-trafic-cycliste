@@ -1,16 +1,19 @@
 # src/ml/ingest/ingest_utils.py
 from __future__ import annotations
 
-import os
-import time
-import pandas as pd
 import logging
-import unicodedata
+import os
 import re
-from typing import Optional
+import time
+import unicodedata
 from contextlib import contextmanager
+
+import pandas as pd
 from prometheus_client import (
-    CollectorRegistry, Gauge, Counter, pushadd_to_gateway,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    pushadd_to_gateway,
 )
 
 PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
@@ -130,7 +133,7 @@ def _slug(value: str) -> str:
     return value
 
 
-def canonical_site(raw: Optional[str]) -> str:
+def canonical_site(raw: str | None) -> str:
     """
     Return a canonical 'site' label, harmonized across all steps.
     Priority:
