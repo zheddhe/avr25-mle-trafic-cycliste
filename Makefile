@@ -5,9 +5,10 @@ SHELL := /bin/bash
 # Default make target.
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap env setup repo_setup
+.PHONY: help bootstrap docker-install env setup repo_setup
 .PHONY: sync lock-check lint test ci compose-config
 .PHONY: build rebuild_full ops start stop logs
+.PHONY: ml-ingest ml-features ml-models ml-pipeline mlflow-host
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
 
@@ -25,6 +26,16 @@ LIMIT ?= 10
 OFFSET ?= 0
 COUNTER_IDS ?= Sebastopol_N-S_airflow_day0,Sebastopol_S-N_airflow_day0
 
+DOCKER_KEYRING := /etc/apt/keyrings/docker.gpg
+DOCKER_LIST := /etc/apt/sources.list.d/docker.list
+DOCKER_GPG_URL := https://download.docker.com/linux/ubuntu/gpg
+DOCKER_REPO_URL := https://download.docker.com/linux/ubuntu
+
+MLFLOW_HOST ?= 127.0.0.1
+MLFLOW_HOST_PORT ?= 5000
+MLFLOW_BACKEND_STORE ?= sqlite:///mlflow.db
+MLFLOW_ARTIFACT_ROOT ?= ./mlruns
+
 log_test = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
 load_env = if [ -f "$(ENV_FILE)" ]; then set -a; source "$(ENV_FILE)"; set +a; fi
 
@@ -37,14 +48,35 @@ help: ## Display this help
 		/^.DEFAULT_GOAL/ {print ""} \
 	' $(MAKEFILE_LIST)
 
-bootstrap: ## Install bootstrap dependencies
-	@echo "==> Install python3, pip, and pipx"
+bootstrap: ## Install Python bootstrap dependencies
+	@echo "==> Install python3, pip, pipx, and git"
 	sudo apt update
 	sudo apt install --fix-missing
-	sudo apt install -y python3 python3-pip pipx
+	sudo apt install -y python3 python3-pip pipx git
 	pipx ensurepath
 	@echo "==> Install uv"
 	pipx install uv
+
+docker-install: ## Install Docker Engine and Compose plugin on Ubuntu
+	@echo "==> Install Docker host dependencies"
+	sudo apt update
+	sudo apt install -y ca-certificates curl gnupg lsb-release
+	sudo install -m 0755 -d /etc/apt/keyrings
+	curl -fsSL $(DOCKER_GPG_URL) | \
+		sudo gpg --dearmor --yes -o $(DOCKER_KEYRING)
+	echo \
+		"deb [arch=$$(dpkg --print-architecture) signed-by=$(DOCKER_KEYRING)] \
+		$(DOCKER_REPO_URL) $$(lsb_release -cs) stable" | \
+		sudo tee $(DOCKER_LIST) > /dev/null
+	sudo apt update
+	sudo apt install -y \
+		docker-ce \
+		docker-ce-cli \
+		containerd.io \
+		docker-buildx-plugin \
+		docker-compose-plugin
+	sudo usermod -aG docker "$$USER"
+	@echo "==> Docker installed. Open a new shell or run: newgrp docker"
 
 env: ## Create a local .env file from .env.template if missing
 	@if [ -f "$(ENV_FILE)" ]; then \
@@ -124,6 +156,24 @@ stop: ## Stop Docker services for the selected profile
 logs: ## Show Docker Compose logs for SERVICE
 	$(DOCKER_COMPOSE) logs -f -t $(SERVICE)
 
+ml-ingest: env ## Run the ML ingestion container once
+	$(DOCKER_COMPOSE) --profile ml up ml-ingest-dev
+
+ml-features: env ## Run the ML feature engineering container once
+	$(DOCKER_COMPOSE) --profile ml up ml-features-dev
+
+ml-models: env ## Run the ML training and prediction container once
+	$(DOCKER_COMPOSE) --profile ml up ml-models-dev
+
+ml-pipeline: ml-ingest ml-features ml-models ## Run the full one-off ML pipeline
+
+mlflow-host: sync ## Start a host-side MLflow server for local experiments
+	$(UV) run --locked --group app mlflow server \
+		--host $(MLFLOW_HOST) \
+		--port $(MLFLOW_HOST_PORT) \
+		--backend-store-uri $(MLFLOW_BACKEND_STORE) \
+		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
+
 sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@echo "==> Simulating API restart failure loop"
 	for i in {1..10}; do \
@@ -156,7 +206,7 @@ sim_api_req: ## Simulate traffic on /predictions/{counter}
 		$(if $(COUNTER_IDS),--counter-ids "$(COUNTER_IDS)",)
 
 clean: ## Remove local Python caches and test artifacts only
-	rm -rf .nox .pytest_cache .ruff_cache .coverage htmlcov build dist
+	rm -rf .nox .pytest_cache .ruff_cache .coverage htmlcov build dist mlruns mlflow.db
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -prune -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
