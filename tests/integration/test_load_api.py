@@ -8,7 +8,7 @@ Simple API load simulator focused on /predictions/{counter_id}.
 
 Usage example:
   python3 scripts/sim_api_req.py \
-    --url http://localhost:8000 \
+    --url http://localhost:10000 \
     --n 120 --p-ok 0.85 --user user1 --password user1 --limit 10
 """
 
@@ -143,7 +143,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Simulate traffic on /predictions/{counter_id}."
     )
-    parser.add_argument("--url", type=str, default="http://localhost:8000")
+    parser.add_argument("--url", type=str, default="http://localhost:10000")
     parser.add_argument("--n", type=int, default=100)
     parser.add_argument("--p-ok", type=float, default=0.8)
     parser.add_argument("--user", type=str, default="user1")

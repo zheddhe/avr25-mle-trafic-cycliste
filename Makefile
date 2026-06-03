@@ -56,7 +56,7 @@ sim_api_down: ## Simule un arrêt temporaire de l'API pendant 2 minutes
 	sleep 120
 	docker compose start api-dev
 
-URL         ?= http://localhost:8000
+URL         ?= http://localhost:10000
 N           ?= 100
 P_OK        ?= 0.80
 API_USER    ?= user1

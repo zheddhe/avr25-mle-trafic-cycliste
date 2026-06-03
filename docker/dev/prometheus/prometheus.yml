@@ -28,7 +28,7 @@ scrape_configs:
 
   - job_name: api
     metrics_path: /metrics
-    static_configs: [{targets: ["api-dev:8000"]}]
+    static_configs: [{targets: ["api-dev:10000"]}]
 
   - job_name: pushgateway
     honor_labels: true
