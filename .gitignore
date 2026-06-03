@@ -210,3 +210,4 @@ __marimo__/
 mlruns
 logs
 .env.local
+mlflow.db

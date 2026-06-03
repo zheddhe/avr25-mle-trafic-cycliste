@@ -9,7 +9,7 @@ SHELL := /bin/bash
 .PHONY: sync lock-check lint test ci compose-config
 .PHONY: build rebuild_full ops start stop logs
 .PHONY: ml-ingest ml-features ml-models ml-pipeline
-.PHONY: mlflow-compose mlflow-local mlflow-host mlflow-dagshub
+.PHONY: mlflow-compose mlflow-local mlflow-dagshub
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
 
@@ -33,7 +33,7 @@ DOCKER_GPG_URL := https://download.docker.com/linux/ubuntu/gpg
 DOCKER_REPO_URL := https://download.docker.com/linux/ubuntu
 
 MLFLOW_HOST ?= 127.0.0.1
-MLFLOW_HOST_PORT ?= 5000
+MLFLOW_HOST_PORT ?= 5001
 MLFLOW_BACKEND_STORE ?= sqlite:///mlflow.db
 MLFLOW_ARTIFACT_ROOT ?= ./mlruns
 
@@ -172,19 +172,22 @@ logs: ## Show Docker Compose logs for SERVICE
 	@$(call log_test,logs SERVICE=$(SERVICE))
 	$(DOCKER_COMPOSE) logs -f -t $(SERVICE)
 
-ml-ingest: env ## Run the ML ingestion container once
+mlops-ingest: env ## Run the ML ingestion container once
 	@$(call log_test,ml-ingest)
 	$(DOCKER_COMPOSE) --profile ml up ml-ingest-dev
 
-ml-features: env ## Run the ML feature engineering container once
+mlops-features: env ## Run the ML feature engineering container once
 	@$(call log_test,ml-features)
 	$(DOCKER_COMPOSE) --profile ml up ml-features-dev
 
-ml-models: env ## Run the ML training and prediction container once
+mlops-models: env mlflow-compose ## Run the ML training and prediction container once
 	@$(call log_test,ml-models)
 	$(DOCKER_COMPOSE) --profile ml up ml-models-dev
 
-ml-pipeline: ml-ingest ml-features ml-models ## Run the full one-off ML pipeline
+mlops-pipeline: ml-ingest ml-features ml-models ## Run the full one-off ML pipeline
+
+dvc-pipeline: env ## Run the full dvc pipeline
+	dvc repro
 
 mlflow-compose: env ## Set canonical MLflow variables to Compose runtime mode
 	@$(call log_test,mlflow-compose)
@@ -202,8 +205,6 @@ mlflow-local: env sync ## Set local mode and start a host-side MLflow server
 		--port $(MLFLOW_HOST_PORT) \
 		--backend-store-uri $(MLFLOW_BACKEND_STORE) \
 		--default-artifact-root $(MLFLOW_ARTIFACT_ROOT)
-
-mlflow-host: mlflow-local ## Alias for mlflow-local
 
 mlflow-dagshub: env ## Set canonical MLflow variables to DagsHub remote mode
 	@$(call log_test,mlflow-dagshub)
