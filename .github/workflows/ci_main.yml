@@ -9,7 +9,6 @@ on:
       - main
   workflow_dispatch:
 
-
 jobs:
   ci-checks:
     name: "🔍 Tests & Coverage"
@@ -29,12 +28,19 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run Nox build session (unit tests only)
+      - name: Sync locked dependencies
+        run: |
+          uv sync --locked --group test --group dev
+
+      - name: Run Flake8 checks
+        run: |
+          uv run --locked --group test flake8
+
+      - name: Run unit tests
         env:
-          # Exclude integration test
           PYTEST_ADDOPTS: -m "not integration"
         run: |
-          uvx nox -s build
+          uv run --locked --group test pytest
 
       - name: Upload HTML coverage report
         if: always()
