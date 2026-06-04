@@ -73,7 +73,8 @@ to the image variable. Production hardening may replace readable tags with direc
 | MLflow server | Uses `MLFLOW_IMAGE`, currently `ghcr.io/mlflow/mlflow:v3.13.0-full`. |
 | MLflow PostgreSQL | Uses `MLFLOW_POSTGRES_IMAGE`, currently `postgres:16`, as the local MLflow metadata database. |
 | MinIO | Uses `MINIO_IMAGE` and `MINIO_MC_IMAGE`, with pinned release tags and digest comments, for local MLflow artifact storage. |
-| Monitoring | Uses upstream Prometheus, Grafana, cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
+| Prometheus | Uses `PROMETHEUS_IMAGE`, currently `prom/prometheus:v3.12.0`, for local metrics storage and queries. |
+| Monitoring support | Uses upstream Grafana, cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
 
 ## Phase 6 runtime upgrade status
 
@@ -85,7 +86,7 @@ isolated.
 | --------- | ------------------- | --------------------- |
 | Airflow | `3.2.2` | Upgraded and validated with Python 3.12 image |
 | MLflow | `3.13.0` | Server, model client, PostgreSQL, and MinIO storage services upgraded |
-| Prometheus | `3.12.0` | Pending follow-up increment |
+| Prometheus | `3.12.0` | Compose runtime upgraded; validation pending |
 | Grafana | `13.0.1` | Pending follow-up increment |
 
 Do not document pending targets as active runtime versions in the README until
@@ -148,6 +149,7 @@ Then verify:
 - MLflow runs contain expected parameters, metrics, and artifacts;
 - API `/docs` is reachable;
 - API prediction endpoints still return the expected schema;
+- Prometheus targets are healthy and ML/API metrics are visible;
 - Prometheus metrics are not pushed during local tests when
   `DISABLE_METRICS_PUSH=1`;
 - Docker Compose services start without dependency resolution errors.
