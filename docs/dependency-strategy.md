@@ -23,7 +23,7 @@ repository as a distributable Python package.
 The dependency groups have the following responsibilities:
 
 | Group | Responsibility |
-|-------|----------------|
+| ----- | -------------- |
 | `app` | Local import and execution surface for API, DAGs, ML scripts, MLflow, metrics, and orchestration code. |
 | `test` | Test and lint harness. Includes `app`. |
 | `dev` | Development harness. Includes `test` and DVC tooling. |
@@ -44,7 +44,7 @@ Custom images are the runtime source of truth for the project services built by
 this repository.
 
 | Service image | Dockerfile | Requirements file | Python baseline |
-|---------------|------------|-------------------|-----------------|
+| ------------- | ---------- | ----------------- | --------------- |
 | API | `docker/dev/api/Dockerfile` | `docker/dev/api/requirements.txt` | Python 3.12 |
 | ML ingest | `docker/dev/ml/ingest/Dockerfile` | `docker/dev/ml/ingest/requirements.txt` | Python 3.12 |
 | ML features | `docker/dev/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
@@ -61,7 +61,7 @@ Some services are provided by upstream images and are not governed by the local
 uv environment.
 
 | Service family | Current image policy |
-|----------------|----------------------|
+| -------------- | -------------------- |
 | Airflow | Uses `apache/airflow:2.8.1` in Docker Compose. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
 | PostgreSQL | Uses upstream `postgres:13` images for MLflow and Airflow metadata stores. |
 | Redis | Uses an upstream Redis image for Airflow Celery. |
