@@ -130,9 +130,8 @@ make lint
 make test
 make compose-config
 make build
-make start PROFILE=mlflow
+make start PROFILE=ptf
 make mlops-pipeline
-make start PROFILE=api
 make logs SERVICE=api-dev
 ```
 

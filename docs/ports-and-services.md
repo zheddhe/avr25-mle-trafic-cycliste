@@ -84,9 +84,3 @@ The expected configuration validation command is:
 ```bash
 make compose-config
 ```
-
-It runs:
-
-```bash
-docker compose --profile all config
-```
