@@ -10,7 +10,7 @@ networks. The variables below only control ports published on the host machine.
 ## Port ranges
 
 | Range | Responsibility |
-|-------|----------------|
+| ----- | -------------- |
 | `10000-10999` | Business applications and application APIs |
 | `11000-11999` | Local business debug endpoints, if needed later |
 | `12000-12999` | Orchestration and workflow tools |
@@ -21,7 +21,7 @@ networks. The variables below only control ports published on the host machine.
 ## Host-exposed services
 
 | Variable | Default | Service | Internal port | Reason |
-|----------|---------|---------|---------------|--------|
+| -------- | ------- | ------- | ------------- | ------ |
 | `API_HOST_PORT` | `10000` | `api-dev` | `10000` | FastAPI prediction API and OpenAPI docs |
 | `AIRFLOW_HOST_PORT` | `12080` | `airflow-webserver` | `8080` | Airflow UI for local DAG operations |
 | `AIRFLOW_FLOWER_HOST_PORT` | `12555` | `airflow-flower` | `5555` | Celery worker monitoring during local development |
@@ -41,7 +41,7 @@ networks. The variables below only control ports published on the host machine.
 With the default `.env.template` values, the main local URLs are:
 
 | Service | URL |
-|---------|-----|
+| ------- | --- |
 | FastAPI docs | `http://localhost:10000/docs` |
 | Airflow UI | `http://localhost:12080` |
 | Flower UI | `http://localhost:12555` |
@@ -60,7 +60,7 @@ With the default `.env.template` values, the main local URLs are:
 The following services are intentionally not published on host ports:
 
 | Service | Reason |
-|---------|--------|
+| ------- | ------ |
 | `ml-ingest-dev` | One-off ML pipeline container triggered by Compose or Airflow |
 | `ml-features-dev` | One-off ML pipeline container triggered by Compose or Airflow |
 | `ml-models-dev` | One-off ML pipeline container triggered by Compose or Airflow |

@@ -159,7 +159,7 @@ tests, Pylance import resolution, and local execution of the application code.
 ### uv dependency groups
 
 | Group | Purpose |
-|-------|---------|
+| :---- | :------ |
 | `app` | Local application surface: API, DAGs, ML scripts, MLflow, metrics, and orchestration imports. |
 | `test` | Test and lint harness. Includes `app`. |
 | `dev` | Full development harness. Includes `test` and DVC tooling. |
@@ -246,16 +246,16 @@ destructive: it removes Docker images, volumes, and networks.
 For one-off ML pipeline containers, use the dedicated targets:
 
 ```bash
-make ml-ingest
-make ml-features
-make ml-models
-make ml-pipeline
+make mlops-ingest
+make mlops-features
+make mlops-models
+make mlops-pipeline
 ```
 
 The API is exposed at:
 
 ```text
-http://localhost:10000/docs
+http://localhost:[API_HOST_PORT]/docs
 ```
 
 ### 3. 📈 Experience tracker
@@ -285,34 +285,26 @@ Start it with the platform services:
 make ops
 ```
 
-#### Mode 2: Host-side MLflow server for data science experiments
+#### Mode 2: Host-side MLflow local server and backend data runs
 
 This mode is useful for preliminary local data science experiments without the
-full Docker Compose stack. Start a host-side MLflow server with:
+full Docker Compose stack.
+
+It populates `./mlruns` artifact directory by unsetting MLFLOW_TRACKING_URI during standalone local debugging runs.
 
 ```bash
-make mlflow-host
+make local-ingest
+make local-features
+make local-models
+make local-pipeline
 ```
 
-By default, it starts on `http://127.0.0.1:5000` with a local SQLite backend and
-local `./mlruns` artifact directory. Override these values if needed:
+A MLflow local server can visualize the artifact directory afterwards.
 
 ```bash
-make mlflow-host \
-  MLFLOW_HOST_PORT=5010 \
-  MLFLOW_BACKEND_STORE=sqlite:///mlflow.db \
-  MLFLOW_ARTIFACT_ROOT=./mlruns
+make mlflow-local
 ```
 
-For host-side scripts targeting the Compose MLflow service, use the exposed
-Compose endpoint instead:
-
-```bash
-MLFLOW_TRACKING_URI="http://127.0.0.1:5001"
-MLFLOW_S3_ENDPOINT_URL="http://127.0.0.1:9000"
-AWS_ACCESS_KEY_ID="minio"
-AWS_SECRET_ACCESS_KEY="[replace_me]"
-```
 
 #### Mode 3: DagsHub remote MLflow service
 
