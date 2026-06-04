@@ -452,7 +452,7 @@ services:
 # MONITORING SERVICES
 # ========================
   monitoring-prometheus:
-    image: prom/prometheus:v2.54.1
+    image: ${PROMETHEUS_IMAGE:?required}
     restart: unless-stopped
     ports:
       - "${PROMETHEUS_HOST_PORT:-14090}:9090"
