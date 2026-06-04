@@ -49,8 +49,8 @@ avr25-mle-trafic-cycliste/
 ├── logs                <- Logs shared with host (read/write)
 ├── models              <- Model artifacts shared with host (read/write)
 ├── references          <- Data dictionaries, manuals, other explanatory material
-├── src/                <- API, Airflow DAGs, and ML pipeline source code
-├── docker/             <- Container architecture
+├── src/                <- API and ML pipeline source code
+├── docker/             <- Container architecture, Airflow DAGs, configs, and scripts
 └── tests/              <- Unit and integration tests
 ```
 
@@ -233,8 +233,13 @@ Targeted operations remain available when needed:
 
 ```bash
 make start PROFILE=api
+make start PROFILE=airflow
 make stop PROFILE=api
+make stop PROFILE=airflow
 make logs SERVICE=api-dev
+make logs SERVICE=airflow-scheduler
+make logs SERVICE=airflow-dag-processor
+make logs SERVICE=airflow-worker
 make rebuild_full
 make clean_full
 ```
@@ -252,10 +257,32 @@ make mlops-models
 make mlops-pipeline
 ```
 
-By default, the API is exposed at `http://localhost:10000/docs`.
-Override `API_HOST_PORT` in `.env` to use another host port.
+Runtime endpoints are controlled by `.env` host port variables:
 
-### 3. 📈 Experience tracker
+| Service | Default URL |
+| :------ | :---------- |
+| API | `http://localhost:10000/docs` |
+| Airflow | `http://localhost:12080` |
+| MLflow | `http://localhost:13001` |
+| MinIO Console | `http://localhost:13002` |
+| Prometheus | `http://localhost:14090` |
+| Grafana | `http://localhost:14300` |
+| MailHog | `http://localhost:15080` |
+
+### 3. Runtime component baseline
+
+| Component | Runtime |
+| :-------- | :------ |
+| API and ML microservices | Python 3.12 custom images |
+| Airflow | 3.2.2 with Python 3.12 |
+| Airflow metadata database | PostgreSQL 16 |
+| Airflow executor | CeleryExecutor with Redis broker |
+| MLflow | Compose-managed tracking server |
+| MinIO | Compose-managed artifact storage |
+| Prometheus | Compose-managed metrics backend |
+| Grafana | Compose-managed dashboards |
+
+### 4. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
@@ -302,7 +329,6 @@ A MLflow local server can visualize the artifact directory afterwards.
 make mlflow-local
 ```
 
-
 #### Mode 3: DagsHub remote MLflow service
 
 To use the DagsHub remote service instead of local MLflow, override these values
@@ -314,19 +340,48 @@ MLFLOW_TRACKING_USERNAME="[replace_me]"
 MLFLOW_TRACKING_PASSWORD="[replace_me]"
 ```
 
-### 4. 🧩 Multi-counter orchestration
+### 5. 🧩 Airflow orchestration runtime
 
-- The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`). It configures especially:
-  - The host repository root, to adjust to your production or development environment.
-  - The MLflow server information. By default, this uses the platform technical stack, but it can point to a cloud-hosted service.
-  - The images to use for the various containers.
-  - The API connection as an admin to refresh predictions.
+The platform uses Airflow 3.2.2 with Python 3.12 and CeleryExecutor.
+Airflow workers trigger containerized ML jobs through the Docker socket in the
+local development stack.
 
-- The business configuration is mounted read-only in the Airflow containers (Scheduler / WebServer / Worker) into
-  `/opt/airflow/config/bike_dag_config.json` (repo source: `./src/airflow/config/`). It configures especially:
+Main Airflow services:
+
+- `airflow-api-server`
+- `airflow-scheduler`
+- `airflow-dag-processor`
+- `airflow-worker`
+- `airflow-triggerer`
+- `airflow-init`
+- `airflow-postgres`
+- `airflow-redis`
+- `airflow-flower`
+
+Airflow 3 task execution relies on its execution API. The following variables
+must be set consistently across the API server, scheduler, and workers:
+
+```bash
+AIRFLOW_FERNET_KEY="[replace_me]"
+AIRFLOW_API_AUTH_JWT_SECRET="[replace_me]"
+AIRFLOW_POSTGRES_PASSWORD="[replace_me]"
+```
+
+`AIRFLOW_API_AUTH_JWT_SECRET` should be a long random value because it signs the
+JWTs exchanged between Airflow components during task execution.
+
+### 6. 🧩 Multi-counter orchestration
+
+- The technical Airflow configuration is mounted read-only into
+  `/opt/airflow/config/` from `./docker/dev/airflow/config/`. `airflow-init`
+  imports variables and connections from this directory.
+
+- The business DAG configuration is mounted read-only into Airflow runtime
+  containers as `/opt/airflow/config/bike_dag_config.json`. It configures:
   - The list of managed counters extracted from the original dataset.
   - The anchor date used to simulate production startup.
-  - The daily increment, which defines which portion of the original dataset is considered to shift the data by one production day.
+  - The daily increment, which defines which portion of the original dataset is
+    considered to shift the data by one production day.
 
 - `bike_traffic_init`: one-shot historical bootstrap per counter.
   - It short-circuits if the Airflow Variable `bike_init_done__<counter>` equals `"1"`.
@@ -339,7 +394,7 @@ MLFLOW_TRACKING_PASSWORD="[replace_me]"
   - Every day, for each configured counter, trigger `init` then `daily`.
   - The `init` run is cheap if already done because it is short-circuited.
 
-### 5. 🧩 Monitoring and alerting
+### 7. 🧩 Monitoring and alerting
 
 The project has defined:
 
@@ -397,5 +452,5 @@ The CI environment uses uv dependency groups directly and runs Ruff before pytes
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
-- Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
+- Koladé Houessou – [@koladehouessou@gmail.com](mailto:koladehouessou@gmail.com)
 - Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofia.bouizzoul@gmail.com)
