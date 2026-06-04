@@ -41,6 +41,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__API__BASE_URL: http://airflow-api-server:8080
+    AIRFLOW__API_AUTH__JWT_SECRET: "${AIRFLOW_API_AUTH_JWT_SECRET:?required}"
     AIRFLOW__SIMPLE_AUTH_MANAGER__USERS: "admin:admin"
     AIRFLOW__SMTP__SMTP_HOST: "mailhog"
     AIRFLOW__SMTP__SMTP_PORT: 1025
@@ -61,7 +64,7 @@ x-airflow-common: &airflow-common
   networks:
     - airflow_net
     - mlops_net
-  profiles: ["airflow3", "all", "airflow", "ptf"]
+  profiles: ["all", "airflow", "ptf"]
 
 # ========================
 # BUSINESS SERVICES
@@ -304,7 +307,7 @@ services:
     restart: unless-stopped
     networks:
       - airflow_net
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
     image: redis:latest
@@ -316,7 +319,7 @@ services:
     restart: unless-stopped
     networks:
       - airflow_net
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
     <<: *airflow-common
@@ -327,7 +330,7 @@ services:
     volumes:
       - ./docker/dev/airflow/config/:/opt/airflow/config/
       - ./docker/dev/airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-api-server:
     <<: *airflow-common
@@ -343,7 +346,7 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-scheduler:
     <<: *airflow-common
@@ -359,7 +362,7 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-dag-processor:
     <<: *airflow-common
@@ -375,7 +378,7 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-worker:
     <<: *airflow-common
@@ -403,7 +406,7 @@ services:
     networks:
       - airflow_net
       - mlops_net
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-triggerer:
     <<: *airflow-common
@@ -419,7 +422,7 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    profiles: ["airflow3", "all", "airflow", "ptf"]
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-flower:
     <<: *airflow-common
@@ -441,7 +444,7 @@ services:
       start_period: 60s
     networks:
       - airflow_net
-    profiles: ["airflow3", "all", "airflow", "ptf", "flower"]
+    profiles: ["all", "airflow", "ptf", "flower"]
 
 # ========================
 # MONITORING SERVICES
