@@ -62,11 +62,28 @@ uv environment.
 
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Airflow | Uses `apache/airflow:2.8.1` in Docker Compose. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
-| PostgreSQL | Uses upstream `postgres:13` images for MLflow and Airflow metadata stores. |
-| Redis | Uses an upstream Redis image for Airflow Celery. |
+| Airflow | Uses `apache/airflow:3.2.2-python3.12` in Docker Compose. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
+| Airflow PostgreSQL | Uses `postgres:16` as the local Airflow metadata database. |
+| Redis | Uses an upstream Redis image for the Airflow Celery broker. |
+| PostgreSQL | Uses an upstream PostgreSQL image for the MLflow metadata store. |
 | MinIO | Uses upstream MinIO images for the local MLflow artifact store. |
 | Monitoring | Uses upstream Prometheus, Grafana, cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
+
+## Phase 6 runtime upgrade status
+
+Story #51 upgrades the MLOps infrastructure stack in focused increments. The
+current branch has validated the Airflow increment first because Airflow 2 was
+blocking DAG parsing through an obsolete Python runtime.
+
+| Component | Target in story #51 | Current branch status |
+| --------- | ------------------- | --------------------- |
+| Airflow | `3.2.2` | Upgraded and validated with Python 3.12 image |
+| MLflow | `3.13.0` | Pending follow-up increment |
+| Prometheus | `3.12.0` | Pending follow-up increment |
+| Grafana | `13.0.1` | Pending follow-up increment |
+
+Do not document pending targets as active runtime versions in the README until
+the related Compose and validation commits have landed.
 
 ## Runtime-sensitive dependencies
 
@@ -114,7 +131,7 @@ make test
 make compose-config
 make build
 make start PROFILE=mlflow
-make ml-pipeline
+make mlops-pipeline
 make start PROFILE=api
 make logs SERVICE=api-dev
 ```
