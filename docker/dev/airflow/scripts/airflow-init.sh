@@ -7,15 +7,6 @@ set -euo pipefail
 echo "Running Airflow database migration"
 airflow db migrate
 
-echo "Creating Airflow admin user"
-airflow users create \
-  --username "${_AIRFLOW_WWW_USER_USERNAME}" \
-  --password "${_AIRFLOW_WWW_USER_PASSWORD}" \
-  --firstname Admin \
-  --lastname User \
-  --role Admin \
-  --email admin@example.com
-
 echo "Importing Airflow variables"
 airflow variables import /opt/airflow/config/variables.json
 

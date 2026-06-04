@@ -30,6 +30,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:?required}"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__SIMPLE_AUTH_MANAGER__USERS: "admin:admin"
     AIRFLOW__SMTP__SMTP_HOST: "mailhog"
     AIRFLOW__SMTP__SMTP_PORT: 1025
     AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
@@ -87,25 +89,11 @@ services:
       <<: *airflow-common-env
       _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD:-airflow}
-    command: >
-      bash -c "
-        set -euo pipefail &&
-        airflow db migrate &&
-        airflow users create
-          --username $${_AIRFLOW_WWW_USER_USERNAME}
-          --password $${_AIRFLOW_WWW_USER_PASSWORD}
-          --firstname Admin
-          --lastname User
-          --role Admin
-          --email admin@example.com &&
-        airflow variables import /opt/airflow/config/variables.json &&
-        (airflow connections delete api_dev || true) &&
-        airflow connections import /opt/airflow/config/connections.json &&
-        airflow pools set sequential_counters 2 'Orchestrator: trigger child DAGs sequentially'
-      "
+    command: ["bash", "/opt/airflow/scripts/airflow-init.sh"]
     restart: "no"
     volumes:
       - ./docker/dev/airflow/config/:/opt/airflow/config/
+      - ./docker/dev/airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
     profiles: ["airflow3", "all", "ptf"]
 
   airflow-api-server:
