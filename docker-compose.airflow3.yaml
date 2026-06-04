@@ -27,7 +27,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:-AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8=}"
+    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:?required}"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__SMTP__SMTP_HOST: "mailhog"
