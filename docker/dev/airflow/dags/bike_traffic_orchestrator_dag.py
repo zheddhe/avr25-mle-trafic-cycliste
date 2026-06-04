@@ -4,8 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from common.utils import _list_counters_payload
 
 DEFAULT_CONFIG_PATH = "/opt/airflow/config/bike_dag_config.json"
