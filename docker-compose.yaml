@@ -166,6 +166,7 @@ services:
       MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      GIT_PYTHON_REFRESH: quiet
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     networks:
@@ -269,6 +270,7 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?required}
       AWS_DEFAULT_REGION: us-east-1
+      GIT_PYTHON_REFRESH: quiet
       MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
     ports:
       - "${MLFLOW_HOST_PORT:-13001}:5000"
@@ -283,6 +285,8 @@ services:
       - 0.0.0.0
       - --port
       - "5000"
+      - --allowed-hosts
+      - localhost,127.0.0.1,mlflow-server,mlflow-server:5000
     restart: unless-stopped
     networks:
       - mlflow_net
