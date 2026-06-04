@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${_AIRFLOW_WWW_USER_USERNAME:?Missing Airflow username}"
-: "${_AIRFLOW_WWW_USER_PASSWORD:?Missing Airflow password}"
-
 echo "Running Airflow database migration"
 airflow db migrate
 

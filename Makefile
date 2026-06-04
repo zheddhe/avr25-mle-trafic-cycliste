@@ -15,7 +15,7 @@ SHELL := /bin/bash
 .PHONY: clean clean_env clean_full
 
 UV ?= uv
-DOCKER_COMPOSE ?= docker compose -f docker-compose.airflow3.yaml
+DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
 PROFILE ?= ptf
 SERVICE ?= api-dev

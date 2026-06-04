@@ -322,8 +322,6 @@ services:
     <<: *airflow-common
     environment:
       <<: *airflow-common-env
-      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME:-airflow}
-      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD:-airflow}
     command: ["bash", "/opt/airflow/scripts/airflow-init.sh"]
     restart: "no"
     volumes:
