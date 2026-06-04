@@ -286,7 +286,7 @@ services:
       - --port
       - "5000"
       - --allowed-hosts
-      - localhost,127.0.0.1,mlflow-server,mlflow-server:5000
+      - ${MLFLOW_SERVER_ALLOWED_HOSTS:?required}
     restart: unless-stopped
     networks:
       - mlflow_net
