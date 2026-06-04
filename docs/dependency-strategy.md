@@ -49,7 +49,6 @@ this repository.
 | ML ingest | `docker/dev/ml/ingest/Dockerfile` | `docker/dev/ml/ingest/requirements.txt` | Python 3.12 |
 | ML features | `docker/dev/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
 | ML models | `docker/dev/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
-| MLflow server | `docker/dev/mlflow/Dockerfile` | inline pip install | Python 3.12 |
 
 The standard baseline for custom images is Python 3.12. A different Python
 version should only be used if a service-specific dependency constraint requires
@@ -60,13 +59,20 @@ it and the reason is documented.
 Some services are provided by upstream images and are not governed by the local
 uv environment.
 
+For local developer ergonomics, runtime image variables keep readable version
+labels in `.env.template` so tools such as the VS Code Docker extension remain
+easier to inspect. When available, the validated digest is kept as a comment next
+to the image variable. Production hardening may replace readable tags with direct
+`@sha256:` image references.
+
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Airflow | Uses `apache/airflow:3.2.2-python3.12` in Docker Compose. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
-| Airflow PostgreSQL | Uses `postgres:16` as the local Airflow metadata database. |
+| Airflow | Uses `AIRFLOW_IMAGE_NAME`, currently `apache/airflow:3.2.2-python3.12`. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
+| Airflow PostgreSQL | Uses `AIRFLOW_POSTGRES_IMAGE`, currently `postgres:16`, as the local Airflow metadata database. |
 | Redis | Uses an upstream Redis image for the Airflow Celery broker. |
-| MLflow PostgreSQL | Uses `postgres:16` as the local MLflow metadata database. |
-| MinIO | Uses pinned upstream MinIO server and client image tags for local MLflow artifact storage. |
+| MLflow server | Uses `MLFLOW_IMAGE`, currently `ghcr.io/mlflow/mlflow:v3.13.0-full`. |
+| MLflow PostgreSQL | Uses `MLFLOW_POSTGRES_IMAGE`, currently `postgres:16`, as the local MLflow metadata database. |
+| MinIO | Uses `MINIO_IMAGE` and `MINIO_MC_IMAGE`, with pinned release tags and digest comments, for local MLflow artifact storage. |
 | Monitoring | Uses upstream Prometheus, Grafana, cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
 
 ## Phase 6 runtime upgrade status
