@@ -23,7 +23,7 @@ networks. The variables below only control ports published on the host machine.
 | Variable | Default | Service | Internal port | Reason |
 | -------- | ------- | ------- | ------------- | ------ |
 | `API_HOST_PORT` | `10000` | `api-dev` | `10000` | FastAPI prediction API and OpenAPI docs |
-| `AIRFLOW_HOST_PORT` | `12080` | `airflow-webserver` | `8080` | Airflow UI for local DAG operations |
+| `AIRFLOW_HOST_PORT` | `12080` | `airflow-api-server` | `8080` | Airflow UI and API for local DAG operations |
 | `AIRFLOW_FLOWER_HOST_PORT` | `12555` | `airflow-flower` | `5555` | Celery worker monitoring during local development |
 | `MINIO_API_HOST_PORT` | `13000` | `mlflow-minio` | `9000` | S3-compatible artifact endpoint for host-side MLflow clients |
 | `MLFLOW_HOST_PORT` | `13001` | `mlflow-server` | `5000` | MLflow tracking UI and host-side MLflow clients |
@@ -70,7 +70,9 @@ The following services are intentionally not published on host ports:
 | `airflow-redis` | Airflow Celery broker, used only inside `airflow_net` |
 | `airflow-init` | One-off Airflow initialization helper |
 | `airflow-scheduler` | Internal Airflow scheduler process |
+| `airflow-dag-processor` | Internal Airflow DAG parsing process |
 | `airflow-worker` | Internal Airflow Celery worker process |
+| `airflow-triggerer` | Internal Airflow async trigger process |
 
 `airflow-redis` used to publish `6379` on the host. It is now internal-only
 because no documented local workflow requires direct host access to the broker.
