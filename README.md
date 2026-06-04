@@ -51,6 +51,7 @@ avr25-mle-trafic-cycliste/
 ├── references          <- Data dictionaries, manuals, other explanatory material
 ├── src/                <- API and ML pipeline source code
 ├── docker/             <- Container architecture, Airflow DAGs, configs, and scripts
+├── docs/               <- Architecture, operations, and dependency documentation
 └── tests/              <- Unit and integration tests
 ```
 
@@ -233,13 +234,8 @@ Targeted operations remain available when needed:
 
 ```bash
 make start PROFILE=api
-make start PROFILE=airflow
 make stop PROFILE=api
-make stop PROFILE=airflow
 make logs SERVICE=api-dev
-make logs SERVICE=airflow-scheduler
-make logs SERVICE=airflow-dag-processor
-make logs SERVICE=airflow-worker
 make rebuild_full
 make clean_full
 ```
@@ -247,6 +243,11 @@ make clean_full
 `make start` uses `docker compose up -d` so it works from a clean environment
 where containers have not been created yet. `make clean_full` is intentionally
 destructive: it removes Docker images, volumes, and networks.
+
+Runtime host ports and local URLs are documented in
+[`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime image and
+dependency policies are documented in
+[`docs/dependency-strategy.md`](docs/dependency-strategy.md).
 
 For one-off ML pipeline containers, use the dedicated targets:
 
@@ -257,32 +258,7 @@ make mlops-models
 make mlops-pipeline
 ```
 
-Runtime endpoints are controlled by `.env` host port variables:
-
-| Service | Default URL |
-| :------ | :---------- |
-| API | `http://localhost:10000/docs` |
-| Airflow | `http://localhost:12080` |
-| MLflow | `http://localhost:13001` |
-| MinIO Console | `http://localhost:13002` |
-| Prometheus | `http://localhost:14090` |
-| Grafana | `http://localhost:14300` |
-| MailHog | `http://localhost:15080` |
-
-### 3. Runtime component baseline
-
-| Component | Runtime |
-| :-------- | :------ |
-| API and ML microservices | Python 3.12 custom images |
-| Airflow | 3.2.2 with Python 3.12 |
-| Airflow metadata database | PostgreSQL 16 |
-| Airflow executor | CeleryExecutor with Redis broker |
-| MLflow | Compose-managed tracking server |
-| MinIO | Compose-managed artifact storage |
-| Prometheus | Compose-managed metrics backend |
-| Grafana | Compose-managed dashboards |
-
-### 4. 📈 Experience tracker
+### 3. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
@@ -340,61 +316,28 @@ MLFLOW_TRACKING_USERNAME="[replace_me]"
 MLFLOW_TRACKING_PASSWORD="[replace_me]"
 ```
 
-### 5. 🧩 Airflow orchestration runtime
+### 4. 🧩 Multi-counter orchestration
 
-The platform uses Airflow 3.2.2 with Python 3.12 and CeleryExecutor.
-Airflow workers trigger containerized ML jobs through the Docker socket in the
-local development stack.
+Airflow orchestrates the multi-counter ML pipeline. The Docker Compose service
+model is the source of truth for Airflow service wiring and runtime identities.
 
-Main Airflow services:
+- `airflow-init` imports Airflow variables and connections from
+  `./docker/dev/airflow/config/`.
+- Runtime Airflow containers mount
+  `/opt/airflow/config/bike_dag_config.json` read-only from
+  `./docker/dev/airflow/config/bike_dag_config.json`.
+- Runtime secrets and IDs are provided through `.env.template`, including
+  `AIRFLOW_FERNET_KEY`, `AIRFLOW_API_AUTH_JWT_SECRET`, and
+  `AIRFLOW_POSTGRES_PASSWORD`.
 
-- `airflow-api-server`
-- `airflow-scheduler`
-- `airflow-dag-processor`
-- `airflow-worker`
-- `airflow-triggerer`
-- `airflow-init`
-- `airflow-postgres`
-- `airflow-redis`
-- `airflow-flower`
-
-Airflow 3 task execution relies on its execution API. The following variables
-must be set consistently across the API server, scheduler, and workers:
-
-```bash
-AIRFLOW_FERNET_KEY="[replace_me]"
-AIRFLOW_API_AUTH_JWT_SECRET="[replace_me]"
-AIRFLOW_POSTGRES_PASSWORD="[replace_me]"
-```
-
-`AIRFLOW_API_AUTH_JWT_SECRET` should be a long random value because it signs the
-JWTs exchanged between Airflow components during task execution.
-
-### 6. 🧩 Multi-counter orchestration
-
-- The technical Airflow configuration is mounted read-only into
-  `/opt/airflow/config/` from `./docker/dev/airflow/config/`. `airflow-init`
-  imports variables and connections from this directory.
-
-- The business DAG configuration is mounted read-only into Airflow runtime
-  containers as `/opt/airflow/config/bike_dag_config.json`. It configures:
-  - The list of managed counters extracted from the original dataset.
-  - The anchor date used to simulate production startup.
-  - The daily increment, which defines which portion of the original dataset is
-    considered to shift the data by one production day.
+DAG roles:
 
 - `bike_traffic_init`: one-shot historical bootstrap per counter.
-  - It short-circuits if the Airflow Variable `bike_init_done__<counter>` equals `"1"`.
-  - On success, it sets that variable to `"1"`.
-
 - `bike_traffic_daily`: rolling increment assuming init has been done.
-  - Triggered by the parent only. Its `schedule` is `None`.
+- `bike_traffic_orchestrator`: triggers `init` then `daily` for each configured
+  counter.
 
-- `bike_traffic_orchestrator`:
-  - Every day, for each configured counter, trigger `init` then `daily`.
-  - The `init` run is cheap if already done because it is short-circuited.
-
-### 7. 🧩 Monitoring and alerting
+### 5. 🧩 Monitoring and alerting
 
 The project has defined:
 
