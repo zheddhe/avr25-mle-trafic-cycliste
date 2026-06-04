@@ -13,9 +13,9 @@ from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance, Variable
 from airflow.models.param import Param, ParamsDict
-from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.providers.docker.operators.docker import DockerOperator
-from airflow.providers.http.operators.http import SimpleHttpOperator
+from airflow.providers.http.operators.http import HttpOperator
+from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.utils.task_group import TaskGroup
 from common.utils import _load_config
 from docker.types import Mount
@@ -518,7 +518,7 @@ with DAG(
     init_gate = ShortCircuitOperator(task_id="init_gate", python_callable=_init_gate_callable)
     etl = build_etl_group(init_dag, mode="init")
     mark_done = PythonOperator(task_id="mark_init_done", python_callable=_mark_init_done_callable)
-    api_refresh = SimpleHttpOperator(
+    api_refresh = HttpOperator(
         task_id="api_refresh",
         http_conn_id="api_dev",
         endpoint="/admin/refresh",
@@ -539,7 +539,7 @@ with DAG(
     params=DAG_PARAMS,
 ) as daily_dag:
     etl = build_etl_group(daily_dag, mode="daily")
-    api_refresh = SimpleHttpOperator(
+    api_refresh = HttpOperator(
         task_id="api_refresh",
         http_conn_id="api_dev",
         endpoint="/admin/refresh",
