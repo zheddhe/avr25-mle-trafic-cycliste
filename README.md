@@ -252,11 +252,8 @@ make mlops-models
 make mlops-pipeline
 ```
 
-The API is exposed at:
-
-```text
-http://localhost:[API_HOST_PORT]/docs
-```
+By default, the API is exposed at `http://localhost:10000/docs`.
+Override `API_HOST_PORT` in `.env` to use another host port.
 
 ### 3. 📈 Experience tracker
 
