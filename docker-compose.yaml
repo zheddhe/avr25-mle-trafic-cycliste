@@ -28,6 +28,42 @@ networks:
     driver: bridge
 
 # ========================
+# AIRFLOW COMMON
+# ========================
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2-python3.12}
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?required}@airflow-postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://${AIRFLOW_POSTGRES_USER:-airflow}:${AIRFLOW_POSTGRES_PASSWORD:?required}@airflow-postgres/${AIRFLOW_POSTGRES_DB:-airflow}
+    AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:?required}"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__SIMPLE_AUTH_MANAGER__USERS: "admin:admin"
+    AIRFLOW__SMTP__SMTP_HOST: "mailhog"
+    AIRFLOW__SMTP__SMTP_PORT: 1025
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
+    AIRFLOW__SMTP__SMTP_STARTTLS: "False"
+    AIRFLOW__SMTP__SMTP_SSL: "False"
+  volumes:
+    - ./logs:/opt/airflow/logs
+    - ./data:/opt/airflow/data
+    - ./docker/dev/airflow/dags:/opt/airflow/dags
+    - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    airflow-redis:
+      condition: service_healthy
+    airflow-postgres:
+      condition: service_healthy
+  networks:
+    - airflow_net
+    - mlops_net
+  profiles: ["airflow3", "all", "airflow", "ptf"]
+
+# ========================
 # BUSINESS SERVICES
 # ========================
 services:
@@ -159,11 +195,11 @@ services:
   mlflow-postgres:
     image: postgres:13
     environment:
-      POSTGRES_USER: mlflow
-      POSTGRES_PASSWORD: mlflow
-      POSTGRES_DB: mlflow
+      POSTGRES_USER: ${MLFLOW_POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${MLFLOW_POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${MLFLOW_POSTGRES_DB:-mlflow}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${MLFLOW_POSTGRES_USER:-mlflow}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -177,8 +213,8 @@ services:
   mlflow-minio:
     image: minio/minio
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
     command: server /data --console-address ":9001"
     volumes:
       - mlflow-minio-data:/data
@@ -203,7 +239,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set minio http://mlflow-minio:9000 minio minio123 &&
+      mc alias set minio http://mlflow-minio:9000 ${MINIO_ROOT_USER:-minio} ${MINIO_ROOT_PASSWORD:?required} &&
       mc mb -p minio/mlflow || true &&
       mc anonymous set download minio/mlflow || true &&
       touch /tmp/ok && sleep 1
@@ -225,10 +261,10 @@ services:
       mlflow-mc-init:
         condition: service_completed_successfully
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflow
+      MLFLOW_BACKEND_STORE_URI: postgresql://${MLFLOW_POSTGRES_USER:-mlflow}:${MLFLOW_POSTGRES_PASSWORD:?required}@mlflow-postgres:5432/${MLFLOW_POSTGRES_DB:-mlflow}
       MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://mlflow/
-      AWS_ACCESS_KEY_ID: minio
-      AWS_SECRET_ACCESS_KEY: minio123
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?required}
       AWS_DEFAULT_REGION: us-east-1
       MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
     ports:
@@ -254,21 +290,21 @@ services:
 # AIRFLOW SERVICES
 # ========================
   airflow-postgres:
-    image: postgres:13
+    image: postgres:16
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-airflow}
     volumes:
       - airflow-postgres-db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_POSTGRES_USER:-airflow}"]
       interval: 5s
       retries: 5
     restart: unless-stopped
     networks:
       - airflow_net
-    profiles: ["all", "airflow", "ptf"]
+    profiles: ["airflow3", "all", "airflow", "ptf"]
 
   airflow-redis:
     image: redis:latest
@@ -280,103 +316,39 @@ services:
     restart: unless-stopped
     networks:
       - airflow_net
-    profiles: ["all", "airflow", "ptf"]
+    profiles: ["airflow3", "all", "airflow", "ptf"]
 
   airflow-init:
-    image: apache/airflow:2.8.1
+    <<: *airflow-common
     environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME}
-      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD}
-    user: "${AIRFLOW_UID:-1000}:0"
-    group_add:
-      - ${AIRFLOW_GID:-1001}
-    depends_on:
-      airflow-redis:
-        condition: service_healthy
-      airflow-postgres:
-        condition: service_healthy
-    networks:
-      - airflow_net
-    command: >
-      bash -c "airflow db migrate &&
-        (airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} --firstname Admin --lastname User --role Admin --email admin@example.com || true) &&
-        airflow variables import /opt/airflow/config/variables.json &&
-        airflow connections delete api_dev || true &&
-        airflow connections import /opt/airflow/config/connections.json &&
-        airflow pools set sequential_counters 2 'Orchestrator: trigger child DAGs sequentially'"
+      <<: *airflow-common-env
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    command: ["bash", "/opt/airflow/scripts/airflow-init.sh"]
     restart: "no"
     volumes:
       - ./docker/dev/airflow/config/:/opt/airflow/config/
-    profiles: ["all", "airflow", "ptf"]
+      - ./docker/dev/airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
+    profiles: ["airflow3", "all", "airflow", "ptf"]
 
-  airflow-webserver:
-    image: apache/airflow:2.8.1
-    environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-      AIRFLOW__CORE__LOAD_EXAMPLES: "true"
-      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
-      AIRFLOW__SMTP__SMTP_HOST: "mailhog"
-      AIRFLOW__SMTP__SMTP_PORT: 1025
-      AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
-      AIRFLOW__SMTP__SMTP_STARTTLS: "False"
-      AIRFLOW__SMTP__SMTP_SSL: "False"
-    user: "${AIRFLOW_UID:-1000}:0"
-    group_add:
-      - ${AIRFLOW_GID:-1001}
+  airflow-api-server:
+    <<: *airflow-common
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-    command: ["webserver"]
+    command: ["api-server"]
     ports:
       - "${AIRFLOW_HOST_PORT:-12080}:8080"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "curl --fail http://localhost:8080/api/v2/version || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    volumes:
-      # Bind host for external exchanges
-      - ./logs:/opt/airflow/logs
-      - ./data:/opt/airflow/data
-      - ./docker/dev/airflow/dags:/opt/airflow/dags
-      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-    networks:
-      - airflow_net
-      - mlops_net
-    profiles: ["all", "airflow", "ptf"]
+    profiles: ["airflow3", "all", "airflow", "ptf"]
 
   airflow-scheduler:
-    image: apache/airflow:2.8.1
-    environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-      AIRFLOW__SMTP__SMTP_HOST: "mailhog"
-      AIRFLOW__SMTP__SMTP_PORT: 1025
-      AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
-      AIRFLOW__SMTP__SMTP_STARTTLS: "False"
-      AIRFLOW__SMTP__SMTP_SSL: "False"
-      DOCKER_HOST: unix:///var/run/docker.sock
-      AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC: 5
-      AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: 5
-      AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 5
-      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 10
-    user: "${AIRFLOW_UID:-1000}:0"
-    group_add:
-      - ${AIRFLOW_GID:-1001}
+    <<: *airflow-common
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -389,62 +361,70 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    volumes:
-      # Bind host for external exchanges
-      - ./logs:/opt/airflow/logs
-      - ./data:/opt/airflow/data
-      - ./docker/dev/airflow/dags:/opt/airflow/dags
-      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-    networks:
-      - airflow_net
-      - mlops_net
-    profiles: ["all", "airflow", "ptf"]
+    profiles: ["airflow3", "all", "airflow", "ptf"]
 
-  airflow-worker:
-    image: apache/airflow:2.8.1
-    environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-      DOCKER_HOST: unix:///var/run/docker.sock
-      AIRFLOW__CORE__WORKER_HEARTBEAT_INTERVAL: 10
-      AIRFLOW_UID: ${AIRFLOW_UID:-1000}
-      AIRFLOW_GID: ${AIRFLOW_GID:-1001}
-    user: "0:0"  # we grant the entry point script root mode to initiate the correct groups
-    entrypoint: ["/opt/airflow/scripts/airflow-entrypoint.sh"]
-    group_add:
-      - ${AIRFLOW_GID:-1001}
+  airflow-dag-processor:
+    <<: *airflow-common
     depends_on:
       airflow-init:
         condition: service_completed_successfully
+    command: ["dag-processor"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    profiles: ["airflow3", "all", "airflow", "ptf"]
+
+  airflow-worker:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      DOCKER_HOST: unix:///var/run/docker.sock
+      AIRFLOW_UID: ${AIRFLOW_UID:-50000}
+      AIRFLOW_GID: ${AIRFLOW_GID:-0}
+    user: "0:0"
+    entrypoint: ["/opt/airflow/scripts/airflow-entrypoint.sh"]
+    group_add:
+      - ${AIRFLOW_GID:-0}
     command: ["celery", "worker"]
     restart: unless-stopped
     volumes:
-      # Bind host for external exchanges
       - ./logs:/opt/airflow/logs
       - ./data:/opt/airflow/data
       - ./docker/dev/airflow/dags:/opt/airflow/dags
       - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      # socket bind for container exchanges with docker desktop
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker/dev/airflow/scripts/airflow-entrypoint.sh:/opt/airflow/scripts/airflow-entrypoint.sh:ro
     networks:
       - airflow_net
-    profiles: ["all", "airflow", "ptf"]
+      - mlops_net
+    profiles: ["airflow3", "all", "airflow", "ptf"]
+
+  airflow-triggerer:
+    <<: *airflow-common
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["triggerer"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    profiles: ["airflow3", "all", "airflow", "ptf"]
 
   airflow-flower:
-    image: apache/airflow:2.8.1
-    environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
-      AIRFLOW__CORE__FERNET_KEY: "AL5jw4sTifD5GJuUXSgse1c5KXCwRFV7GFyzn7QevK8="
-    user: "${AIRFLOW_UID:-1000}:0"
-    group_add:
-      - ${AIRFLOW_GID:-1001}
+    <<: *airflow-common
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -456,14 +436,14 @@ services:
       test:
         - CMD-SHELL
         - |
-          celery --app airflow.executors.celery_executor.app status 2>&1 | grep -q "OK" || exit 1
+          celery --app airflow.providers.celery.executors.celery_executor.app status 2>&1 | grep -q "OK" || exit 1
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
     networks:
       - airflow_net
-    profiles: ["all", "airflow", "ptf"]
+    profiles: ["airflow3", "all", "airflow", "ptf", "flower"]
 
 # ========================
 # MONITORING SERVICES
