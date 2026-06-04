@@ -386,7 +386,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             api_version="auto",
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
-            auto_remove=True,
+            auto_remove="success",
             user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
             dag=dag,
         )
@@ -414,7 +414,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             api_version="auto",
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
-            auto_remove=True,
+            auto_remove="success",
             user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
             dag=dag,
         )
@@ -454,7 +454,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
             api_version="auto",
             network_mode=DOCKER_NET,
             mount_tmp_dir=False,
-            auto_remove=True,
+            auto_remove="success",
             user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
             dag=dag,
         )
