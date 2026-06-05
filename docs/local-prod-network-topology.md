@@ -230,43 +230,26 @@ local production-like runtime:
 
 ## Target topology sketch
 
-The diagram uses the older `graph LR` syntax and quoted labels intentionally so
-VSCode Mermaid preview extensions can detect the diagram type consistently.
-
 ```mermaid
-graph LR
-    airflow_services["Airflow services"]
-    airflow_postgres["airflow-postgres"]
-    airflow_redis["airflow-redis"]
-    job_runner["Worker or job runner"]
-    api_service["api-dev"]
-    ml_jobs["ML jobs"]
-    mlflow_server["mlflow-server"]
-    mlflow_postgres["mlflow-postgres"]
-    mlflow_minio["mlflow-minio"]
-    pushgateway["monitoring-pushgateway"]
-    prometheus["monitoring-prometheus"]
-    cadvisor["monitoring-cadvisor"]
-    alertmanager["monitoring-alertmanager"]
-    grafana["monitoring-grafana"]
-    mailhog["monitoring-mailhog"]
+flowchart LR
+    airflow[Airflow services] --> airflow_db[(airflow-postgres)]
+    airflow --> airflow_redis[(airflow-redis)]
+    airflow --> runner[Worker or job runner]
+    runner --> api[api-dev]
+    runner --> jobs[ML jobs]
 
-    airflow_services --> airflow_postgres
-    airflow_services --> airflow_redis
-    airflow_services --> job_runner
-    job_runner --> api_service
-    job_runner --> ml_jobs
-    ml_jobs --> mlflow_server
-    mlflow_server --> mlflow_postgres
-    mlflow_server --> mlflow_minio
-    ml_jobs --> pushgateway
-    prometheus --> api_service
+    jobs --> mlflow[mlflow-server]
+    mlflow --> mlflow_db[(mlflow-postgres)]
+    mlflow --> minio[(mlflow-minio)]
+
+    jobs --> pushgateway[monitoring-pushgateway]
+    prometheus[monitoring-prometheus] --> api
     prometheus --> pushgateway
-    prometheus --> cadvisor
-    prometheus --> alertmanager
-    grafana --> prometheus
-    alertmanager --> mailhog
-    airflow_services --> mailhog
+    prometheus --> cadvisor[monitoring-cadvisor]
+    prometheus --> alertmanager[monitoring-alertmanager]
+    grafana[monitoring-grafana] --> prometheus
+    alertmanager --> mailhog[monitoring-mailhog]
+    airflow --> mailhog
 ```
 
 This sketch shows functional dependencies only. It is not an implementation
