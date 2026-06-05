@@ -109,7 +109,7 @@ it is part of the selected image.
 | `airflow-api-server` | curl check on `/api/v2/monitor/health`. |
 | `airflow-scheduler` | `airflow jobs check --job-type SchedulerJob`. |
 | `airflow-dag-processor` | `airflow jobs check --job-type DagProcessorJob`. |
-| `airflow-worker` | `celery --app ping`. |
+| `airflow-worker` | Celery ping executed as the `airflow` user because the worker container entrypoint starts as root only to adjust Docker socket access. |
 | `airflow-triggerer` | `airflow jobs check --job-type TriggererJob`. |
 | `airflow-flower` | curl check on `/`. |
 | `monitoring-prometheus` | wget check on `/-/ready`. |
