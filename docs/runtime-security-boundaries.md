@@ -49,6 +49,8 @@ Current boundaries:
   Pushgateway, MailHog, cAdvisor, and cross-stack service discovery.
 - Host ports expose the API, Airflow UI, Flower, MLflow, MinIO, Prometheus,
   Pushgateway, Alertmanager, cAdvisor, Grafana, and MailHog for local operations.
+- The API serves materialized time-series prediction data. It is not currently an
+  online inference service exposing a synchronous model-backed `/predict` path.
 - Shared host mounts expose `data`, `logs`, `models`, Airflow DAGs, Airflow
   config, Prometheus config, Grafana config, Alertmanager config, and selected
   Docker runtime paths.
@@ -97,15 +99,43 @@ raw or interim data, processed features, final prediction outputs, and model
 artifacts. That is a target handoff strategy for Phase 7, not a current Compose
 runtime dependency.
 
+## Time-series prediction serving strategy
+
+The `ml-ingest-dev`, `ml-features-dev`, and `ml-models-dev` split is specific to
+this time-series project. It should not be interpreted as a generic online model
+serving topology.
+
+Current behavior:
+
+- `ml-ingest-dev` prepares raw or interim time-series data.
+- `ml-features-dev` builds processed feature datasets.
+- `ml-models-dev` trains or evaluates a model and materializes forecast datasets
+  on a daily workflow.
+- `api-dev` serves these already-materialized predicted data over an HTTP API.
+- MLflow primarily tracks experiments, model evidence, metrics, parameters, and
+  artifacts. It is not the runtime that serves synchronous predictions to API
+  users in the current topology.
+
+The architecture is therefore data-driven: the production surface for end users
+is the promoted prediction dataset, not a live model object invoked per request.
+This matters for security and network design because the critical handoff is the
+controlled publication of forecast data that the API can read.
+
+Future Phase 7 designs may introduce pools of `ml-models` jobs based on different
+model families. A DAG could compare their MLflow metrics and select which
+predicted dataset is promoted to the API serving boundary. That promotion step
+should be modeled as a data release or artifact handoff decision, not as a
+mandatory online inference service.
+
 ## Runtime identities
 
 | Runtime identity | Current user model | Required permissions | Target strategy or follow-up |
 | ---------------- | ------------------ | -------------------- | ---------------------------- |
 | Host operator | Local user running `make` and `docker compose` | Docker group access, repository read/write, `.env` ownership, DVC setup when needed | Keep as local developer identity; document that Docker group membership is high privilege. |
-| `api-dev` | Custom image, no explicit Compose `user` | Read final prediction data, write logs, serve HTTP on `10000` | Add non-root user in the API image or Compose override in a follow-up. |
+| `api-dev` | Custom image, no explicit Compose `user` | Read promoted prediction data, write logs, serve HTTP on `10000` | Add non-root user in the API image or Compose override in a follow-up. |
 | `ml-ingest-dev` | Custom image, no explicit Compose `user` | Read raw data, write interim data and logs, optionally push metrics | Add non-root user and writable mount ownership strategy in a follow-up. |
 | `ml-features-dev` | Custom image, no explicit Compose `user` | Read interim data, write processed data and logs, optionally push metrics | Add non-root user and explicit data handoff ownership in a follow-up. |
-| `ml-models-dev` | Custom image, no explicit Compose `user` | Read processed data, write final data, models, logs, and MLflow runs or artifacts through MLflow | Add non-root user; prefer MLflow tracking and artifact APIs before reducing host mounts. |
+| `ml-models-dev` | Custom image, no explicit Compose `user` | Read processed data, train/evaluate models, write forecast data, models, logs, and MLflow runs or artifacts through MLflow | Add non-root user; prefer explicit forecast data promotion and MLflow tracking before reducing host mounts. |
 | `mlflow-postgres` | Upstream PostgreSQL image | Own private PostgreSQL volume | Keep private on `mlflow_net`; later use least-privilege managed database credentials. |
 | `mlflow-minio` | Upstream MinIO image | Own MinIO data volume and expose S3/console locally | Keep as MLflow artifact backend now; evaluate scoped users or policies if it becomes a broader object store. |
 | `mlflow-mc-init` | Upstream MinIO client helper | Bootstrap bucket using MinIO root credentials | Keep local bootstrap-only; move to scoped provisioning identity later. |
@@ -130,12 +160,12 @@ This section proposes boundaries only. It does not change Compose networks.
 
 | Boundary | Required services or names | Required ports | Ingress | Egress | Credentials or auth | Mode |
 | -------- | -------------------------- | -------------- | ------- | ------ | ------------------- | ---- |
-| Serving/API boundary | `api-dev` | `10000` | Host clients, Airflow refresh, Prometheus scrape | Shared final data, logs, metrics | API demo credentials in local Makefile defaults and Airflow `api_dev` connection | Production-like concept, local demo defaults |
+| Serving/API boundary | `api-dev` | `10000` | Host clients reading predictions, Airflow refresh or data promotion, Prometheus scrape | Promoted prediction data, logs, metrics | API demo credentials in local Makefile defaults and Airflow `api_dev` connection | Data-serving boundary, not online ML inference |
 | Orchestration boundary | `airflow-api-server`, `airflow-scheduler`, `airflow-dag-processor`, `airflow-triggerer`, `airflow-worker`, `airflow-init`, `airflow-postgres`, `airflow-redis`, `airflow-flower` | `8080`, `5432`, `6379`, `5555` | Host UI/API for Airflow and Flower | API refresh, local Docker socket, ML jobs, MailHog, Pushgateway as configured | Airflow fernet key, JWT secret, PostgreSQL password, simple auth defaults | Mixed: production-like control plane with local-dev shortcuts |
-| Tracking/artifact boundary | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`, ML workloads as MLflow clients | `5000`, `5432`, `9000`, `9001` | Host MLflow/MinIO UI/API, MLflow client calls from ML workloads | PostgreSQL backend, MinIO artifact backend | MLflow placeholders, PostgreSQL password, MinIO root credentials, AWS variables | Production-like concept, local placeholders and defaults |
+| Tracking/artifact boundary | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`, ML workloads as MLflow clients | `5000`, `5432`, `9000`, `9001` | Host MLflow/MinIO UI/API, MLflow client calls from ML workloads | PostgreSQL backend, MinIO artifact backend | MLflow placeholders, PostgreSQL password, MinIO root credentials, AWS variables | Experiment evidence and artifact tracking, not API serving |
 | Monitoring/scrape boundary | `monitoring-prometheus`, `monitoring-grafana`, `monitoring-cadvisor`, `monitoring-pushgateway`, `api-dev` metrics endpoint | `9090`, `3000`, `8080`, `9091`, `10000` | Host dashboards/UI, Prometheus scrapes | Scrape targets and datasource queries | Grafana admin credentials; no scrape auth currently | Local observability now, production-like target later |
 | Alerting/email-dev boundary | `monitoring-alertmanager`, `monitoring-mailhog`, Airflow SMTP client | `9093`, `1025`, `8025` | Host Alertmanager/MailHog UI | SMTP to MailHog | No MailHog credentials by design; real SMTP secrets would belong to Airflow or Alertmanager in production | Local-dev only |
-| Data/artifact handoff boundary | Current host `data`, `logs`, `models`; target object-store bronze/silver/gold datasets and MLflow artifacts | Filesystem today; S3-style API if promoted later | ML jobs, API, Airflow, host operator | Reads/writes shared bind mounts today; object storage in target design | Host filesystem permissions today; object-store credentials only if target storage is implemented | Local shared filesystem now; production-like contract later |
+| Data/artifact handoff boundary | Current host `data`, `logs`, `models`; promoted forecast datasets; target object-store bronze/silver/gold datasets and MLflow artifacts | Filesystem today; S3-style API if promoted later | ML jobs, API, Airflow, host operator | Reads/writes shared bind mounts today; object storage in target design | Host filesystem permissions today; object-store credentials only if target storage is implemented | Local shared filesystem now; production-like data release contract later |
 | Job execution boundary | `airflow-worker`, Docker daemon, `ml-ingest-dev`, `ml-features-dev`, `ml-models-dev` | Docker socket, service networks selected by DAG variables | Airflow worker | Docker daemon creates containers | Docker socket root-equivalent access, container env variables | Local-dev only; must be replaced before local-prod target |
 
 The target Phase 7 network design should avoid pairwise network explosion. Broad
@@ -153,11 +183,11 @@ That is distinct from the current local bind-mount based `data` handoff.
 
 | Mount or volume | Current users | Ownership expectation | Production-like concern |
 | --------------- | ------------- | --------------------- | ----------------------- |
-| `./data:/app/data` | ML jobs and `api-dev` | Host developer owns the directory; containers need read/write for ML jobs and read for API final data | Replace implicit filesystem coupling with explicit data or artifact contracts. |
+| `./data:/app/data` | ML jobs and `api-dev` | Host developer owns the directory; containers need read/write for ML jobs and read for API final data | Replace implicit filesystem coupling with an explicit prediction data promotion contract. |
 | `./data:/opt/airflow/data` | Airflow services | Airflow can inspect data for DAG coordination | Avoid DAG logic depending on mutable shared files where possible. |
 | `./logs:/app/logs` | ML jobs and `api-dev` | Containers need write access and host needs read access | Move runtime logs to logging infrastructure later. |
 | `./logs:/opt/airflow/logs` | Airflow services | Airflow components need shared log write access | Use remote log storage in production-like runtime. |
-| `./models:/app/models` | `ml-models-dev` | Training job writes model artifacts | Prefer MLflow artifact APIs or registry as primary model handoff. |
+| `./models:/app/models` | `ml-models-dev` | Training job writes model artifacts | Prefer MLflow artifact APIs or registry as the model evidence and comparison surface. |
 | Airflow DAG mount | Airflow services | Repository DAG files are live-mounted read/write from host perspective | Local-dev convenience; deploy immutable DAG artifacts later. |
 | Airflow config mounts | Airflow services and `airflow-init` | Versioned config is mounted into Airflow; init imports variables and connections | Keep real secrets out of repository-managed config. |
 | Prometheus config mount | `monitoring-prometheus` | Read-only repository config | Package validated config artifacts later. |
@@ -278,7 +308,7 @@ This document directly feeds Phase 7 design and implementation stories:
 | --------- | ------------------------ |
 | Issue #55 local production-like network topology | Functional boundaries, service-name dependency audit, ingress and egress requirements. |
 | Issue #56 Airflow job runner worker pool | Docker socket risk, `airflow-worker` exception, job execution boundary. |
-| Issue #57 local production-like Compose runtime | Non-root target strategy, credential classes, volume ownership expectations, local-dev exceptions. |
+| Issue #57 local production-like Compose runtime | Data-driven prediction serving model, non-root target strategy, credential classes, volume ownership expectations, local-dev exceptions. |
 | Issue #49 repository structure | Runtime asset ownership, dev versus local-prod documentation expectations, config and DAG placement. |
 
 ## Validation
