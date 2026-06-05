@@ -467,7 +467,7 @@ services:
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-grafana:
-    image: grafana/grafana:11.2.0
+    image: ${GRAFANA_IMAGE:?required}
     restart: unless-stopped
     # user: "472"
     ports:
