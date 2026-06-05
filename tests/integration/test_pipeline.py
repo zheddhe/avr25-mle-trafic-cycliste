@@ -161,6 +161,7 @@ def isolate_mlflow(tmp_path, monkeypatch):
     uri = mlruns.resolve().as_uri()
     monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
     monkeypatch.delenv("MLFLOW_REGISTRY_URI", raising=False)
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
     yield
 
 
