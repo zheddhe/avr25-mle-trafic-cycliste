@@ -55,6 +55,10 @@ avr25-mle-trafic-cycliste/
 └── tests/              <- Unit and integration tests
 ```
 
+Detailed path ownership, generated artifact expectations, DVC responsibilities,
+and the `docker/dev` versus future `docker/prod` split are documented in
+[`docs/repository-structure.md`](docs/repository-structure.md).
+
 ## ⚙️ Installation
 
 The installation flow is split in two parts:
@@ -248,6 +252,8 @@ Runtime host ports and local URLs are documented in
 [`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime
 service-to-service communication is documented in
 [`docs/runtime-communication-matrix.md`](docs/runtime-communication-matrix.md).
+Runtime security boundaries and identities are documented in
+[`docs/runtime-security-boundaries.md`](docs/runtime-security-boundaries.md).
 Runtime image, healthcheck, and dependency policies are documented in
 [`docs/dependency-strategy.md`](docs/dependency-strategy.md).
 
