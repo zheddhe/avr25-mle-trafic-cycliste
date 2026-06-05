@@ -508,7 +508,7 @@ services:
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: ${CADVISOR_IMAGE:?required}
     restart: unless-stopped
     privileged: true
     ports:
@@ -518,27 +518,45 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks:
       - mlops_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-pushgateway:
-    image: prom/pushgateway:v1.9.0
+    image: ${PUSHGATEWAY_IMAGE:?required}
     ports:
       - "${PUSHGATEWAY_HOST_PORT:-14091}:9091"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     networks:
       - mlops_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: ${ALERTMANAGER_IMAGE:?required}
     volumes:
       - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - monitoring-alertmanager-data:/alertmanager
     ports:
       - "${ALERTMANAGER_HOST_PORT:-14093}:9093"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     networks:
       - mlops_net
     profiles: ["all", "monitoring", "ptf"]
