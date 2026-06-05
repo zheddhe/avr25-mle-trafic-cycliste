@@ -8,10 +8,14 @@ volumes:
     name: mlflow-minio-data
   airflow-postgres-db:
     name: airflow-postgres-db
+  airflow-redis-data:
+    name: airflow-redis-data
   monitoring-prometheus-data:
     name: monitoring-prometheus-data
   monitoring-grafana-data:
     name: monitoring-grafana-data
+  monitoring-alertmanager-data:
+    name: monitoring-alertmanager-data
 
 # ========================
 # NETWORK
@@ -318,6 +322,8 @@ services:
       interval: 5s
       timeout: 30s
       retries: 50
+    volumes:
+      - airflow-redis-data:/data
     restart: unless-stopped
     networks:
       - airflow_net
@@ -462,6 +468,12 @@ services:
     volumes:
       - ./docker/dev/prometheus:/etc/prometheus:ro
       - monitoring-prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     networks:
       - mlops_net
     profiles: ["monitoring", "all", "ptf"]
@@ -513,7 +525,8 @@ services:
   monitoring-alertmanager:
     image: prom/alertmanager:v0.27.0
     volumes:
-      - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - monitoring-alertmanager-data:/alertmanager
     ports:
       - "${ALERTMANAGER_HOST_PORT:-14093}:9093"
     restart: unless-stopped
