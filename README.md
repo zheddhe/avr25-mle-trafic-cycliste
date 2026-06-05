@@ -245,8 +245,10 @@ where containers have not been created yet. `make clean_full` is intentionally
 destructive: it removes Docker images, volumes, and networks.
 
 Runtime host ports and local URLs are documented in
-[`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime image,
-healthcheck, and dependency policies are documented in
+[`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime
+service-to-service communication is documented in
+[`docs/runtime-communication-matrix.md`](docs/runtime-communication-matrix.md).
+Runtime image, healthcheck, and dependency policies are documented in
 [`docs/dependency-strategy.md`](docs/dependency-strategy.md).
 
 For one-off ML pipeline containers, use the dedicated targets:
