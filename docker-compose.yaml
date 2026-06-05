@@ -494,7 +494,6 @@ services:
   monitoring-grafana:
     image: ${GRAFANA_IMAGE:?required}
     restart: unless-stopped
-    # user: "472"
     ports:
       - "${GRAFANA_HOST_PORT:-14300}:3000"
     environment:
