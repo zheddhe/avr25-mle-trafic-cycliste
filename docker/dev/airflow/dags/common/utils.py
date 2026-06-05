@@ -81,7 +81,7 @@ def _missing(msg: str) -> str:
     str
         Never returns; always raises.
     """
-    logger.error("REQUIRED VARIABLE MISSING: %s", msg)
+    logger.error(f"REQUIRED VARIABLE MISSING: {msg}")
     raise ValueError(msg)
 
 
@@ -113,6 +113,7 @@ def _required_var(name: str) -> str:
         if not value:
             _missing(f"Airflow Variable '{name}' is defined but empty. "
                      f"Run 'make ops' to import variables from variables.json.")
+        logger.debug(f"[utils] Variable '{name}' resolved")
         return value
     except AirflowNotFoundException:
         _missing(f"Airflow Variable '{name}' is not defined. "
@@ -138,27 +139,36 @@ def _load_config() -> tuple[DagCfg, str]:
     ValueError
         If the variable is missing, the file path does not exist, or the JSON is invalid.
     """
+    logger.info("[utils] Loading DAG config")
     cfg_ref = Variable.get("bike_dag_config")
     default_counter_id = _required_var("default_counter_id")
 
     if not cfg_ref:
+        logger.error("[utils] bike_dag_config is empty")
         raise ValueError("bike_dag_config not defined")
 
     # Case 1: inline JSON
     if cfg_ref.strip().startswith("{"):
+        logger.info("[utils] Config source: inline JSON")
         try:
             return DagCfg.model_validate_json(cfg_ref), default_counter_id
         except ValidationError as exc:
+            logger.error(f"[utils] Invalid inline JSON: {exc}")
             raise ValueError(f"Invalid inline JSON in bike_dag_config: {exc}") from exc
 
     # Case 2: path to JSON file
     path = Path(cfg_ref)
+    logger.info(f"[utils] Config source: file {path}")
     if not path.exists():
+        logger.error(f"[utils] Config file not found: {cfg_ref}")
         raise ValueError(f"bike_dag_config invalid path: {cfg_ref}")
 
     try:
-        return DagCfg.model_validate_json(path.read_text()), default_counter_id
+        cfg = DagCfg.model_validate_json(path.read_text())
+        logger.info(f"[utils] Config loaded: {len(cfg.counters)} counters, default={default_counter_id}")
+        return cfg, default_counter_id
     except ValidationError as exc:
+        logger.error(f"[utils] Invalid JSON in {cfg_ref}: {exc}")
         raise ValueError(f"Invalid JSON content in {cfg_ref}: {exc}") from exc
 
 
@@ -171,8 +181,11 @@ def _list_counters_payload() -> list[dict[str, str]]:
     List[Dict[str, str]]
         List of {"counter_id": <id>} dicts.
     """
+    logger.info("[utils] Listing counters")
     cfg, default_counter = _load_config()
     counters = list((cfg.counters or {}).keys())
     if not counters:
+        logger.warning(f"[utils] No counters found, falling back to default: {default_counter}")
         counters = [default_counter]
+    logger.info(f"[utils] Counters: {counters}")
     return [{"counter_id": cid} for cid in counters]

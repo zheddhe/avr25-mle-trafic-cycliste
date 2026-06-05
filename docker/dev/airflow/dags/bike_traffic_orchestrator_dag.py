@@ -25,6 +25,8 @@ with DAG(
     max_active_runs=1,
     tags=["ops", "orchestration", "bike"],
 ) as dag:
+    logger.info("[orchestrator] DAG loaded")
+
     # Get list of counters from shared config (utils)
     get_counters = PythonOperator(
         task_id="get_counters",
@@ -32,6 +34,7 @@ with DAG(
     )
 
     # Trigger init DAG for each counter
+    logger.info("[orchestrator] Triggering init DAGs")
     run_init = TriggerDagRunOperator.partial(
         task_id="run_init",
         trigger_dag_id="bike_traffic_init",
@@ -41,6 +44,7 @@ with DAG(
     ).expand(conf=get_counters.output)
 
     # Trigger daily DAG for each counter
+    logger.info("[orchestrator] Triggering daily DAGs")
     run_daily = TriggerDagRunOperator.partial(
         task_id="run_daily",
         trigger_dag_id="bike_traffic_daily",

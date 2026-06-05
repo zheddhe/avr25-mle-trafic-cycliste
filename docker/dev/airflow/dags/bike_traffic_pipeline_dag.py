@@ -136,6 +136,7 @@ def _read_manifests(**ctx) -> dict[str, Any]:
     Dict[str, Any]
         Dictionary with keys "ingest", "features" and "models".
     """
+    logger.info("[pipeline] Reading manifests")
     ti: TaskInstance = ctx["ti"]
     run_id: str = ti.xcom_pull(key="RUN_ID", task_ids="etl.prepare_args")
     sub_dir: str = ti.xcom_pull(key="SUB_DIR", task_ids="etl.prepare_args")
@@ -192,10 +193,12 @@ def _check_docker_access(**_):
     gid_effective = int(AIRFLOW_GID)
     sock_path = "/var/run/docker.sock"
 
-    logger.info(f"[Docker Check] AIRFLOW_UID={AIRFLOW_UID}, AIRFLOW_GID={AIRFLOW_GID}")
-    logger.info(f"[Docker Check] Simulation d'accès avec UID={uid_effective}, GID={gid_effective}")
+    logger.info("[pipeline] Docker access check starting")
+    logger.info(f"[pipeline] AIRFLOW_UID={AIRFLOW_UID}, AIRFLOW_GID={AIRFLOW_GID}")
+    logger.info(f"[pipeline] Simulation d'accès avec UID={uid_effective}, GID={gid_effective}")
 
     if not os.path.exists(sock_path):
+        logger.error(f"[pipeline] Docker socket missing: {sock_path}")
         raise AirflowException(
             f"[Docker Check] Le socket Docker n'existe pas à l'emplacement {sock_path}"
         )
@@ -203,10 +206,7 @@ def _check_docker_access(**_):
     st = os.stat(sock_path)
     perms = oct(st.st_mode)[-3:]
     owner_uid, owner_gid = st.st_uid, st.st_gid
-    logger.info(
-        f"[Docker Check] Socket: {sock_path}, permissions={perms}, "
-        f"propriétaire={owner_uid}:{owner_gid}"
-    )
+    logger.info(f"[pipeline] Socket perms={perms}, owner={owner_uid}:{owner_gid}")
 
     # Vérifie les permissions en fonction des bits d'accès
     can_read = False
@@ -226,6 +226,10 @@ def _check_docker_access(**_):
         can_write = bool(st.st_mode & 0o002)
 
     if not (can_read and can_write):
+        logger.warning(
+            f"[pipeline] User {uid_effective}:{gid_effective} lacks read/write on {sock_path} "
+            f"(perms={perms}, owner={owner_uid}:{owner_gid})",
+        )
         raise AirflowException(
             f"[Docker Check] L'utilisateur simulé {uid_effective}:{gid_effective} "
             f"n'a pas les droits lecture/écriture sur {sock_path}. "
@@ -237,9 +241,9 @@ def _check_docker_access(**_):
     try:
         client = docker_from_env()
         client.ping()
-        logger.info("[Docker Check] Accès Docker confirmé : le socket est accessible.")
+        logger.info("[pipeline] Docker access confirmed")
     except Exception as e:
-        logger.error(f"[Docker Check] Échec de la connexion Docker : {e}")
+        logger.error(f"[pipeline] Docker connection failed: {e}")
         raise AirflowException(f"[Docker Check] Le socket Docker est inaccessible : {e}")
 
 
@@ -321,6 +325,7 @@ def _prepare_args_callable(mode: str):
     """
     Build a callable for prepare_args depending on mode (init or daily).
     """
+    logger.info(f"[pipeline] prepare_args callable created for mode={mode}")
     def _callable(**ctx):
         ti = ctx["ti"]
         exec_date = ctx["data_interval_end"]
@@ -486,6 +491,7 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
 # --------------------------------------------------------------------------- #
 def _extract_counter_id(ctx: Mapping[str, Any]) -> str | None:
     """Extract counter_id from DAG params or dag_run.conf."""
+    logger.debug("[pipeline] Extracting counter_id from ctx")
     params_obj = ctx.get("params")
     if isinstance(params_obj, Mapping):
         val = params_obj.get("counter_id")
@@ -504,13 +510,17 @@ def _init_gate_callable(**ctx) -> bool:
     """Short-circuit init DAG if init already done for this counter."""
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     key = f"bike_init_done__{counter_id}"
-    return Variable.get(key, default="0") != "1"
+    logger.info(f"[pipeline] Init gate: counter={counter_id}, key={key}")
+    already_done = Variable.get(key, default="0") == "1"
+    logger.info(f"[pipeline] Init gate: counter={counter_id}, already_done={already_done}")
+    return not already_done
 
 
 def _mark_init_done_callable(**ctx) -> None:
     """Mark init done for this counter by setting Airflow variable."""
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     key = f"bike_init_done__{counter_id}"
+    logger.info(f"[pipeline] Marking init done: counter={counter_id}, key={key}")
     Variable.set(key, "1")
 
 
