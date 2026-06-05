@@ -1,7 +1,7 @@
 # Dependency strategy
 
 This document records the dependency strategy used for the local Python
-environment, custom Docker images, and Docker Compose services.
+environment, custom Docker images, and Docker Compose runtime services.
 
 ## Goals
 
@@ -9,7 +9,7 @@ The project must remain reproducible without silently changing machine learning
 behavior, API contracts, MLflow artifact compatibility, or containerized runtime
 behavior.
 
-Dependency changes must therefore be split into two categories:
+Dependency changes are split into two categories:
 
 - tooling changes, which can usually be upgraded with local CI validation;
 - runtime changes, which require explicit service-level and model-level
@@ -36,12 +36,12 @@ The local uv environment is primarily used for:
 - host-side experimentation.
 
 It is not the production runtime source of truth. Runtime containers keep their
-own minimal requirements files.
+own minimal requirements files or use upstream images.
 
 ## Custom Docker images
 
-Custom images are the runtime source of truth for the project services built by
-this repository.
+Custom images are the runtime source of truth for services built by this
+repository.
 
 | Service image | Dockerfile | Requirements file | Python baseline |
 | ------------- | ---------- | ----------------- | --------------- |
@@ -54,27 +54,43 @@ The standard baseline for custom images is Python 3.12. A different Python
 version should only be used if a service-specific dependency constraint requires
 it and the reason is documented.
 
-## Docker Compose managed services
+## Compose runtime image policy
+
+Runtime image variables are centralized in `.env.template` and consumed by
+`docker-compose.yaml` with `:?required` guards. They keep readable version tags
+for local developer ergonomics and for tools such as the VS Code Docker
+extension.
+
+Validated content digests are documented here. A future production hardening
+phase may replace readable tags with direct `@sha256:` image references.
+
+| Variable | Runtime image | Validated digest or note |
+| -------- | ------------- | ------------------------ |
+| `AIRFLOW_IMAGE_NAME` | `apache/airflow:3.2.2-python3.12` | Digest not recorded yet |
+| `AIRFLOW_POSTGRES_IMAGE` | `postgres:16` | Digest not recorded yet |
+| `MLFLOW_IMAGE` | `ghcr.io/mlflow/mlflow:v3.13.0-full` | `sha256:45bdcc9439dac5c51c160a863e3c1cadae1757de9d6d1b9403e0a648a6f2333b` |
+| `MLFLOW_POSTGRES_IMAGE` | `postgres:16` | Digest not recorded yet |
+| `MINIO_IMAGE` | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` |
+| `MINIO_MC_IMAGE` | `minio/mc:RELEASE.2025-08-13T08-35-41Z` | `sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727` |
+| `PROMETHEUS_IMAGE` | `prom/prometheus:v3.12.0` | Digest not recorded yet |
+| `GRAFANA_IMAGE` | `grafana/grafana:13.0.1-security-01` | Digest not recorded yet |
+
+## Compose managed service families
 
 Some services are provided by upstream images and are not governed by the local
 uv environment.
 
-For local developer ergonomics, runtime image variables keep readable version
-labels in `.env.template` so tools such as the VS Code Docker extension remain
-easier to inspect. When available, the validated digest is kept as a comment next
-to the image variable. Production hardening may replace readable tags with direct
-`@sha256:` image references.
-
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Airflow | Uses `AIRFLOW_IMAGE_NAME`, currently `apache/airflow:3.2.2-python3.12`. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
-| Airflow PostgreSQL | Uses `AIRFLOW_POSTGRES_IMAGE`, currently `postgres:16`, as the local Airflow metadata database. |
+| Airflow | Uses `AIRFLOW_IMAGE_NAME`. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
+| Airflow PostgreSQL | Uses `AIRFLOW_POSTGRES_IMAGE` as the local Airflow metadata database. |
 | Redis | Uses an upstream Redis image for the Airflow Celery broker. |
-| MLflow server | Uses `MLFLOW_IMAGE`, currently `ghcr.io/mlflow/mlflow:v3.13.0-full`. |
-| MLflow PostgreSQL | Uses `MLFLOW_POSTGRES_IMAGE`, currently `postgres:16`, as the local MLflow metadata database. |
-| MinIO | Uses `MINIO_IMAGE` and `MINIO_MC_IMAGE`, with pinned release tags and digest comments, for local MLflow artifact storage. |
-| Prometheus | Uses `PROMETHEUS_IMAGE`, currently `prom/prometheus:v3.12.0`, for local metrics storage and queries. |
-| Monitoring support | Uses upstream Grafana, cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
+| MLflow server | Uses `MLFLOW_IMAGE` from the upstream GHCR MLflow image. |
+| MLflow PostgreSQL | Uses `MLFLOW_POSTGRES_IMAGE` as the local MLflow metadata database. |
+| MinIO | Uses `MINIO_IMAGE` and `MINIO_MC_IMAGE` for local MLflow artifact storage. |
+| Prometheus | Uses `PROMETHEUS_IMAGE` for local metrics storage and queries. |
+| Grafana | Uses `GRAFANA_IMAGE` for local dashboard visualization. |
+| Monitoring support | Uses upstream cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
 
 ## Phase 6 runtime upgrade status
 
@@ -86,8 +102,8 @@ isolated.
 | --------- | ------------------- | --------------------- |
 | Airflow | `3.2.2` | Upgraded and validated with Python 3.12 image |
 | MLflow | `3.13.0` | Server, model client, PostgreSQL, and MinIO storage services upgraded |
-| Prometheus | `3.12.0` | Compose runtime upgraded; validation pending |
-| Grafana | `13.0.1` | Pending follow-up increment |
+| Prometheus | `3.12.0` | Compose runtime upgraded and locally started |
+| Grafana | `13.0.1-security-01` | Compose runtime upgraded; validation pending |
 
 Do not document pending targets as active runtime versions in the README until
 the related Compose and validation commits have landed.
@@ -107,6 +123,7 @@ bulk maintenance action:
 - `prometheus-client`
 - `prometheus-fastapi-instrumentator`
 - Airflow image versions
+- monitoring runtime images
 
 Runtime-sensitive upgrades must be isolated and validated with a dedicated PR or
 explicit validation section.
@@ -126,6 +143,18 @@ For this project, MLflow compatibility checks should include:
 - artifact retrieval from the configured backend;
 - local Docker Compose tracking through MinIO and PostgreSQL;
 - optional DagsHub remote tracking when credentials are available.
+
+## Monitoring compatibility
+
+Monitoring runtime changes should validate at least:
+
+- Prometheus configuration parsing;
+- Prometheus targets under `/targets`;
+- API metrics scraping;
+- Pushgateway scraping;
+- cAdvisor scraping;
+- Grafana datasource provisioning;
+- Grafana dashboard loading.
 
 ## Regression checklist for runtime dependency changes
 
@@ -150,6 +179,7 @@ Then verify:
 - API `/docs` is reachable;
 - API prediction endpoints still return the expected schema;
 - Prometheus targets are healthy and ML/API metrics are visible;
+- Grafana starts and loads the provisioned Prometheus datasource;
 - Prometheus metrics are not pushed during local tests when
   `DISABLE_METRICS_PUSH=1`;
 - Docker Compose services start without dependency resolution errors.
