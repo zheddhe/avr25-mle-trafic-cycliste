@@ -505,6 +505,7 @@ services:
     image: prom/pushgateway:v1.9.0
     ports:
       - "${PUSHGATEWAY_HOST_PORT:-14091}:9091"
+    restart: unless-stopped
     networks:
       - mlops_net
     profiles: ["monitoring", "all", "ptf"]
@@ -515,6 +516,7 @@ services:
       - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
     ports:
       - "${ALERTMANAGER_HOST_PORT:-14093}:9093"
+    restart: unless-stopped
     networks:
       - mlops_net
     profiles: ["all", "monitoring", "ptf"]
