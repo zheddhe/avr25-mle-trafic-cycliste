@@ -44,7 +44,7 @@ Current boundaries:
 - `airflow_net` groups the Airflow control plane, metadata database, Redis broker,
   and Airflow-managed tasks.
 - `mlflow_net` groups MLflow tracking metadata, MinIO artifacts, MLflow server,
-  and ML workloads that log runs or artifacts.
+  and ML workloads that log runs or artifacts through MLflow.
 - `mlops_net` is a broad local integration network for API, monitoring,
   Pushgateway, MailHog, cAdvisor, and cross-stack service discovery.
 - Host ports expose the API, Airflow UI, Flower, MLflow, MinIO, Prometheus,
@@ -75,10 +75,9 @@ are the primary justification for service discovery and network membership.
 | Airflow DAG tasks | `ml-ingest-dev` | N/A | Docker API | Airflow variables and DockerOperator workflow | Local orchestration boundary |
 | Airflow DAG tasks | `ml-features-dev` | N/A | Docker API | Airflow variables and DockerOperator workflow | Local orchestration boundary |
 | Airflow DAG tasks | `ml-models-dev` | N/A | Docker API | Airflow variables and DockerOperator workflow | Local orchestration boundary |
-| `ml-models-dev` | `mlflow-server` | `5000` | HTTP | `MLFLOW_TRACKING_URI` and Airflow variables | Tracking boundary |
-| `ml-models-dev` | `mlflow-minio` | `9000` | HTTP/S3 | `MLFLOW_S3_ENDPOINT_URL` and AWS variables | Artifact boundary |
+| `ml-models-dev` | `mlflow-server` | `5000` | HTTP | `MLFLOW_TRACKING_URI` and Airflow variables | Tracking and logical artifact logging boundary |
 | `mlflow-server` | `mlflow-postgres` | `5432` | PostgreSQL | `MLFLOW_BACKEND_STORE_URI` | Tracking metadata boundary |
-| `mlflow-server` | `mlflow-minio` | `9000` | HTTP/S3 | `MLFLOW_S3_ENDPOINT_URL` | Artifact boundary |
+| `mlflow-server` | `mlflow-minio` | `9000` | HTTP/S3 | `MLFLOW_S3_ENDPOINT_URL` | Artifact backend boundary |
 | `mlflow-mc-init` | `mlflow-minio` | `9000` | HTTP/S3 | MinIO client alias setup | Artifact bootstrap boundary |
 | Airflow services | `airflow-postgres` | `5432` | PostgreSQL | Airflow SQLAlchemy and result backend URIs | Orchestration metadata boundary |
 | Airflow services | `airflow-redis` | `6379` | Redis | Airflow Celery broker URL | Orchestration broker boundary |
@@ -86,6 +85,17 @@ are the primary justification for service discovery and network membership.
 | Airflow services | `monitoring-mailhog` | `1025` | SMTP | Airflow SMTP config | Local email-dev boundary |
 | `monitoring-alertmanager` | `monitoring-mailhog` | `1025` | SMTP | Alertmanager local route | Local email-dev boundary |
 | ML jobs | `monitoring-pushgateway` | `9091` | HTTP | `PUSHGATEWAY_ADDR` | Batch metrics boundary |
+
+Current ML model jobs should be read as logical MLflow clients. They request
+tracking and artifact logging through `mlflow-server`; `mlflow-minio` is the
+artifact backend owned by the MLflow runtime. The current document should not
+promote a direct `ml-models-dev` data-lake dependency on MinIO.
+
+A future local production-like design may intentionally expose MinIO, or another
+object store, as a broader storage boundary for bronze, silver, and gold data:
+raw or interim data, processed features, final prediction outputs, and model
+artifacts. That is a target handoff strategy for Phase 7, not a current Compose
+runtime dependency.
 
 ## Runtime identities
 
@@ -95,9 +105,9 @@ are the primary justification for service discovery and network membership.
 | `api-dev` | Custom image, no explicit Compose `user` | Read final prediction data, write logs, serve HTTP on `10000` | Add non-root user in the API image or Compose override in a follow-up. |
 | `ml-ingest-dev` | Custom image, no explicit Compose `user` | Read raw data, write interim data and logs, optionally push metrics | Add non-root user and writable mount ownership strategy in a follow-up. |
 | `ml-features-dev` | Custom image, no explicit Compose `user` | Read interim data, write processed data and logs, optionally push metrics | Add non-root user and explicit data handoff ownership in a follow-up. |
-| `ml-models-dev` | Custom image, no explicit Compose `user` | Read processed data, write final data, models, logs, MLflow runs and artifacts | Add non-root user; prefer MLflow/MinIO as model handoff before reducing host mounts. |
+| `ml-models-dev` | Custom image, no explicit Compose `user` | Read processed data, write final data, models, logs, and MLflow runs or artifacts through MLflow | Add non-root user; prefer MLflow tracking and artifact APIs before reducing host mounts. |
 | `mlflow-postgres` | Upstream PostgreSQL image | Own private PostgreSQL volume | Keep private on `mlflow_net`; later use least-privilege managed database credentials. |
-| `mlflow-minio` | Upstream MinIO image | Own MinIO data volume and expose S3/console locally | Replace root-style local credentials with scoped users or policies later. |
+| `mlflow-minio` | Upstream MinIO image | Own MinIO data volume and expose S3/console locally | Keep as MLflow artifact backend now; evaluate scoped users or policies if it becomes a broader object store. |
 | `mlflow-mc-init` | Upstream MinIO client helper | Bootstrap bucket using MinIO root credentials | Keep local bootstrap-only; move to scoped provisioning identity later. |
 | `mlflow-server` | Upstream MLflow image | Reach PostgreSQL and MinIO, expose MLflow HTTP API/UI | Add explicit auth and service identity before production-like exposure. |
 | `airflow-api-server` | Upstream Airflow image with `AIRFLOW_UID:0` group | Airflow metadata DB, Redis, DAG/config/log/data mounts, HTTP UI/API | Keep upstream user model for dev; avoid broad network access later. |
@@ -111,8 +121,8 @@ are the primary justification for service discovery and network membership.
 | `monitoring-grafana` | Upstream Grafana image | Read provisioning config and dashboards, persist Grafana volume | Use local admin placeholder now; define admin/SSO/role model later. |
 | `monitoring-cadvisor` | Upstream cAdvisor image, `privileged: true` | Host/runtime filesystem and Docker socket reads | Local observability exception. Replace with production-grade node metrics model later. |
 | `monitoring-pushgateway` | Upstream Pushgateway image | Receive batch metrics writes and expose scrape endpoint | Add write controls and lifecycle cleanup later. |
-| `monitoring-alertmanager` | Upstream Alertmanager image | Read local route config, send SMTP to MailHog, persist state | Local alert testing only until real notification secrets exist. |
-| `monitoring-mailhog` | Upstream MailHog image | Receive local SMTP and expose local UI | Dev-only identity; replace with authenticated SMTP provider in production-like runtime. |
+| `monitoring-alertmanager` | Upstream Alertmanager image | Read local route config, send SMTP to MailHog, persist state | Local alert testing only; production mail credentials belong to the real notification target. |
+| `monitoring-mailhog` | Upstream MailHog image | Receive local SMTP and expose local UI | Dev-only mail capture service; no local credentials are expected. Do not include it in production runtime. |
 
 ## Functional boundary model to prepare Phase 7
 
@@ -120,17 +130,24 @@ This section proposes boundaries only. It does not change Compose networks.
 
 | Boundary | Required services or names | Required ports | Ingress | Egress | Credentials or auth | Mode |
 | -------- | -------------------------- | -------------- | ------- | ------ | ------------------- | ---- |
-| Serving/API boundary | `api-dev` | `10000` | Host clients, Airflow refresh, Prometheus scrape | Shared final data, logs, metrics | API demo credentials in local Makefile defaults and Airflow `api_dev` connection | Production-like concept, local defaults insecure |
+| Serving/API boundary | `api-dev` | `10000` | Host clients, Airflow refresh, Prometheus scrape | Shared final data, logs, metrics | API demo credentials in local Makefile defaults and Airflow `api_dev` connection | Production-like concept, local demo defaults |
 | Orchestration boundary | `airflow-api-server`, `airflow-scheduler`, `airflow-dag-processor`, `airflow-triggerer`, `airflow-worker`, `airflow-init`, `airflow-postgres`, `airflow-redis`, `airflow-flower` | `8080`, `5432`, `6379`, `5555` | Host UI/API for Airflow and Flower | API refresh, local Docker socket, ML jobs, MailHog, Pushgateway as configured | Airflow fernet key, JWT secret, PostgreSQL password, simple auth defaults | Mixed: production-like control plane with local-dev shortcuts |
-| Tracking/artifact boundary | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`, ML workloads | `5000`, `5432`, `9000`, `9001` | Host MLflow/MinIO UI/API, ML workloads | PostgreSQL backend, MinIO artifacts | MLflow placeholders, PostgreSQL password, MinIO root credentials, AWS variables | Production-like concept, local credentials need hardening |
+| Tracking/artifact boundary | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`, ML workloads as MLflow clients | `5000`, `5432`, `9000`, `9001` | Host MLflow/MinIO UI/API, MLflow client calls from ML workloads | PostgreSQL backend, MinIO artifact backend | MLflow placeholders, PostgreSQL password, MinIO root credentials, AWS variables | Production-like concept, local placeholders and defaults |
 | Monitoring/scrape boundary | `monitoring-prometheus`, `monitoring-grafana`, `monitoring-cadvisor`, `monitoring-pushgateway`, `api-dev` metrics endpoint | `9090`, `3000`, `8080`, `9091`, `10000` | Host dashboards/UI, Prometheus scrapes | Scrape targets and datasource queries | Grafana admin credentials; no scrape auth currently | Local observability now, production-like target later |
-| Alerting/email-dev boundary | `monitoring-alertmanager`, `monitoring-mailhog`, Airflow SMTP client | `9093`, `1025`, `8025` | Host Alertmanager/MailHog UI | SMTP to MailHog | No real SMTP auth; MailHog captures mail locally | Local-dev only |
-| Data/artifact handoff boundary | Host `data`, `logs`, `models`, MLflow artifacts, Airflow data/log mounts | Filesystem and S3-style API | ML jobs, API, Airflow, host operator | Reads/writes shared bind mounts or MLflow/MinIO | Host filesystem permissions, MinIO credentials | Local shared filesystem now; production-like contract later |
+| Alerting/email-dev boundary | `monitoring-alertmanager`, `monitoring-mailhog`, Airflow SMTP client | `9093`, `1025`, `8025` | Host Alertmanager/MailHog UI | SMTP to MailHog | No MailHog credentials by design; real SMTP secrets would belong to Airflow or Alertmanager in production | Local-dev only |
+| Data/artifact handoff boundary | Current host `data`, `logs`, `models`; target object-store bronze/silver/gold datasets and MLflow artifacts | Filesystem today; S3-style API if promoted later | ML jobs, API, Airflow, host operator | Reads/writes shared bind mounts today; object storage in target design | Host filesystem permissions today; object-store credentials only if target storage is implemented | Local shared filesystem now; production-like contract later |
 | Job execution boundary | `airflow-worker`, Docker daemon, `ml-ingest-dev`, `ml-features-dev`, `ml-models-dev` | Docker socket, service networks selected by DAG variables | Airflow worker | Docker daemon creates containers | Docker socket root-equivalent access, container env variables | Local-dev only; must be replaced before local-prod target |
 
 The target Phase 7 network design should avoid pairwise network explosion. Broad
 functional networks are acceptable when they represent a service discovery and
 policy boundary. They should not be used to hide unclear privileges.
+
+The data/artifact handoff target can evolve toward a data lake style contract.
+In that model, object storage may hold bronze raw or interim datasets, silver
+processed features, gold final predictions, and model or MLflow artifacts. This
+would make MinIO, or an equivalent S3-compatible service, a deliberate storage
+service with explicit credentials, bucket policies, lifecycle, and ownership.
+That is distinct from the current local bind-mount based `data` handoff.
 
 ## Volume ownership and mount expectations
 
@@ -140,7 +157,7 @@ policy boundary. They should not be used to hide unclear privileges.
 | `./data:/opt/airflow/data` | Airflow services | Airflow can inspect data for DAG coordination | Avoid DAG logic depending on mutable shared files where possible. |
 | `./logs:/app/logs` | ML jobs and `api-dev` | Containers need write access and host needs read access | Move runtime logs to logging infrastructure later. |
 | `./logs:/opt/airflow/logs` | Airflow services | Airflow components need shared log write access | Use remote log storage in production-like runtime. |
-| `./models:/app/models` | `ml-models-dev` | Training job writes model artifacts | Prefer MLflow artifact store or registry as primary handoff. |
+| `./models:/app/models` | `ml-models-dev` | Training job writes model artifacts | Prefer MLflow artifact APIs or registry as primary model handoff. |
 | Airflow DAG mount | Airflow services | Repository DAG files are live-mounted read/write from host perspective | Local-dev convenience; deploy immutable DAG artifacts later. |
 | Airflow config mounts | Airflow services and `airflow-init` | Versioned config is mounted into Airflow; init imports variables and connections | Keep real secrets out of repository-managed config. |
 | Prometheus config mount | `monitoring-prometheus` | Read-only repository config | Package validated config artifacts later. |
@@ -148,7 +165,7 @@ policy boundary. They should not be used to hide unclear privileges.
 | Alertmanager config mount | `monitoring-alertmanager` | Read-only local route config | Replace MailHog route with secure notification config later. |
 | `/var/run/docker.sock` | `airflow-worker`, `monitoring-cadvisor` | Grants Docker API access from containers | Root-equivalent local-development boundary. |
 | `mlflow-postgres-db` | `mlflow-postgres` | Private service-owned volume | Add backup, migration, and credential-rotation strategy. |
-| `mlflow-minio-data` | `mlflow-minio` | Private artifact-store volume | Add lifecycle, backup, and bucket policy strategy. |
+| `mlflow-minio-data` | `mlflow-minio` | Private MLflow artifact-store volume | If promoted to broader object storage, add bucket policy, data lifecycle, and ownership rules. |
 | `airflow-postgres-db` | `airflow-postgres` | Private service-owned volume | Add backup and migration strategy. |
 | `airflow-redis-data` | `airflow-redis` | Broker persistence volume | Review durability and password needs. |
 | Monitoring state volumes | Prometheus, Grafana, Alertmanager | Private service-owned volumes | Add retention, backup, and provisioning strategy. |
@@ -225,30 +242,33 @@ Credential classes:
 | DVC/DagsHub credentials | `.env.template` `DAGSHUB_*` | Placeholder values | Keep out of Git; stored locally through `.dvc/config.local`. |
 | MLflow remote credentials | `.env.template` `MLFLOW_TRACKING_USERNAME_*`, `MLFLOW_TRACKING_PASSWORD_*` | Placeholder or empty by mode | Keep mode separation; do not mix DagsHub and Compose credentials. |
 | MLflow Compose tracking | `.env.template` `MLFLOW_TRACKING_URI_COMPOSE` | Internal service URL | Keep as service-name dependency. |
-| MinIO artifact credentials | `.env.template` `MINIO_ROOT_*`, `AWS_*` | Passwords use placeholders, user defaults to local `minio` | Replace root credentials with scoped policies later. |
+| MinIO artifact credentials | `.env.template` `MINIO_ROOT_*`, `AWS_*` | Passwords use placeholders, user defaults to local `minio` | Keep local defaults for dev; create scoped policies if MinIO becomes a broader object store. |
 | Airflow secrets | `.env.template` `AIRFLOW_FERNET_KEY`, `AIRFLOW_API_AUTH_JWT_SECRET`, `AIRFLOW_POSTGRES_PASSWORD` | Placeholder values | Keep required placeholders; generate locally. |
-| Airflow simple auth | `docker-compose.yaml` `admin:admin` | Intentionally insecure local default | Mark local-dev only; replace before production-like runtime. |
+| Airflow simple auth | `docker-compose.yaml` `admin:admin` | Local development default | Mark local-dev only; replace before production-like runtime. |
 | Airflow connection to API | `docker/dev/airflow/config/connections.json` | Hardcoded `remy` / `remy` | Local-only default; move to `.env`, Airflow secret backend, or generated config. |
 | Airflow MLflow/MinIO variables | `docker/dev/airflow/config/variables.json` | Hardcoded `minio` / `minio123` | Local-only default; align with `.env` or generated Airflow variables later. |
 | Airflow host repository path | `docker/dev/airflow/config/variables.json` | Hardcoded local host path | Local developer-specific value; move to `.env` or generated config. |
 | Grafana admin credentials | `.env.template` `GRAFANA_ADMIN_*` | Password placeholder, local user default | Keep placeholder; rotate and externalize later. |
 | API demo credentials | `.env.template` `API_USER`, `API_PASS` | Local demo default `user1` / `user1` | Mark local demo only; replace before production-like runtime. |
-| MailHog SMTP | Compose and Airflow SMTP settings | No auth, local capture only | Dev-only; replace with authenticated SMTP and TLS later. |
-| Prometheus and Pushgateway | Compose and Prometheus config | No scrape or write auth | Add scrape/write controls in production-like runtime. |
+| MailHog SMTP | Compose and Airflow SMTP settings | No auth by design, local capture only | Keep credential-free in local dev; do not run MailHog in production. |
+| Prometheus and Pushgateway | Compose and Prometheus config | No scrape or write auth in local dev | Add controls only for a production-like runtime that exposes these paths. |
 
-Credentials that are intentionally insecure for local development:
+Local-only defaults and placeholders that must not be promoted to production:
 
 - Airflow simple auth `admin:admin`;
 - API demo defaults `user1:user1`;
 - Airflow `api_dev` connection `remy:remy`;
 - Airflow variables `minio:minio123`;
 - Grafana local admin user when paired with a local placeholder password;
-- MailHog unauthenticated SMTP and UI;
+- MailHog unauthenticated SMTP and UI, which is expected for local mail capture;
 - Prometheus, Pushgateway, Alertmanager, and cAdvisor local UIs without Compose
   authentication.
 
-These values must not be treated as production secrets. They are compatibility
-shortcuts for the current local `docker/dev` stack.
+These values are compatibility shortcuts for the current local `docker/dev`
+stack. They are not production secrets and do not imply that every local helper
+needs credentials. For example, MailHog remains a local-only capture service;
+production email security belongs to the real SMTP provider and to the services
+that send email, such as Airflow or Alertmanager.
 
 ## Phase 7 follow-up map
 
