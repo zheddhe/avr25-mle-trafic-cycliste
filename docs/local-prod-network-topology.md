@@ -28,6 +28,25 @@ The design reviews these runtime sources:
 The goal is network design only. It does not implement secrets, ingress,
 Kubernetes, worker execution replacement, or a Compose refactor.
 
+## Design principle
+
+The target model does not create one network per service pair. It uses bounded
+functional domains and allows a few edge services to join several domains when
+they are explicit gateways.
+
+A new network is justified only when at least one of these statements is true:
+
+- it protects stateful backend services such as PostgreSQL, Redis, or MinIO;
+- it represents a stable many-to-one communication pattern such as monitoring;
+- it separates local-development support services from production-like runtime
+  services;
+- it carries privileged job-execution concerns such as Docker socket access or a
+  future job runner.
+
+Small two-service links should be avoided unless they protect sensitive state or
+privileged control surfaces. The target topology should remain readable with a
+small number of networks.
+
 ## Current network review
 
 ### `airflow_net`
@@ -48,8 +67,10 @@ Target decision:
   worker-pool or job-runner story replaces it.
 
 `api-dev` does not need to share the Airflow metadata network only to receive
-`POST /admin/refresh`. That dependency should move to a serving operations
-boundary.
+`POST /admin/refresh`. That call should use the standard API authentication over
+an internal Compose runtime network, resolving `api-dev:10000` through Docker
+service DNS. The host-published API port remains a local operator ingress and
+should not be the default container-to-container path.
 
 ### `mlflow_net`
 
@@ -66,6 +87,9 @@ Target decision:
 - expose local MLflow and MinIO UIs only through deliberate local host or dev
   ingress paths.
 
+A split between tracking clients and tracking backends is justified because ML
+jobs need `mlflow-server`, but they do not need direct PostgreSQL access.
+
 ### `mlops_net`
 
 `mlops_net` is currently a broad local integration network. It is useful for
@@ -75,62 +99,78 @@ and selected cross-stack services.
 Target decision:
 
 - do not keep `mlops_net` as a broad local production-like network;
-- split it into functional networks with clear names;
+- replace it with a small set of functional domains rather than many pairwise
+  links;
 - keep the name only as a legacy `docker/dev` concept, or rename it to
   `dev_integration_net` if a future cleanup wants to make its purpose explicit;
 - do not migrate the name into `docker/prod` unless it is narrowed to a single
   responsibility.
 
+## Proposed network set
+
+The recommended target uses five core networks and one optional future boundary.
+This keeps the Compose model bounded while still removing the broad `mlops_net`
+behavior.
+
+| Network | Responsibility | Expected members |
+| ------- | -------------- | ---------------- |
+| `orchestration_net` | Airflow control plane, metadata DB, broker, and internal Airflow execution API. | Airflow API, scheduler, DAG processor, triggerer, worker, init, Flower, PostgreSQL, Redis. |
+| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, batch jobs, and batch metric writes. | Airflow worker or future job runner, `api-dev`, `ml-ingest-*`, `ml-features-*`, `ml-models-*`, `monitoring-pushgateway`. |
+| `tracking_client_net` | MLflow client API calls from ML workloads. | ML jobs and `mlflow-server`. |
+| `tracking_backend_net` | Private MLflow metadata and artifact backends. | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`. |
+| `observability_net` | Monitoring, dashboard, alert-routing, and scrape access to selected metric endpoints. | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics endpoint, selected exporters. |
+| `dev_support_net` | Local development support services that should not be part of the production-like core. | MailHog, Airflow services that send local email, Alertmanager in local email mode. |
+| `artifact_handoff_net` | Optional future object-store or release handoff boundary if host bind mounts are replaced. | API, ML jobs, Airflow promotion step, and storage service when implemented. |
+
+`artifact_handoff_net` should not be created only for the current host bind
+mounts. It becomes useful if a future story replaces broad `data`, `models`, or
+`logs` mounts with an object store or an explicit release service.
+
+## Gateway services
+
+A few services deliberately join multiple networks. These services are not
+accidental broad-network members; they bridge bounded domains.
+
+| Service | Target networks | Gateway role |
+| ------- | --------------- | ------------ |
+| `airflow-worker` or future job runner | `orchestration_net`, `pipeline_runtime_net`, optional `dev_support_net` | Runs or triggers jobs, calls API refresh, and remains connected to the Airflow control plane. |
+| `api-dev` | `pipeline_runtime_net`, `observability_net`, optional ingress or host port | Receives authenticated refresh calls and exposes metrics. Host publication remains local ingress, not the container-to-container path. |
+| `mlflow-server` | `tracking_client_net`, `tracking_backend_net` | Accepts MLflow client calls and owns backend access to PostgreSQL and MinIO. |
+| `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receives batch metrics writes and exposes them for Prometheus scrape. |
+| `monitoring-alertmanager` | `observability_net`, `dev_support_net` | Receives Prometheus alerts and sends local development email. |
+
+This gateway pattern is the replacement for `mlops_net`: cross-domain access is
+explicit and attached only to services that need it.
+
 ## Required service-name dependencies
 
 | Source service | Target service | DNS name | Port | Protocol | Reason | Proposed network |
 | -------------- | -------------- | -------- | ---- | -------- | ------ | ---------------- |
-| `monitoring-prometheus` | `monitoring-prometheus` | `monitoring-prometheus` | `9090` | HTTP | Self scrape and readiness checks. | `monitoring_scrape_net` |
-| `monitoring-prometheus` | `monitoring-cadvisor` | `monitoring-cadvisor` | `8080` | HTTP | Container metric scrape. | `monitoring_scrape_net` |
-| `monitoring-prometheus` | `api-dev` | `api-dev` | `10000` | HTTP | FastAPI `/metrics` scrape. | `monitoring_scrape_net` |
-| `monitoring-prometheus` | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | HTTP | Batch metric scrape. | `monitoring_scrape_net` |
-| `monitoring-prometheus` | `monitoring-alertmanager` | `monitoring-alertmanager` | `9093` | HTTP | Alert routing target. | `alerting_net` |
-| `monitoring-grafana` | `monitoring-prometheus` | `monitoring-prometheus` | `9090` | HTTP | Provisioned datasource. | `monitoring_query_net` |
-| `monitoring-alertmanager` | `monitoring-mailhog` | `monitoring-mailhog` | `1025` | SMTP | Local alert email test route. | `email_dev_net` |
+| `monitoring-prometheus` | `monitoring-prometheus` | `monitoring-prometheus` | `9090` | HTTP | Self scrape and readiness checks. | `observability_net` |
+| `monitoring-prometheus` | `monitoring-cadvisor` | `monitoring-cadvisor` | `8080` | HTTP | Container metric scrape. | `observability_net` |
+| `monitoring-prometheus` | `api-dev` | `api-dev` | `10000` | HTTP | FastAPI `/metrics` scrape. | `observability_net` |
+| `monitoring-prometheus` | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | HTTP | Batch metric scrape. | `observability_net` |
+| `monitoring-prometheus` | `monitoring-alertmanager` | `monitoring-alertmanager` | `9093` | HTTP | Alert routing target. | `observability_net` |
+| `monitoring-grafana` | `monitoring-prometheus` | `monitoring-prometheus` | `9090` | HTTP | Provisioned datasource. | `observability_net` |
+| `monitoring-alertmanager` | `monitoring-mailhog` | `monitoring-mailhog` | `1025` | SMTP | Local alert email test route. | `dev_support_net` |
 | Airflow services | `airflow-postgres` | `airflow-postgres` | `5432` | PostgreSQL | Airflow metadata DB and result backend. | `orchestration_net` |
 | Airflow services | `airflow-redis` | `airflow-redis` | `6379` | Redis | Celery broker. | `orchestration_net` |
 | Airflow services | `airflow-api-server` | `airflow-api-server` | `8080` | HTTP | Internal Airflow execution API. | `orchestration_net` |
-| Airflow DAG tasks | `api-dev` | `api-dev` | `10000` | HTTP | Refresh API data after successful DAG runs. | `serving_ops_net` |
-| Airflow DAG tasks | ML job containers | Docker API | N/A | Docker API | Create ingestion, features, and model jobs. | `job_execution_net` |
-| Airflow services | `monitoring-mailhog` | `monitoring-mailhog` | `1025` | SMTP | Local Airflow email capture. | `email_dev_net` |
-| ML jobs | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | HTTP | Push batch job metrics. | `batch_metrics_net` |
+| Airflow DAG tasks | `api-dev` | `api-dev` | `10000` | HTTP | Authenticated API refresh after successful DAG runs. | `pipeline_runtime_net` |
+| Airflow DAG tasks | ML job containers | Docker API | N/A | Docker API | Create ingestion, features, and model jobs. | `pipeline_runtime_net` |
+| Airflow services | `monitoring-mailhog` | `monitoring-mailhog` | `1025` | SMTP | Local Airflow email capture. | `dev_support_net` |
+| ML jobs | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | HTTP | Push batch job metrics. | `pipeline_runtime_net` |
 | ML jobs | `mlflow-server` | `mlflow-server` | `5000` | HTTP | Log runs, metrics, params, and artifacts. | `tracking_client_net` |
 | `mlflow-server` | `mlflow-postgres` | `mlflow-postgres` | `5432` | PostgreSQL | MLflow backend store. | `tracking_backend_net` |
 | `mlflow-server` | `mlflow-minio` | `mlflow-minio` | `9000` | HTTP/S3 | MLflow artifact store. | `tracking_backend_net` |
 | `mlflow-mc-init` | `mlflow-minio` | `mlflow-minio` | `9000` | HTTP/S3 | Bootstrap the MLflow bucket. | `tracking_backend_net` |
-| API and ML jobs | promoted datasets | No DNS | N/A | Filesystem or S3 | Read/write released prediction artifacts. | `artifact_handoff_net` |
+| API and ML jobs | promoted datasets | No DNS | N/A | Filesystem or S3 | Read/write released prediction artifacts. | Optional `artifact_handoff_net` |
 
 The Docker API entry is a logical dependency. It is not a Compose DNS
 dependency, but it must stay visible in the migration plan because the current
 Airflow worker creates ML workload containers through the local Docker socket.
 
-## Target Compose network set
-
-| Network | Responsibility | Expected members |
-| ------- | -------------- | ---------------- |
-| `orchestration_net` | Airflow control plane, metadata DB, and broker. | Airflow API, scheduler, DAG processor, triggerer, worker, init, Flower, PostgreSQL, Redis. |
-| `job_execution_net` | Airflow-created ML job execution and handoff. | Airflow worker or target job runner, `ml-ingest-*`, `ml-features-*`, `ml-models-*`. |
-| `serving_net` | User-facing API runtime. | `api-dev` or future API service. |
-| `serving_ops_net` | Operational API actions from orchestration. | Airflow DAG task identity and `api-dev`. |
-| `tracking_client_net` | MLflow client calls from ML workloads. | ML jobs and `mlflow-server`. |
-| `tracking_backend_net` | MLflow private metadata and artifact backend. | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`. |
-| `artifact_handoff_net` | Optional future data release or object-store handoff. | ML jobs, API, and storage service if promoted from host mounts. |
-| `batch_metrics_net` | Batch metric pushes. | ML jobs and `monitoring-pushgateway`. |
-| `monitoring_scrape_net` | Prometheus scrape access to metric endpoints. | Prometheus, API metrics endpoint, cAdvisor, Pushgateway, selected exporters. |
-| `monitoring_query_net` | Dashboard queries against Prometheus. | Grafana and Prometheus. |
-| `alerting_net` | Prometheus to Alertmanager routing. | Prometheus and Alertmanager. |
-| `email_dev_net` | Local SMTP capture for development only. | Alertmanager, Airflow services that send mail, MailHog. |
-
-`monitoring_query_net` may be folded into `monitoring_scrape_net` if the local
-Compose file remains small. Keeping it separate is cleaner when Grafana should
-query Prometheus without being colocated with scrape targets.
-
-## Why monitoring needs a shared scrape boundary
+## Why monitoring uses one observability boundary
 
 Prometheus is intentionally a many-to-one scraper. Its checked-in configuration
 uses service names for several targets, and future exporters will likely follow
@@ -143,10 +183,14 @@ A pairwise network per Prometheus target would create operational noise:
 - target removals would require network lifecycle cleanup;
 - dashboard and alert validation would become harder to reason about.
 
-A shared `monitoring_scrape_net` is the better local production-like boundary
-when the network is limited to scrape endpoints and selected exporters. It
-keeps service discovery maintainable while avoiding broad application,
-database, broker, and artifact-store colocation.
+A shared `observability_net` is the better local production-like boundary when
+it is limited to scrape endpoints, dashboard queries, alert routing, and selected
+exporters. It keeps service discovery maintainable while avoiding broad
+application, database, broker, and artifact-store colocation.
+
+`monitoring-pushgateway` is the main bridge between `pipeline_runtime_net` and
+`observability_net`: jobs write metrics on the pipeline side, and Prometheus
+scrapes metrics on the observability side.
 
 ## Pairwise network policy
 
@@ -154,12 +198,12 @@ The target design avoids pairwise networks by default. A pairwise network is
 justified only when the target contains sensitive backend state or a privileged
 runtime surface.
 
-Current strong candidates for narrow or pairwise-like isolation are:
+Current strong candidates for narrow isolation are:
 
 - Airflow metadata DB and Redis inside `orchestration_net`;
 - MLflow PostgreSQL and MinIO inside `tracking_backend_net`;
-- Docker socket or replacement job runner inside `job_execution_net`;
-- local SMTP capture isolated in `email_dev_net`.
+- Docker socket or replacement job runner access inside `pipeline_runtime_net`;
+- local SMTP capture isolated in `dev_support_net`.
 
 Monitoring does not qualify for pairwise links in this design because it has a
 stable many-target scrape pattern.
@@ -175,14 +219,14 @@ local production-like runtime:
   monitoring, or local email services.
 - `mlflow-minio` should not share a broad network unless it becomes an explicit
   project object-store boundary with scoped credentials.
-- `monitoring-cadvisor` should not share business API, orchestration metadata,
-  or tracking backend networks because it observes runtime internals.
+- `monitoring-cadvisor` should not share orchestration metadata or tracking
+  backend networks because it observes runtime internals.
 - `monitoring-mailhog` should remain dev-only and isolated from production-like
   serving and tracking networks.
 - `api-dev` should not share Airflow metadata, Redis, MLflow backend, or MinIO
   backend networks.
 - `airflow-worker` Docker socket access should not be combined with a broad
-  integration network.
+  all-services integration network.
 
 ## Target topology sketch
 
@@ -190,8 +234,9 @@ local production-like runtime:
 flowchart LR
     airflow[Airflow services] --> airflow_db[(airflow-postgres)]
     airflow --> airflow_redis[(airflow-redis)]
-    airflow --> api[api-dev]
-    airflow --> jobs[ML jobs]
+    airflow --> runner[Worker or job runner]
+    runner --> api[api-dev]
+    runner --> jobs[ML jobs]
 
     jobs --> mlflow[mlflow-server]
     mlflow --> mlflow_db[(mlflow-postgres)]
@@ -204,6 +249,7 @@ flowchart LR
     prometheus --> alertmanager[monitoring-alertmanager]
     grafana[monitoring-grafana] --> prometheus
     alertmanager --> mailhog[monitoring-mailhog]
+    airflow --> mailhog
 ```
 
 This sketch shows functional dependencies only. It is not an implementation
@@ -214,18 +260,18 @@ diff for `docker/dev`.
 1. Keep `docker/dev` unchanged and treat this document as the target contract.
 2. Create a separate `docker/prod` or `docker/local-prod` Compose entrypoint.
 3. Add the target network names without removing existing service definitions.
-4. Move monitoring first: define `monitoring_scrape_net`,
-   `monitoring_query_net`, `alerting_net`, and `email_dev_net`.
-5. Move MLflow backend services to `tracking_backend_net`; attach ML jobs only
-   through `tracking_client_net`.
-6. Move Airflow metadata and broker services to `orchestration_net`; expose API
-   refresh through `serving_ops_net` instead of `airflow_net`.
-7. Define `batch_metrics_net` for Pushgateway writes and keep Prometheus scrape
-   access separate.
-8. Define the artifact handoff contract before removing broad `data`, `models`,
+4. Move Airflow metadata and broker services to `orchestration_net`.
+5. Create `pipeline_runtime_net` for Airflow worker or job runner, API refresh,
+   ML job containers, and Pushgateway writes.
+6. Move MLflow backend services to `tracking_backend_net`; attach ML jobs only
+   to `mlflow-server` through `tracking_client_net`.
+7. Replace the monitoring slice of `mlops_net` with `observability_net`.
+8. Move local SMTP capture to `dev_support_net` and keep it dev-only.
+9. Define the artifact handoff contract before removing broad `data`, `models`,
    or `logs` bind mounts.
-9. Replace `mlops_net` with functional networks in the target runtime.
-10. Update architecture diagrams and operator documentation after validation.
+10. Remove `mlops_net` from the target runtime only after all service-name
+    dependencies resolve through the new functional domains.
+11. Update architecture diagrams and operator documentation after validation.
 
 ## Rollback criteria
 
