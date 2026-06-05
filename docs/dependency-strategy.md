@@ -67,19 +67,19 @@ references.
 
 | Variable | Runtime image | Validated digest or note |
 | -------- | ------------- | ------------------------ |
-| `AIRFLOW_IMAGE_NAME` | `apache/airflow:3.2.2-python3.12` | Digest not recorded yet |
-| `AIRFLOW_POSTGRES_IMAGE` | `postgres:16` | Digest not recorded yet |
+| `AIRFLOW_IMAGE_NAME` | `apache/airflow:3.2.2-python3.12` | `sha256:bbe58e3204d550ab98dbf738a42c0e6663c455357ecd0e2d1440ef9cb6a75f00` |
+| `AIRFLOW_POSTGRES_IMAGE` | `postgres:16` | `sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae` |
+| `AIRFLOW_REDIS_IMAGE` | `redis:latest` | `sha256:aa049e689e141a4358ad1d4562dc49c88a89fbab711fd8fcc33f684c80b26301` |
 | `MLFLOW_IMAGE` | `ghcr.io/mlflow/mlflow:v3.13.0-full` | `sha256:45bdcc9439dac5c51c160a863e3c1cadae1757de9d6d1b9403e0a648a6f2333b` |
-| `MLFLOW_POSTGRES_IMAGE` | `postgres:16` | Digest not recorded yet |
+| `MLFLOW_POSTGRES_IMAGE` | `postgres:16` | `sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae` |
 | `MLFLOW_MINIO_IMAGE` | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` |
 | `MLFLOW_MINIO_MC_IMAGE` | `minio/mc:RELEASE.2025-08-13T08-35-41Z` | `sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727` |
-| `AIRFLOW_REDIS_IMAGE` | `redis:8.4.0-bookworm` | Digest not recorded yet |
-| `PROMETHEUS_IMAGE` | `prom/prometheus:v3.12.0` | Digest not recorded yet |
-| `GRAFANA_IMAGE` | `grafana/grafana:13.0.2` | Digest not recorded yet |
-| `PUSHGATEWAY_IMAGE` | `prom/pushgateway:v1.11.3` | Digest not recorded yet |
-| `ALERTMANAGER_IMAGE` | `prom/alertmanager:v0.32.1` | Digest not recorded yet |
-| `CADVISOR_IMAGE` | `gcr.io/cadvisor/cadvisor:v0.55.1` | Digest not recorded yet |
-| `MAILHOG_IMAGE` | `mailhog/mailhog` | Digest not recorded yet |
+| `PROMETHEUS_IMAGE` | `prom/prometheus:v3.12.0` | `sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac` |
+| `GRAFANA_IMAGE` | `grafana/grafana:13.0.2` | `sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2` |
+| `PUSHGATEWAY_IMAGE` | `prom/pushgateway:v1.11.3` | `sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2` |
+| `ALERTMANAGER_IMAGE` | `prom/alertmanager:v0.32.1` | `sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286` |
+| `CADVISOR_IMAGE` | `gcr.io/cadvisor/cadvisor:v0.55.1` | `sha256:3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57` |
+| `MAILHOG_IMAGE` | `mailhog/mailhog` | `sha256:8d76a3d4ffa32a3661311944007a415332c4bb855657f4f6c57996405c009bea` |
 
 ## Compose managed service families
 
@@ -88,32 +88,10 @@ uv environment.
 
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Airflow | Uses `AIRFLOW_IMAGE_NAME`. Local `apache-airflow` in uv is only for local import support and should not be treated as the container runtime version. |
-| Airflow PostgreSQL | Uses `AIRFLOW_POSTGRES_IMAGE` as the local Airflow metadata database. |
-| Redis | Uses `AIRFLOW_REDIS_IMAGE` for the Airflow Celery broker. |
-| MLflow server | Uses `MLFLOW_IMAGE` from the upstream GHCR MLflow image. |
-| MLflow PostgreSQL | Uses `MLFLOW_POSTGRES_IMAGE` as the local MLflow metadata database. |
-| MinIO | Uses `MLFLOW_MINIO_IMAGE` and `MLFLOW_MINIO_MC_IMAGE` for local MLflow artifact storage. |
-| Monitoring | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor through image variables. |
-| Development helpers | Uses `MAILHOG_IMAGE` for local email capture. |
-
-## Runtime baseline
-
-The local MLOps stack currently uses these major runtime versions:
-
-| Component | Runtime version |
-| --------- | --------------- |
-| Airflow | `3.2.2` with Python 3.12 image |
-| Airflow Redis | `8.4.0-bookworm` |
-| MLflow | `3.13.0` server and model client |
-| PostgreSQL | `16` for Airflow and MLflow metadata stores |
-| MinIO | `RELEASE.2025-09-07T16-13-09Z` |
-| MinIO client | `RELEASE.2025-08-13T08-35-41Z` |
-| Prometheus | `3.12.0` |
-| Grafana | `13.0.2` |
-| Pushgateway | `1.11.3` |
-| Alertmanager | `0.32.1` |
-| cAdvisor | `0.55.1` |
+| Orchestration Services | Uses `Airflow`, `PostgreSQL`, `Redis` images |
+| Experimentation Services | Uses `MLFlow`, `PostgreSQL`, `Minio`, `MC` images |
+| Monitoring Services | Uses `Prometheus`, `Grafana`, `Pushgateway`, `Alertmanager`, `cAdvisor` images |
+| Development helpers | Uses `MailHog` images |
 
 ## Healthchecks
 
@@ -124,20 +102,22 @@ it is part of the selected image.
 | Service | Healthcheck strategy |
 | ------- | -------------------- |
 | `mlflow-postgres` | `pg_isready` against the MLflow metadata database. |
-| `mlflow-minio` | MinIO live endpoint `/minio/health/live`. |
-| `mlflow-server` | MLflow `/health` endpoint through Python `urllib`. |
+| `mlflow-minio` | curl check on `/minio/health/live`. |
+| `mlflow-server` | Python `urllib` read check on `/health`. |
 | `airflow-postgres` | `pg_isready` against the Airflow metadata database. |
 | `airflow-redis` | `redis-cli ping`. |
-| `airflow-api-server` | Airflow REST `/api/v2/version`. |
+| `airflow-api-server` | curl check on `/api/v2/monitor/health`. |
 | `airflow-scheduler` | `airflow jobs check --job-type SchedulerJob`. |
 | `airflow-dag-processor` | `airflow jobs check --job-type DagProcessorJob`. |
+| `airflow-worker` | `celery --app ping`. |
 | `airflow-triggerer` | `airflow jobs check --job-type TriggererJob`. |
-| `airflow-flower` | Flower HTTP API endpoint `/api/workers` through Python `urllib`. |
-| `monitoring-prometheus` | Prometheus readiness endpoint `/-/ready`. |
-| `monitoring-grafana` | Grafana API health endpoint `/api/health`. |
-| `monitoring-pushgateway` | Prometheus-style readiness endpoint `/-/ready`. |
-| `monitoring-alertmanager` | Prometheus-style readiness endpoint `/-/ready`. |
-| `monitoring-cadvisor` | cAdvisor health endpoint `/healthz`. |
+| `airflow-flower` | curl check on `/`. |
+| `monitoring-prometheus` | wget check on `/-/ready`. |
+| `monitoring-grafana` | wget check on `/api/health`. |
+| `monitoring-pushgateway` | wget check on `/-/ready`. |
+| `monitoring-alertmanager` | wget check on `/-/ready`. |
+| `monitoring-cadvisor` | wget check on `/healthz`. |
+| `mailhog` | curl check on `/`. |
 
 ## Runtime-sensitive dependencies
 
