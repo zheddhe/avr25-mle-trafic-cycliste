@@ -409,7 +409,7 @@ services:
       - ${AIRFLOW_GID:-0}
     command: ["celery", "worker"]
     healthcheck:
-      test: ["CMD-SHELL", 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}" || celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"']
+      test: ["CMD-SHELL", 'runuser --preserve-environment --user airflow -- /home/airflow/.local/bin/celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}" || runuser --preserve-environment --user airflow -- /home/airflow/.local/bin/celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"']
       interval: 10s
       timeout: 5s
       retries: 5
