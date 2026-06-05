@@ -61,8 +61,9 @@ Runtime image variables are centralized in `.env.template` and consumed by
 for local developer ergonomics and for tools such as the VS Code Docker
 extension.
 
-Validated content digests are documented here. A future production hardening
-phase may replace readable tags with direct `@sha256:` image references.
+Validated content digests are documented here when known. A future production
+hardening phase may replace readable tags with direct `@sha256:` image
+references.
 
 | Variable | Runtime image | Validated digest or note |
 | -------- | ------------- | ------------------------ |
@@ -74,6 +75,9 @@ phase may replace readable tags with direct `@sha256:` image references.
 | `MINIO_MC_IMAGE` | `minio/mc:RELEASE.2025-08-13T08-35-41Z` | `sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727` |
 | `PROMETHEUS_IMAGE` | `prom/prometheus:v3.12.0` | Digest not recorded yet |
 | `GRAFANA_IMAGE` | `grafana/grafana:13.0.1-security-01` | Digest not recorded yet |
+| `PUSHGATEWAY_IMAGE` | `prom/pushgateway:v1.11.3` | Digest not recorded yet |
+| `ALERTMANAGER_IMAGE` | `prom/alertmanager:v0.32.1` | Digest not recorded yet |
+| `CADVISOR_IMAGE` | `gcr.io/cadvisor/cadvisor:v0.57.0` | Digest not recorded yet |
 
 ## Compose managed service families
 
@@ -88,25 +92,49 @@ uv environment.
 | MLflow server | Uses `MLFLOW_IMAGE` from the upstream GHCR MLflow image. |
 | MLflow PostgreSQL | Uses `MLFLOW_POSTGRES_IMAGE` as the local MLflow metadata database. |
 | MinIO | Uses `MINIO_IMAGE` and `MINIO_MC_IMAGE` for local MLflow artifact storage. |
-| Prometheus | Uses `PROMETHEUS_IMAGE` for local metrics storage and queries. |
-| Grafana | Uses `GRAFANA_IMAGE` for local dashboard visualization. |
-| Monitoring support | Uses upstream cAdvisor, Pushgateway, Alertmanager, and MailHog images. |
+| Monitoring | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor through image variables. |
+| Development helpers | Uses upstream MailHog for local email capture. |
 
-## Phase 6 runtime upgrade status
+## Runtime baseline
 
-Story #51 upgrades the MLOps infrastructure stack in focused increments. The
-current branch validates upgrades incrementally to keep runtime regressions
-isolated.
+The local MLOps stack currently uses these major runtime versions:
 
-| Component | Target in story #51 | Current branch status |
-| --------- | ------------------- | --------------------- |
-| Airflow | `3.2.2` | Upgraded and validated with Python 3.12 image |
-| MLflow | `3.13.0` | Server, model client, PostgreSQL, and MinIO storage services upgraded |
-| Prometheus | `3.12.0` | Compose runtime upgraded and locally started |
-| Grafana | `13.0.1-security-01` | Compose runtime upgraded; validation pending |
+| Component | Runtime version |
+| --------- | --------------- |
+| Airflow | `3.2.2` with Python 3.12 image |
+| MLflow | `3.13.0` server and model client |
+| PostgreSQL | `16` for Airflow and MLflow metadata stores |
+| MinIO | `RELEASE.2025-09-07T16-13-09Z` |
+| MinIO client | `RELEASE.2025-08-13T08-35-41Z` |
+| Prometheus | `3.12.0` |
+| Grafana | `13.0.1-security-01` |
+| Pushgateway | `1.11.3` |
+| Alertmanager | `0.32.1` |
+| cAdvisor | `0.57.0` |
 
-Do not document pending targets as active runtime versions in the README until
-the related Compose and validation commits have landed.
+## Healthchecks
+
+Docker Compose healthchecks should rely on endpoints or commands that are
+available in the upstream image itself. Avoid assuming that `curl` exists unless
+it is part of the selected image.
+
+| Service | Healthcheck strategy |
+| ------- | -------------------- |
+| `mlflow-postgres` | `pg_isready` against the MLflow metadata database. |
+| `mlflow-minio` | MinIO live endpoint `/minio/health/live`. |
+| `mlflow-server` | MLflow `/health` endpoint through Python `urllib`. |
+| `airflow-postgres` | `pg_isready` against the Airflow metadata database. |
+| `airflow-redis` | `redis-cli ping`. |
+| `airflow-api-server` | Airflow REST `/api/v2/version`. |
+| `airflow-scheduler` | `airflow jobs check --job-type SchedulerJob`. |
+| `airflow-dag-processor` | `airflow jobs check --job-type DagProcessorJob`. |
+| `airflow-triggerer` | `airflow jobs check --job-type TriggererJob`. |
+| `airflow-flower` | Celery executor app status check. |
+| `monitoring-prometheus` | Prometheus readiness endpoint `/-/ready`. |
+| `monitoring-grafana` | Grafana API health endpoint `/api/health`. |
+| `monitoring-pushgateway` | Prometheus-style readiness endpoint `/-/ready`. |
+| `monitoring-alertmanager` | Prometheus-style readiness endpoint `/-/ready`. |
+| `monitoring-cadvisor` | cAdvisor health endpoint `/healthz`. |
 
 ## Runtime-sensitive dependencies
 
@@ -154,7 +182,9 @@ Monitoring runtime changes should validate at least:
 - Pushgateway scraping;
 - cAdvisor scraping;
 - Grafana datasource provisioning;
-- Grafana dashboard loading.
+- Grafana dashboard loading;
+- Alertmanager configuration loading;
+- MailHog alert notification capture when alert routing is tested.
 
 ## Regression checklist for runtime dependency changes
 
@@ -180,6 +210,7 @@ Then verify:
 - API prediction endpoints still return the expected schema;
 - Prometheus targets are healthy and ML/API metrics are visible;
 - Grafana starts and loads the provisioned Prometheus datasource;
+- Grafana dashboards load with current Prometheus metrics;
 - Prometheus metrics are not pushed during local tests when
   `DISABLE_METRICS_PUSH=1`;
 - Docker Compose services start without dependency resolution errors.
