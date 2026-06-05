@@ -219,7 +219,7 @@ services:
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-minio:
-    image: ${MINIO_IMAGE:?required}
+    image: ${MLFLOW_MINIO_IMAGE:?required}
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?required}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
@@ -241,7 +241,7 @@ services:
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-mc-init:
-    image: ${MINIO_MC_IMAGE:?required}
+    image: ${MLFLOW_MINIO_MC_IMAGE:?required}
     depends_on:
       mlflow-minio:
         condition: service_healthy
@@ -319,7 +319,7 @@ services:
     profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
-    image: redis:latest
+    image: ${AIRFLOW_REDIS_IMAGE:?required}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -562,7 +562,7 @@ services:
     profiles: ["all", "monitoring", "ptf"]
 
   monitoring-mailhog:
-    image: mailhog/mailhog
+    image: ${MAILHOG_IMAGE:?required}
     ports:
       - "${MAILHOG_SMTP_HOST_PORT:-15025}:1025"
       - "${MAILHOG_UI_HOST_PORT:-15080}:8025"
