@@ -49,8 +49,9 @@ avr25-mle-trafic-cycliste/
 ├── logs                <- Logs shared with host (read/write)
 ├── models              <- Model artifacts shared with host (read/write)
 ├── references          <- Data dictionaries, manuals, other explanatory material
-├── src/                <- API, Airflow DAGs, and ML pipeline source code
-├── docker/             <- Container architecture
+├── src/                <- API and ML pipeline source code
+├── docker/             <- Container architecture, Airflow DAGs, configs, and scripts
+├── docs/               <- Architecture, operations, and dependency documentation
 └── tests/              <- Unit and integration tests
 ```
 
@@ -243,6 +244,11 @@ make clean_full
 where containers have not been created yet. `make clean_full` is intentionally
 destructive: it removes Docker images, volumes, and networks.
 
+Runtime host ports and local URLs are documented in
+[`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime image,
+healthcheck, and dependency policies are documented in
+[`docs/dependency-strategy.md`](docs/dependency-strategy.md).
+
 For one-off ML pipeline containers, use the dedicated targets:
 
 ```bash
@@ -252,103 +258,70 @@ make mlops-models
 make mlops-pipeline
 ```
 
-By default, the API is exposed at `http://localhost:10000/docs`.
-Override `API_HOST_PORT` in `.env` to use another host port.
-
 ### 3. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
 **artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
 splits, predictions, metrics, and hyperparameters).
 
-The MLflow-related environment variables are centralized in `.env.template` and
-should be customized in your local `.env` file.
+MLflow runtime variables are managed through three explicit presets in
+`.env.template`. Each preset maps to the same runtime target variables so the
+shell state is deterministic when switching context.
 
-#### Mode 1: Docker Compose MLflow service
+| Mode | Target |
+| ---- | ------ |
+| `make env-compose` | Docker Compose MLflow server and MinIO artifact store. |
+| `make env-local` | Local backend, with MLflow and AWS variables unset. |
+| `make env-dagshub` | Remote DagsHub MLflow tracking, with S3/AWS variables unset. |
 
-This is the default MLOps mode. The default `.env.template` values target the
-local Docker Compose MLflow and MinIO services from inside the Compose network:
+For interactive shell use, evaluate the desired preset:
 
 ```bash
-MLFLOW_TRACKING_URI="http://mlflow-server:5000"
-MLFLOW_S3_ENDPOINT_URL="http://mlflow-minio:9000"
-AWS_ACCESS_KEY_ID="minio"
-AWS_SECRET_ACCESS_KEY="[replace_me]"
+eval "$(make --no-print-directory env-compose)"
+eval "$(make --no-print-directory env-local)"
+eval "$(make --no-print-directory env-dagshub)"
 ```
 
-Start it with the platform services:
+The MLOps container targets automatically use the Compose preset. Local debug
+targets automatically use the local backend preset.
 
 ```bash
 make ops
-```
-
-#### Mode 2: Host-side MLflow local server and backend data runs
-
-This mode is useful for preliminary local data science experiments without the
-full Docker Compose stack.
-
-It populates `./mlruns` artifact directory by unsetting MLFLOW_TRACKING_URI during standalone local debugging runs.
-
-```bash
-make local-ingest
-make local-features
-make local-models
+make mlops-pipeline
 make local-pipeline
-```
-
-A MLflow local server can visualize the artifact directory afterwards.
-
-```bash
 make mlflow-local
-```
-
-
-#### Mode 3: DagsHub remote MLflow service
-
-To use the DagsHub remote service instead of local MLflow, override these values
-in your local `.env` or shell session:
-
-```bash
-MLFLOW_TRACKING_URI="https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.mlflow"
-MLFLOW_TRACKING_USERNAME="[replace_me]"
-MLFLOW_TRACKING_PASSWORD="[replace_me]"
 ```
 
 ### 4. 🧩 Multi-counter orchestration
 
-- The environment configuration is mounted read-only in the Airflow Init container into `/opt/airflow/config/` (repo source: `./docker/dev/airflow/`). It configures especially:
-  - The host repository root, to adjust to your production or development environment.
-  - The MLflow server information. By default, this uses the platform technical stack, but it can point to a cloud-hosted service.
-  - The images to use for the various containers.
-  - The API connection as an admin to refresh predictions.
+Airflow orchestrates the multi-counter ML pipeline. The Docker Compose service
+model is the source of truth for Airflow service wiring and runtime identities.
 
-- The business configuration is mounted read-only in the Airflow containers (Scheduler / WebServer / Worker) into
-  `/opt/airflow/config/bike_dag_config.json` (repo source: `./src/airflow/config/`). It configures especially:
-  - The list of managed counters extracted from the original dataset.
-  - The anchor date used to simulate production startup.
-  - The daily increment, which defines which portion of the original dataset is considered to shift the data by one production day.
+- `airflow-init` imports Airflow variables and connections from
+  `./docker/dev/airflow/config/`.
+- Runtime Airflow containers mount
+  `/opt/airflow/config/bike_dag_config.json` read-only from
+  `./docker/dev/airflow/config/bike_dag_config.json`.
+- Runtime secrets and IDs are provided through `.env.template`, including
+  `AIRFLOW_FERNET_KEY`, `AIRFLOW_API_AUTH_JWT_SECRET`, and
+  `AIRFLOW_POSTGRES_PASSWORD`.
+
+DAG roles:
 
 - `bike_traffic_init`: one-shot historical bootstrap per counter.
-  - It short-circuits if the Airflow Variable `bike_init_done__<counter>` equals `"1"`.
-  - On success, it sets that variable to `"1"`.
-
 - `bike_traffic_daily`: rolling increment assuming init has been done.
-  - Triggered by the parent only. Its `schedule` is `None`.
-
-- `bike_traffic_orchestrator`:
-  - Every day, for each configured counter, trigger `init` then `daily`.
-  - The `init` run is cheap if already done because it is short-circuited.
+- `bike_traffic_orchestrator`: triggers `init` then `daily` for each configured
+  counter.
 
 ### 5. 🧩 Monitoring and alerting
 
-The project has defined:
+The local monitoring stack uses Prometheus, Grafana, Pushgateway, cAdvisor,
+Alertmanager, and MailHog.
 
-- Grafana dashboards relying on Prometheus collected metrics to:
-  - Monitor the system itself: active containers, restarts, memory usage, and CPU usage.
-  - Monitor business metrics for the ML pipeline.
-- Alerts that can trigger email notifications when detecting:
-  - API service down for a configurable period of time.
-  - API service instability, such as restart loops.
+- Grafana dashboards use Prometheus metrics to monitor containers, restarts,
+  memory, CPU, and ML/API business metrics.
+- Pushgateway receives batch metrics from ML pipeline jobs when enabled.
+- Alertmanager can route local alerts to MailHog for development validation.
 
 The Pushgateway behavior is controlled by the `DISABLE_METRICS_PUSH` variable in
 `.env`:

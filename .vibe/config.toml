@@ -1,0 +1,76 @@
+# === MISTRAL VIBE DEFAULTS ===
+# Global configuration for the Mistral Vibe ecosystem.
+# Each project should create its own .vibe/config.toml with project-specific overrides.
+# The global configuration is stored in ~/.vibe/config.toml.
+
+# === DEFAULTS ===
+default_agent = "orchestrator"
+api_timeout = 720.0
+auto_compact_threshold = 200000
+active_model = "local"
+
+# === PROVIDERS ===
+# Default local provider (localhost:8000) — works out of the box
+# with any OpenAI-compatible server (vLLM, Ollama, etc.)
+[[providers]]
+name = "local"
+api_base = "http://127.0.0.1:8000/v1"
+api_key_env_var = ""
+api_style = "openai"
+backend = "generic"
+reasoning_field_name = "reasoning_content"
+project_id = ""
+region = ""
+
+# Mistral API — uncomment and set MISTRAL_API_KEY to use
+[[providers]]
+name = "mistral"
+api_base = "https://api.mistral.ai/v1"
+api_key_env_var = "MISTRAL_API_KEY"
+api_style = "openai"
+backend = "mistral"
+reasoning_field_name = "reasoning_content"
+project_id = ""
+region = ""
+
+# === MODELS ===
+# Default local model — matches the local provider above
+[[models]]
+name = "local-code"
+provider = "local"
+alias = "local"
+temperature = 0.2
+input_price = 0.0
+output_price = 0.0
+thinking = "medium"
+
+# Mistral models — uncomment to use frontier models
+[[models]]
+name = "devstral-small-latest"
+provider = "mistral"
+alias = "frontier"
+temperature = 0.2
+input_price = 0.1
+output_price = 0.3
+thinking = "off"
+
+[[models]]
+name = "mistral-vibe-cli-latest"
+provider = "mistral"
+alias = "mistral-medium-3.5"
+temperature = 1.0
+input_price = 1.5
+output_price = 7.5
+thinking = "high"
+
+# === AGENTS ===
+agent_paths = [
+    ".vibe/agents",
+    "agents",
+]
+
+# === SKILLS ===
+skill_paths = [
+    ".vibe/skills",
+    "skills",
+]

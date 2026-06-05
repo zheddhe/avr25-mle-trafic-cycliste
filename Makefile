@@ -95,25 +95,25 @@ env-compose: ## Print shell exports for Docker Compose MLflow mode
 	: "$${MLFLOW_S3_ENDPOINT_URL_COMPOSE:?Missing MLFLOW_S3_ENDPOINT_URL_COMPOSE}"; \
 	: "$${AWS_ACCESS_KEY_ID_COMPOSE:?Missing AWS_ACCESS_KEY_ID_COMPOSE}"; \
 	: "$${AWS_SECRET_ACCESS_KEY_COMPOSE:?Missing AWS_SECRET_ACCESS_KEY_COMPOSE}"; \
-	: "$${AWS_DEFAULT_REGION:?Missing AWS_DEFAULT_REGION}"; \
+	: "$${AWS_DEFAULT_REGION_COMPOSE:?Missing AWS_DEFAULT_REGION_COMPOSE}"; \
 	printf 'export MLFLOW_TRACKING_URI=%q\n' "$${MLFLOW_TRACKING_URI_COMPOSE}"; \
 	printf 'export MLFLOW_S3_ENDPOINT_URL=%q\n' "$${MLFLOW_S3_ENDPOINT_URL_COMPOSE}"; \
 	printf 'export AWS_ACCESS_KEY_ID=%q\n' "$${AWS_ACCESS_KEY_ID_COMPOSE}"; \
 	printf 'export AWS_SECRET_ACCESS_KEY=%q\n' "$${AWS_SECRET_ACCESS_KEY_COMPOSE}"; \
-	printf 'export AWS_DEFAULT_REGION=%q\n' "$${AWS_DEFAULT_REGION}"; \
+	printf 'export AWS_DEFAULT_REGION=%q\n' "$${AWS_DEFAULT_REGION_COMPOSE}"; \
 	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
 	printf 'unset MLFLOW_TRACKING_PASSWORD\n'
 
-env-local: ## Print shell exports for host-local MLflow mode
+env-local: ## Print shell exports for host-local MLflow backend mode
 	@$(check_env)
 	@$(load_env); \
-	: "$${MLFLOW_TRACKING_URI_LOCAL:?Missing MLFLOW_TRACKING_URI_LOCAL}"; \
 	printf 'unset MLFLOW_TRACKING_URI\n'; \
 	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
+	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
+	printf 'unset MLFLOW_TRACKING_PASSWORD\n'; \
 	printf 'unset AWS_ACCESS_KEY_ID\n'; \
 	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
-	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
-	printf 'unset MLFLOW_TRACKING_PASSWORD\n'
+	printf 'unset AWS_DEFAULT_REGION\n'
 
 env-dagshub: ## Print shell exports for DagsHub MLflow mode
 	@$(check_env)
@@ -126,7 +126,8 @@ env-dagshub: ## Print shell exports for DagsHub MLflow mode
 	printf 'export MLFLOW_TRACKING_PASSWORD=%q\n' "$${MLFLOW_TRACKING_PASSWORD_DAGSHUB}"; \
 	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
 	printf 'unset AWS_ACCESS_KEY_ID\n'; \
-	printf 'unset AWS_SECRET_ACCESS_KEY\n'
+	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
+	printf 'unset AWS_DEFAULT_REGION\n'
 
 setup: env sync compose-config ## Prepare the local project after cloning
 
