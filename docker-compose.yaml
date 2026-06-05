@@ -447,12 +447,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - |
-          celery --app airflow.providers.celery.executors.celery_executor.app status 2>&1 | grep -q "OK" || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:5555/api/workers', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks:
       - airflow_net
     profiles: ["all", "airflow", "ptf", "flower"]
