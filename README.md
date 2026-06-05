@@ -370,5 +370,5 @@ The CI environment uses uv dependency groups directly and runs Ruff before pytes
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
-- Koladé Houessou – [@koladehouessou@gmail.com](mailto:koladehouessou@gmail.com)
+- Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
 - Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofia.bouizzoul@gmail.com)
