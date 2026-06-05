@@ -165,7 +165,9 @@ def _load_config() -> tuple[DagCfg, str]:
 
     try:
         cfg = DagCfg.model_validate_json(path.read_text())
-        logger.info(f"[utils] Config loaded: {len(cfg.counters)} counters, default={default_counter_id}")
+        logger.info(
+            f"[utils] Config loaded: {len(cfg.counters)} "
+            f"counters, default={default_counter_id}")
         return cfg, default_counter_id
     except ValidationError as exc:
         logger.error(f"[utils] Invalid JSON in {cfg_ref}: {exc}")
