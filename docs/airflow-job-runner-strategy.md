@@ -36,7 +36,7 @@ runner composed of:
 
 1. a small internal job API;
 2. a dedicated queue and job state store;
-3. pre-started non-root ML worker containers;
+3. pre-started non-root typed ML worker services;
 4. an allow-list of supported job commands;
 5. explicit artifact handoff and observability contracts.
 
@@ -46,6 +46,11 @@ through the host Docker socket in the production-like runtime.
 This target combines the best properties of a queue-based runner and a
 pre-started worker pool while keeping the architecture translatable to
 Kubernetes Jobs or CronJobs later.
+
+Ingestion, feature engineering, and model training must remain separate
+business microservices. They may share a common runner protocol, common
+schemas, and a common base image pattern, but they should not be collapsed
+into a single generic ML service.
 
 ## Current Airflow-triggered execution model
 
@@ -108,14 +113,27 @@ counters, derive ranges or dates, trigger jobs in the right order, and decide
 whether downstream refresh is allowed. They should stop owning container
 runtime details.
 
+The production-like runner should preserve the service boundaries already
+visible in the current batch images:
+
+- ingestion owns raw-to-interim import logic;
+- feature engineering owns interim-to-processed transformation logic;
+- model jobs own training, prediction, MLflow, and model artifact logic.
+
+Those boundaries are useful business boundaries, not only Docker packaging
+accidents. The future worker pool should make them more explicit instead of
+turning them into one generic worker with broad configuration and broad
+permissions.
+
 ## Alternatives considered
 
 | Alternative | Benefits | Limitations | Decision |
 | ----------- | -------- | ----------- | -------- |
-| Pre-started non-root worker pool | Removes Docker socket from Airflow, keeps local Compose simple, makes users and mounts explicit. | Needs a command dispatch contract and status tracking; long-running workers must be supervised. | Use as part of the selected target. |
+| Pre-started typed non-root worker pool | Removes Docker socket from Airflow, keeps service boundaries explicit, makes users, mounts, networks, and resource sizing specific per ML stage. | Needs a common worker protocol, job leases, and status tracking. | Use as the selected worker target. |
 | Queue-based job runner | Decouples Airflow task lifetime from job execution, supports backpressure and retries, maps well to multiple counters. | Requires queue state, idempotency, and a polling or callback contract. | Use as part of the selected target. |
 | Controlled internal API or command runner | Gives Airflow one narrow interface, allows request validation, and hides execution internals. | API must not become a remote shell; commands and paths need strict allow-lists. | Use as the Airflow-facing entrypoint. |
 | Compose profile with long-lived workers | Fits local production-like Compose and avoids Kubernetes as a hard dependency. | Scaling is coarse and depends on Compose replicas or explicit services. | Use initially for `docker/prod` or `docker/local-prod`. |
+| Generic ML worker | One worker image containing ingestion, feature, and model entrypoints. | Blurs business boundaries, requires broader dependencies, broader credentials, and less specific health checks. | Do not use as the first target. |
 | Restricted container-runtime proxy | Smaller transition from DockerOperator and could enforce image or mount restrictions. | Still exposes container-runtime semantics and remains weaker than a true job boundary. | Keep only as a temporary fallback, not the target. |
 | Kubernetes Jobs or CronJobs | Stronger future fit for isolated batch jobs, service accounts, pod security, and retry policies. | Out of scope now and too large for the local Compose target. | Treat as future migration target. |
 
@@ -125,9 +143,9 @@ runtime details.
 flowchart LR
     airflow[Airflow DAG tasks] --> job_api[job-runner-api]
     job_api --> queue[(job-runner-queue)]
-    queue --> worker_ingest[ml-worker-ingest]
-    queue --> worker_features[ml-worker-features]
-    queue --> worker_models[ml-worker-models]
+    queue --> worker_ingest[ml-ingest-worker]
+    queue --> worker_features[ml-features-worker]
+    queue --> worker_models[ml-models-worker]
 
     worker_ingest --> data[(data or artifact handoff)]
     worker_features --> data
@@ -166,17 +184,25 @@ reaches a terminal state.
 Workers are long-lived containers started by Compose. They consume jobs from
 the queue and execute only allow-listed commands.
 
-Initial worker options:
+The first implementation target should use typed workers from the start:
 
-| Worker shape | Description | Use case |
-| ------------ | ----------- | -------- |
-| Typed workers | Separate `ml-worker-ingest`, `ml-worker-features`, and `ml-worker-models` services. | Clear permissions, images, and resource sizing per stage. |
-| Generic ML worker | One worker image containing the three Python entrypoints. | Simpler first implementation and easier local validation. |
-| Model-family workers | Dedicated workers for future voting or model-family parallelism. | Later scaling when several model families train in parallel. |
+| Worker service | Accepted jobs | Service-specific constraints |
+| -------------- | ------------- | ---------------------------- |
+| `ml-ingest-worker` | `ingest` only | Raw and interim data access, ingest configuration, Pushgateway metrics. |
+| `ml-features-worker` | `features` only | Interim and processed data access, feature configuration, Pushgateway metrics. |
+| `ml-models-worker` | `models` only | Processed/final data, model artifacts, MLflow, MinIO/S3 credentials, Pushgateway metrics. |
 
-The recommended first implementation is a generic ML worker image with typed
-queue routing or command allow-listing. It can later be split into typed
-workers if resource or permission differences justify it.
+The three workers may share a common job protocol:
+
+- claim a queued job;
+- validate the job payload with a typed schema;
+- resolve a safe command from an allow-list;
+- execute the business entrypoint;
+- publish status, logs, metrics, and artifact references.
+
+They should not share one broad runtime configuration. Service-specific
+dependencies, environment variables, mounted paths, network attachments,
+health checks, and resource limits should remain explicit per worker service.
 
 ### Job state model
 
@@ -250,19 +276,38 @@ job runner to execute an allowed job type.
 
 ## Container image impact
 
-The future implementation should introduce at least one runner image:
+The future implementation should introduce typed worker images or typed worker
+service images:
 
-| Image | Responsibility | Notes |
-| ----- | -------------- | ----- |
+| Image or service image | Responsibility | Notes |
+| ---------------------- | -------------- | ----- |
 | `job-runner-api` | Validate job requests, expose job status, and enqueue work. | Small FastAPI service; internal-only; no Docker socket. |
-| `ml-worker` | Execute allow-listed ML entrypoints as a non-root user. | Can initially reuse dependencies from current ML images. |
-| `ml-worker-ingest` | Optional typed worker for ingestion. | Split only if permissions or scaling require it. |
-| `ml-worker-features` | Optional typed worker for feature engineering. | Split only if permissions or scaling require it. |
-| `ml-worker-models` | Optional typed worker for training and prediction. | Likely first candidate for separate resources. |
+| `ml-ingest-worker` | Execute allow-listed ingestion jobs as a non-root service. | Derive from ingest code and dependencies; do not require MLflow or model credentials. |
+| `ml-features-worker` | Execute allow-listed feature engineering jobs as a non-root service. | Derive from feature code and dependencies; keep feature mounts and health checks specific. |
+| `ml-models-worker` | Execute allow-listed model jobs as a non-root service. | Derive from model code and dependencies; owns MLflow, MinIO/S3, and model artifact access. |
 
 Existing `ml-ingest-dev`, `ml-features-dev`, and `ml-models-dev` images should
 remain valid for `docker/dev` while the local production-like runtime is built
 separately.
+
+They should not be reused directly as long-running workers because they are
+currently batch CLI containers: they have a Python module entrypoint, a
+Compose-provided command, local bind mounts, and `restart: "no"` semantics. The
+future workers should reuse their business code, dependency lists, and Docker
+packaging patterns, but expose a worker lifecycle instead of a one-shot CLI
+lifecycle.
+
+A future implementation can choose between two safe packaging variants:
+
+1. derive three worker images from the current `ml-ingest`, `ml-features`, and
+   `ml-models` Dockerfiles, replacing the CLI entrypoint with a worker
+   process;
+2. factor common Docker layers into a shared base image while keeping three
+   final service images with distinct entrypoints, dependencies, networks,
+   volumes, environment variables, and health checks.
+
+The second variant reduces duplicated build layers without weakening the
+microservice boundary.
 
 ## Network impact
 
@@ -273,7 +318,9 @@ The target aligns with `docs/local-prod-network-topology.md`.
 | Airflow worker or DAG execution service | `orchestration_net`, `pipeline_runtime_net` | Keep Airflow metadata access separate from job submission. |
 | `job-runner-api` | `pipeline_runtime_net`, `observability_net` | Receive Airflow job submissions and expose runner metrics. |
 | Job queue or state store | `pipeline_runtime_net` | Internal runner state only. |
-| ML workers | `pipeline_runtime_net`, `tracking_client_net` | Read job specs, publish outputs, push metrics, and log MLflow runs. |
+| `ml-ingest-worker` | `pipeline_runtime_net` | Read ingest jobs, write interim outputs, and push ingest metrics. |
+| `ml-features-worker` | `pipeline_runtime_net` | Read feature jobs, write processed outputs, and push feature metrics. |
+| `ml-models-worker` | `pipeline_runtime_net`, `tracking_client_net` | Read model jobs, log MLflow runs, and publish model outputs. |
 | `mlflow-server` | `tracking_client_net`, `tracking_backend_net` | Accept MLflow client calls without exposing backends broadly. |
 | `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receive batch metrics and expose scrape endpoint. |
 | `api-dev` | `pipeline_runtime_net`, `observability_net` | Receive refresh call and expose application metrics. |
@@ -368,7 +415,7 @@ The first implementation story should include these guardrails:
 - per-job environment variable allow-lists;
 - path normalization to prevent writes outside approved artifact roots;
 - bounded queue retention and log retention;
-- health endpoints for API, queue, and workers;
+- typed worker health checks for queue, volumes, and required endpoints;
 - unit tests for schema validation and command resolution;
 - integration smoke tests before removing Docker socket usage from the target
   runtime.
@@ -377,7 +424,7 @@ The first implementation story should include these guardrails:
 
 1. Keep `docker/dev` unchanged and keep DockerOperator-based DAGs operational.
 2. Add runner schemas and a job client under `src/` with unit tests.
-3. Add a local production-like runner API and ML worker image.
+3. Add a local production-like runner API and typed ML worker images.
 4. Add a separate Compose profile or `docker/prod` entrypoint for the runner.
 5. Implement runner health, metrics, job status, and log references.
 6. Add a target Airflow DAG variant that submits runner jobs instead of Docker
@@ -413,9 +460,16 @@ Future implementation stories should add validation such as:
 
 ```bash
 docker compose --profile local-prod config
-docker compose --profile local-prod up -d job-runner-api ml-worker
+docker compose --profile local-prod up -d \
+    job-runner-api \
+    ml-ingest-worker \
+    ml-features-worker \
+    ml-models-worker
 docker compose exec airflow-worker getent hosts job-runner-api
 docker compose exec job-runner-api wget -qO- http://localhost:8080/health
+docker compose exec ml-ingest-worker wget -qO- http://localhost:8080/health
+docker compose exec ml-features-worker wget -qO- http://localhost:8080/health
+docker compose exec ml-models-worker wget -qO- http://localhost:8080/health
 docker compose exec monitoring-prometheus \
     wget -qO- http://job-runner-api:8080/metrics
 ```
@@ -430,4 +484,4 @@ This design does not:
 - add Kubernetes;
 - implement production secrets;
 - replace shared mounts;
-- change current ML images or Compose services.
+- change current `docker/dev` ML images or Compose services.
