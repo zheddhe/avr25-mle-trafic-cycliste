@@ -5,16 +5,21 @@ src/airflow/dags_common/utils.py
 Shared utilities for Airflow DAGs:
 - Pydantic models for DAG configuration
 - Functions to load config and list counters
+- Required-variable helpers that fail fast with clear logging
 
 This file must not declare any DAG object.
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
-from airflow.models import Variable
+from airflow.exceptions import AirflowNotFoundException
+from airflow.sdk import Variable
 from pydantic import BaseModel, Field, ValidationError
+
+logger = logging.getLogger("airflow.task")
 
 
 # --------------------------------------------------------------------------- #
@@ -46,7 +51,7 @@ class SchedulingCfg(BaseModel):
     """Scheduling configuration for the DAG."""
 
     initial_anchor_date: str
-    daily_increment_pct: float = 1.0
+    daily_increment_pct: float  # No default: must be explicit in bike_dag_config.json
 
 
 class DagCfg(BaseModel):
@@ -59,6 +64,62 @@ class DagCfg(BaseModel):
 # --------------------------------------------------------------------------- #
 # Functions
 # --------------------------------------------------------------------------- #
+def _missing(msg: str) -> str:
+    """
+    Raise a clear error for a required Airflow Variable that is missing.
+
+    Logs at ERROR level so the message appears in the Airflow scheduler/worker
+    logs even when the DAG is parsed.
+
+    Parameters
+    ----------
+    msg : str
+        Human-readable explanation of what is missing and how to fix it.
+
+    Returns
+    -------
+    str
+        Never returns; always raises.
+    """
+    logger.error("REQUIRED VARIABLE MISSING: %s", msg)
+    raise ValueError(msg)
+
+
+def _required_var(name: str) -> str:
+    """
+    Read an Airflow Variable that MUST be set.
+
+    Raises ``ValueError`` with a clear message (and ERROR-level log) when the
+    variable is absent or empty.  This is the preferred way to read variables
+    that have no sensible local default.
+
+    Parameters
+    ----------
+    name : str
+        Name of the Airflow Variable.
+
+    Returns
+    -------
+    str
+        The variable value.
+
+    Raises
+    ------
+    ValueError
+        If the variable is not found or is empty.
+    """
+    try:
+        value = Variable.get(name)
+        if not value:
+            _missing(f"Airflow Variable '{name}' is defined but empty. "
+                     f"Run 'make ops' to import variables from variables.json.")
+        return value
+    except AirflowNotFoundException:
+        _missing(f"Airflow Variable '{name}' is not defined. "
+                 f"Run 'make ops' to import variables from variables.json.")
+        raise AirflowNotFoundException(f"Airflow Variable '{name}' is not defined.")
+
+
 def _load_config() -> tuple[DagCfg, str]:
     """
     Load DAG configuration from Airflow Variable ``bike_dag_config``.
@@ -77,8 +138,8 @@ def _load_config() -> tuple[DagCfg, str]:
     ValueError
         If the variable is missing, the file path does not exist, or the JSON is invalid.
     """
-    cfg_ref = Variable.get("bike_dag_config", default_var="")
-    counter_id = Variable.get("bike_counter_id", default_var="Sebastopol_N-S_mlops")
+    cfg_ref = Variable.get("bike_dag_config")
+    default_counter_id = _required_var("default_counter_id")
 
     if not cfg_ref:
         raise ValueError("bike_dag_config not defined")
@@ -86,7 +147,7 @@ def _load_config() -> tuple[DagCfg, str]:
     # Case 1: inline JSON
     if cfg_ref.strip().startswith("{"):
         try:
-            return DagCfg.model_validate_json(cfg_ref), counter_id
+            return DagCfg.model_validate_json(cfg_ref), default_counter_id
         except ValidationError as exc:
             raise ValueError(f"Invalid inline JSON in bike_dag_config: {exc}") from exc
 
@@ -96,7 +157,7 @@ def _load_config() -> tuple[DagCfg, str]:
         raise ValueError(f"bike_dag_config invalid path: {cfg_ref}")
 
     try:
-        return DagCfg.model_validate_json(path.read_text()), counter_id
+        return DagCfg.model_validate_json(path.read_text()), default_counter_id
     except ValidationError as exc:
         raise ValueError(f"Invalid JSON content in {cfg_ref}: {exc}") from exc
 

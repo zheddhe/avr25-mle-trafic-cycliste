@@ -33,8 +33,8 @@ from skopt import BayesSearchCV
 from skopt.space import Categorical, Integer, Real
 from xgboost import XGBRegressor
 
-PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
-DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
+PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "unknown_address:9091")
+DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "1")
 
 SEARCH_SPACES_XGB = {
     'n_estimators': Integer(300, 800),

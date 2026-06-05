@@ -16,8 +16,8 @@ from prometheus_client import (
     pushadd_to_gateway,
 )
 
-PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "monitoring-pushgateway:9091")
-DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "0")
+PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "unknown_address:9091")
+DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "1")
 
 logger = logging.getLogger(__name__)
 

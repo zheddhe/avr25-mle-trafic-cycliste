@@ -11,30 +11,38 @@ from typing import Any
 
 from airflow import DAG
 from airflow.exceptions import AirflowException
-from airflow.models import TaskInstance, Variable
+from airflow.models import TaskInstance
 from airflow.models.param import Param, ParamsDict
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import HttpOperator
 from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.sdk import Variable
 from airflow.utils.task_group import TaskGroup
-from common.utils import _load_config
+from common.utils import _load_config, _required_var
 from docker.types import Mount
 
 from docker import from_env as docker_from_env
+
+logger = logging.getLogger("airflow.task")
 
 # --------------------------------------------------------------------------- #
 # Infra Variables
 # --------------------------------------------------------------------------- #
 # Docker images and runtime network
-IMG_INGEST = Variable.get("docker_image_ingest", default_var="ml-ingest:dev")
-IMG_FEATS = Variable.get("docker_image_features", default_var="ml-features:dev")
-IMG_MODELS = Variable.get("docker_image_models", default_var="ml-models:dev")
-DOCKER_NET = Variable.get("docker_network", default_var="mlops_net")
+# Images: default_var kept for local dev convenience; missing var raises a
+# clear error at DAG-parse time when the variable is truly absent.
+IMG_INGEST = _required_var("docker_image_ingest")
+IMG_FEATS = _required_var("docker_image_features")
+IMG_MODELS = _required_var("docker_image_models")
+DOCKER_NET = _required_var("docker_network")
 
 # Host and container paths
-HOST_REPO = Variable.get("host_repo_root", default_var="/")
-AIRFLOW_REPO = Variable.get("airflow_repo_root", default_var="/opt/airflow")
-CONT_REPO = Variable.get("container_repo_root", default_var="/app")
+# host_repo_root has NO default: a missing variable would mount "/" which is
+# dangerous.  The error is raised at DAG-parse time so the operator sees it
+# before any container is created.
+HOST_REPO = _required_var("host_repo_root")
+AIRFLOW_REPO = _required_var("airflow_repo_root")
+CONT_REPO = _required_var("container_repo_root")
 MOUNTS = [
     Mount(source=f"{HOST_REPO}/data", target=f"{CONT_REPO}/data", type="bind"),
     Mount(source=f"{HOST_REPO}/logs", target=f"{CONT_REPO}/logs", type="bind"),
@@ -42,31 +50,34 @@ MOUNTS = [
 ]
 
 # MLflow / MinIO configuration
-MLFLOW_TRACKING_URI = Variable.get("mlflow_tracking_uri", default_var="http://mlflow-server:5000")
-MLFLOW_S3_ENDPOINT_URL = Variable.get(
-    "mlflow_s3_endpoint_url",
-    default_var="http://mlflow-minio:9000"
-)
-AWS_ACCESS_KEY_ID = Variable.get("aws_access_key_id", default_var="minio")
-AWS_SECRET_ACCESS_KEY = Variable.get("aws_secret_access_key", default_var="minio123")
-AWS_DEFAULT_REGION = Variable.get("aws_default_region", default_var="us-east-1")
+# These are infrastructure credentials / endpoints: no default_var.
+# A missing variable means the pipeline would silently lose all artifacts.
+MLFLOW_TRACKING_URI = _required_var("mlflow_tracking_uri")
+MLFLOW_S3_ENDPOINT_URL = _required_var("mlflow_s3_endpoint_url")
+AWS_ACCESS_KEY_ID = _required_var("aws_access_key_id")
+AWS_SECRET_ACCESS_KEY = _required_var("aws_secret_access_key")
+AWS_DEFAULT_REGION = _required_var("aws_default_region")
 
 # PushGateway configuration
-PUSHGATEWAY_ADDR = Variable.get("pushgateway_addr", default_var="monitoring-pushgateway:9091")
-DISABLE_METRICS_PUSH = Variable.get("disable_metrics_push", default_var=0)
+PUSHGATEWAY_ADDR = _required_var("pushgateway_addr")
+# Metrics push is disabled by default; enable only when the Pushgateway
+# service is running and the operator wants to collect batch metrics.
+DISABLE_METRICS_PUSH = _required_var("disable_metrics_push")
 
 # Airflow runtime configuration
-TZ = Variable.get("tz", default_var="Europe/Paris")
-AIRFLOW_UID = Variable.get("airflow_uid", default_var=1000)
-AIRFLOW_GID = Variable.get("airflow_gid", default_var=1001)
+TZ = _required_var("tz")
+AIRFLOW_UID = _required_var("airflow_uid")
+AIRFLOW_GID = _required_var("airflow_gid")
 
 # DAG parameters
+# counter_id has NO default: the operator must explicitly choose a counter.
+# This prevents accidental runs on an arbitrary counter when the DAG is
+# triggered manually from the Airflow UI.
 DAG_PARAMS: ParamsDict = ParamsDict(
     {
         "counter_id": Param(
-            default="Sebastopol_N-S_airflow",
             type="string",
-            description="Counter to process for this run",
+            description="Counter to process for this run (REQUIRED).",
         )
     }
 )
@@ -177,8 +188,6 @@ def _check_docker_access(**_):
     Vérifie que le socket Docker est accessible pour le même utilisateur
     que celui utilisé par les DockerOperator (AIRFLOW_UID:AIRFLOW_GID).
     """
-    logger = logging.getLogger("airflow.task")
-
     uid_effective = int(AIRFLOW_UID)
     gid_effective = int(AIRFLOW_GID)
     sock_path = "/var/run/docker.sock"
@@ -249,9 +258,11 @@ def _prepare_args_common(
     Dict[str, Any]
         Environment dictionary injected into Docker operators.
     """
-    cfg, counter_id = _load_config()
+    cfg, default_counter_id = _load_config()
     if counter_override:
         counter_id = counter_override
+    else:
+        counter_id = default_counter_id
     sched = cfg.scheduling
     counter = cfg.counters[counter_id]
 
@@ -493,7 +504,7 @@ def _init_gate_callable(**ctx) -> bool:
     """Short-circuit init DAG if init already done for this counter."""
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     key = f"bike_init_done__{counter_id}"
-    return Variable.get(key, default_var="0") != "1"
+    return Variable.get(key, default="0") != "1"
 
 
 def _mark_init_done_callable(**ctx) -> None:

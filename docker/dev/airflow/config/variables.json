@@ -8,6 +8,7 @@
   "container_repo_root": "/app",
   "airflow_repo_root": "/opt/airflow",
   "bike_dag_config": "/opt/airflow/config/bike_dag_config.json",
+  "default_counter_id": "Sebastopol_N-S_airflow",
 
   "mlflow_tracking_uri": "http://mlflow-server:5000",
   "mlflow_s3_endpoint_url": "http://mlflow-minio:9000",
@@ -19,6 +20,7 @@
   "airflow_gid": 989,
   
   "pushgateway_addr": "monitoring-pushgateway:9091",
+  "disable_metrics_push": "0",
 
   "tz": "Europe/Paris"
 }

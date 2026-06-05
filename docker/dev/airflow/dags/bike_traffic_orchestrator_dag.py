@@ -1,6 +1,7 @@
 # src/airflow/dags/bike_traffic_orchestrator_dag.py
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from airflow import DAG
@@ -10,6 +11,7 @@ from common.utils import _list_counters_payload
 
 DEFAULT_CONFIG_PATH = "/opt/airflow/config/bike_dag_config.json"
 
+logger = logging.getLogger("airflow.task")
 
 # --------------------------------------------------------------------------- #
 # Orchestrator DAG
