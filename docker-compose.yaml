@@ -276,10 +276,13 @@ services:
     ports:
       - "${MLFLOW_HOST_PORT:-13001}:5000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
-      interval: 5s
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5).read()"
+      interval: 10s
       timeout: 5s
-      retries: 30
+      retries: 12
+      start_period: 30s
     command:
       - mlflow
       - server
