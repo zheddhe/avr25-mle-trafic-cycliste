@@ -1,11 +1,9 @@
 SHELL := /bin/bash
 .ONESHELL:
-# Error handling flags: immediate exit and exit on first pipe error.
 .SHELLFLAGS := -eu -o pipefail -c
-# Default make target.
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo_setup
+.PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo-setup
 .PHONY: env-compose env-local env-dagshub
 .PHONY: sync lock-check lint tests ci compose-config
 .PHONY: build rebuild_full ops start stop logs
@@ -18,6 +16,8 @@ UV ?= uv
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
 PROFILE ?= ptf
+DEV_PROFILE ?= $(PROFILE)
+PROD_PROFILE ?= ptf
 SERVICE ?= api-dev
 URL ?= http://localhost:10000
 N ?= 100
@@ -40,6 +40,9 @@ MLFLOW_BACKEND_STORE ?= ./mlruns
 log_test = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
 load_env = if [ -f "$(ENV_FILE)" ]; then set -a; source "$(ENV_FILE)"; set +a; fi
 check_env = if [ ! -f "$(ENV_FILE)" ]; then echo "Error: $(ENV_FILE) is missing. Run: make env" >&2; exit 1; fi
+
+include docker/dev/Makefile
+include docker/prod/Makefile
 
 help: ## Display this help
 	@awk ' \
@@ -185,55 +188,27 @@ tests: ## Run integration tests scope
 
 ci: lock-check lint tests ## Run local CI checks
 
-compose-config: env ## Validate the Docker Compose configuration
-	@$(call log_test,compose-config)
-	$(DOCKER_COMPOSE) --profile all config >/dev/null
+compose-config: dev-compose-config ## Validate the development Compose configuration
 
-build: env ## Build Docker images for all profiles
-	@$(call log_test,build)
-	$(DOCKER_COMPOSE) --profile all build
+build: dev-build ## Build development Docker images
 
-rebuild_full: env ## Rebuild Docker images and restart platform services
-	@$(call log_test,rebuild_full)
-	eval "$$($(MAKE) --no-print-directory env-compose)"
-	$(DOCKER_COMPOSE) --profile all build
-	$(DOCKER_COMPOSE) --profile all down
-	$(DOCKER_COMPOSE) --profile ptf up -d
+rebuild_full: dev-rebuild-full ## Rebuild development images and restart services
 
-ops: env ## Validate and start platform services with Compose MLflow variables
-	@$(call log_test,ops)
-	eval "$$($(MAKE) --no-print-directory env-compose)"
-	$(DOCKER_COMPOSE) --profile all config >/dev/null
-	$(DOCKER_COMPOSE) --profile $(PROFILE) up -d
+ops: dev-ops ## Start development platform services
 
-start: env ## Start Docker services for the selected profile
-	@$(call log_test,start PROFILE=$(PROFILE))
-	$(DOCKER_COMPOSE) --profile $(PROFILE) up -d
+start: dev-start ## Start development services for the selected profile
 
-stop: ## Stop Docker services for the selected profile
-	@$(call log_test,stop PROFILE=$(PROFILE))
-	$(DOCKER_COMPOSE) --profile $(PROFILE) stop
+stop: dev-stop ## Stop development services for the selected profile
 
-logs: ## Show Docker Compose logs for SERVICE
-	@$(call log_test,logs SERVICE=$(SERVICE))
-	$(DOCKER_COMPOSE) logs -f -t $(SERVICE)
+logs: dev-logs ## Follow development Docker Compose logs for SERVICE
 
-mlops-ingest: env ## Run the ML ingestion container once
-	@$(call log_test,mlops-ingest)
-	eval "$$($(MAKE) --no-print-directory env-compose)"
-	$(DOCKER_COMPOSE) --profile ml up ml-ingest-dev
+mlops-ingest: dev-mlops-ingest ## Run the development ML ingestion container once
 
-mlops-features: env ## Run the ML feature engineering container once
-	@$(call log_test,mlops-features)
-	eval "$$($(MAKE) --no-print-directory env-compose)"
-	$(DOCKER_COMPOSE) --profile ml up ml-features-dev
+mlops-features: dev-mlops-features ## Run the development ML feature container once
 
-mlops-models: env ## Run the ML training and prediction container once
-	@$(call log_test,mlops-models)
-	eval "$$($(MAKE) --no-print-directory env-compose)"
-	$(DOCKER_COMPOSE) --profile ml up ml-models-dev
+mlops-models: dev-mlops-models ## Run the development ML model container once
 
-mlops-pipeline: mlops-ingest mlops-features mlops-models ## Run the full one-off ML pipeline
+mlops-pipeline: dev-mlops-pipeline ## Run the full development ML pipeline
 
 dvc-pipeline: env ## Run the full DVC pipeline
 	@$(call log_test,dvc-pipeline)
@@ -295,10 +270,16 @@ sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@$(call log_test,sim_api_loop)
 	for i in {1..10}; do \
 		echo "[restart $$i] stopping api-dev..."; \
-		$(DOCKER_COMPOSE) stop api-dev; \
+		$(DOCKER_COMPOSE) \
+			--env-file $(ENV_FILE) \
+			-f docker/dev/docker-compose.yaml \
+			-p trafic-cycliste-dev stop api-dev; \
 		sleep 2; \
 		echo "[restart $$i] starting api-dev..."; \
-		$(DOCKER_COMPOSE) up -d api-dev; \
+		$(DOCKER_COMPOSE) \
+			--env-file $(ENV_FILE) \
+			-f docker/dev/docker-compose.yaml \
+			-p trafic-cycliste-dev up -d api-dev; \
 		echo "[restart $$i] done, waiting 5s..."; \
 		sleep 5; \
 	done
@@ -306,9 +287,15 @@ sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 
 sim_api_down: ## Simulate a temporary API outage for 2 minutes
 	@$(call log_test,sim_api_down)
-	$(DOCKER_COMPOSE) stop api-dev
+	$(DOCKER_COMPOSE) \
+		--env-file $(ENV_FILE) \
+		-f docker/dev/docker-compose.yaml \
+		-p trafic-cycliste-dev stop api-dev
 	sleep 120
-	$(DOCKER_COMPOSE) up -d api-dev
+	$(DOCKER_COMPOSE) \
+		--env-file $(ENV_FILE) \
+		-f docker/dev/docker-compose.yaml \
+		-p trafic-cycliste-dev up -d api-dev
 
 sim_api_req: ## Simulate traffic on /predictions/{counter}
 	@$(call log_test,sim_api_req)
@@ -333,8 +320,12 @@ clean_env: ## Remove the uv-managed virtual environment
 	@$(call log_test,clean_env)
 	rm -rf .venv
 
-clean_full: ## Remove Docker artifacts, including images, volumes, and networks
+clean_full: ## Remove development Docker artifacts, including images and volumes
 	@$(call log_test,clean_full)
-	$(DOCKER_COMPOSE) --profile all down -v --rmi all
+	$(DOCKER_COMPOSE) \
+		--env-file $(ENV_FILE) \
+		-f docker/dev/docker-compose.yaml \
+		-p trafic-cycliste-dev \
+		--profile all down -v --rmi all
 	docker system prune -f
 	docker volume prune -f
