@@ -178,22 +178,18 @@ make sync
 make lock-check
 make lint
 make tests
-make ci
+make checks
 ```
 
-`make tests` runs the current integration test scope. `make ci` chains the lock
-check, Ruff linting, and this test target.
+`make checks` runs all the checks : lock check, Ruff linting, and the tests target.
 
 Useful maintenance targets:
 
 ```bash
-make clean
-make clean_env
+make clean-repo
+make clean-env
+make clean-docker
 ```
-
-`make clean` removes local Python caches and test artifacts only. It does not
-remove Docker volumes. Use `make clean_env` only when you want to recreate the
-uv-managed virtual environment from scratch.
 
 ## MLOps setup
 

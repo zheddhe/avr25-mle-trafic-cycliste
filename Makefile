@@ -6,11 +6,11 @@ SHELL := /bin/bash
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup
 .PHONY: repo-setup
 .PHONY: env-compose env-local env-dagshub
-.PHONY: sync lock-check lint tests ci
+.PHONY: sync lock-check lint tests checks
 .PHONY: dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
-.PHONY: sim_api_loop sim_api_down sim_api_req
-.PHONY: clean clean_env clean_full
+.PHONY: sim-api-req
+.PHONY: clean-repo clean-env clean-docker
 
 UV ?= uv
 DOCKER_COMPOSE ?= docker compose
@@ -182,11 +182,13 @@ lint: ## Run Ruff checks
 	@$(call log_test,lint)
 	$(UV) run --locked --group test ruff check .
 
-tests: ## Run integration tests scope
+tests: ## Run unit and integration test scope
+	@$(call log_test,unit-test)
+	$(UV) run --locked --group test pytest -m "not integration" -v
 	@$(call log_test,integration-test)
 	$(UV) run --locked --group test pytest -m "integration" -v
 
-ci: lock-check lint tests ## Run local CI checks
+checks: lock-check lint tests ## Run local checks
 
 dvc-pipeline: env ## Run the full DVC pipeline
 	@$(call log_test,dvc-pipeline)
@@ -244,39 +246,8 @@ mlflow-local: env sync ## Start a host-side MLflow server for local experiments
 		--port $(MLFLOW_HOST_PORT) \
 		--backend-store-uri $(MLFLOW_BACKEND_STORE)
 
-sim_api_loop: ## Simulate 10 API stop/start cycles with a 5-second interval
-	@$(call log_test,sim_api_loop)
-	for i in {1..10}; do \
-		echo "[restart $$i] stopping api-dev..."; \
-		$(DOCKER_COMPOSE) \
-			--env-file $(ENV_FILE) \
-			-f docker/dev/docker-compose.yaml \
-			-p trafic-cycliste-dev stop api-dev; \
-		sleep 2; \
-		echo "[restart $$i] starting api-dev..."; \
-		$(DOCKER_COMPOSE) \
-			--env-file $(ENV_FILE) \
-			-f docker/dev/docker-compose.yaml \
-			-p trafic-cycliste-dev up -d api-dev; \
-		echo "[restart $$i] done, waiting 5s..."; \
-		sleep 5; \
-	done
-	@echo "==> Simulation finished"
-
-sim_api_down: ## Simulate a temporary API outage for 2 minutes
-	@$(call log_test,sim_api_down)
-	$(DOCKER_COMPOSE) \
-		--env-file $(ENV_FILE) \
-		-f docker/dev/docker-compose.yaml \
-		-p trafic-cycliste-dev stop api-dev
-	sleep 120
-	$(DOCKER_COMPOSE) \
-		--env-file $(ENV_FILE) \
-		-f docker/dev/docker-compose.yaml \
-		-p trafic-cycliste-dev up -d api-dev
-
-sim_api_req: ## Simulate traffic on /predictions/{counter}
-	@$(call log_test,sim_api_req)
+sim-api-req: ## Simulate traffic on /predictions/{counter}
+	@$(call log_test,sim-api-req)
 	$(UV) run --locked --group test python tests/integration/test_load_api.py \
 		--url "$(URL)" \
 		--n $(N) \
@@ -287,23 +258,19 @@ sim_api_req: ## Simulate traffic on /predictions/{counter}
 		--offset $(OFFSET) \
 		$(if $(COUNTER_IDS),--counter-ids "$(COUNTER_IDS)",)
 
-clean: ## Remove local Python caches and test artifacts only
-	@$(call log_test,clean)
+clean-repo: ## Remove local Python caches and test artifacts only from the repository
+	@$(call log_test,clean-repo)
 	rm -rf .nox .pytest_cache .ruff_cache .coverage htmlcov build dist mlruns mlflow.db
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -prune -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
-clean_env: ## Remove the uv-managed virtual environment
-	@$(call log_test,clean_env)
+clean-env: ## Remove the uv-managed virtual environment
+	@$(call log_test,clean-env)
 	rm -rf .venv
 
-clean_full: ## Remove development Docker artifacts, including images and volumes
-	@$(call log_test,clean_full)
-	$(DOCKER_COMPOSE) \
-		--env-file $(ENV_FILE) \
-		-f docker/dev/docker-compose.yaml \
-		-p trafic-cycliste-dev \
-		--profile all down -v --rmi all
+clean-docker: ## Remove Docker artifacts, including system, images and volumes unused
+	@$(call log_test,clean-docker)
+	docker image prune -f
 	docker system prune -f
 	docker volume prune -f

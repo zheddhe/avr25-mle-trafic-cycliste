@@ -3,13 +3,13 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 .PHONY: prod-help prod-prepare-runtime prod-compose-config prod-build
-.PHONY: prod-start prod-stop prod-down prod-ps prod-logs
+.PHONY: prod-start prod-stop prod-down prod-ps prod-logs prod-clean
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
 PROD_COMPOSE_FILE ?= docker/prod/docker-compose.yaml
 PROD_PROFILE ?= ptf
-PROD_PROJECT_NAME ?= trafic-cycliste-prod
+PROD_PROJECT_NAME ?= bike-traffic-prod
 SERVICE ?= api-dev
 
 prod_log_target = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
@@ -51,7 +51,7 @@ prod-build: prod-prepare-runtime ## Build local production-like Docker images
 	$(prod_compose) --profile all build
 
 prod-start: prod-compose-config ## Start local production-like platform services
-	@$(call prod_log_target,prod-ops PROD_PROFILE=$(PROD_PROFILE))
+	@$(call prod_log_target,prod-start PROD_PROFILE=$(PROD_PROFILE))
 	$(prod_compose) --profile $(PROD_PROFILE) up -d
 
 prod-stop: ## Stop local production-like services for the selected profile
@@ -69,3 +69,7 @@ prod-ps: ## Show local production-like service status
 prod-logs: ## Follow logs for SERVICE in the local production-like runtime
 	@$(call prod_log_target,prod-logs SERVICE=$(SERVICE))
 	$(prod_compose) logs -f -t $(SERVICE)
+
+prod-clean: ## Remove Docker artifacts, including images and volumes
+	@$(call log_test,prod-clean)
+	$(prod_compose) --profile all down -v --rmi all

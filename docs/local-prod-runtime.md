@@ -41,24 +41,6 @@ make prod-start
 make prod-ps
 ```
 
-Equivalent raw Compose validation commands:
-
-```bash
-docker compose \
-    --env-file .env \
-    -f docker/dev/docker-compose.yaml \
-    -p trafic-cycliste-dev \
-    --profile all \
-    config
-
-docker compose \
-    --env-file .env \
-    -f docker/prod/docker-compose.yaml \
-    -p trafic-cycliste-prod \
-    --profile all \
-    config
-```
-
 ## Runtime workspace strategy
 
 The root `data`, `models`, and `logs` folders remain development, DVC, and

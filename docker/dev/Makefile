@@ -3,15 +3,16 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 .PHONY: dev-help dev-compose-config dev-build
-.PHONY: dev-start dev-stop dev-down dev-ps dev-logs
+.PHONY: dev-start dev-stop dev-down dev-ps dev-logs dev-clean
 .PHONY: dev-mlops-ingest dev-mlops-features dev-mlops-models
 .PHONY: dev-mlops-pipeline
+.PHONY: dev-sim-api-loop dev-sim-api-down 
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
 DEV_COMPOSE_FILE ?= docker/dev/docker-compose.yaml
 DEV_PROFILE ?= ptf
-DEV_PROJECT_NAME ?= trafic-cycliste-dev
+DEV_PROJECT_NAME ?= bike-traffic-dev
 SERVICE ?= api-dev
 
 dev_log_target = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
@@ -61,6 +62,10 @@ dev-logs: ## Follow logs for SERVICE in the development runtime
 	@$(call dev_log_target,dev-logs SERVICE=$(SERVICE))
 	$(dev_compose) logs -f -t $(SERVICE)
 
+dev-clean: ## Remove Docker artifacts, including images and volumes
+	@$(call log_test,dev-clean)
+	$(prod_compose) --profile all down -v --rmi all
+
 dev-mlops-ingest: ## Run the development ML ingestion container once
 	@$(call dev_log_target,dev-mlops-ingest)
 	@$(dev_check_env)
@@ -77,3 +82,22 @@ dev-mlops-models: ## Run the development ML model container once
 	$(dev_compose) --profile ml up ml-models-dev
 
 dev-mlops-pipeline: dev-mlops-ingest dev-mlops-features dev-mlops-models ## Run the full development ML pipeline
+
+dev-sim-api-loop: ## Simulate 10 API stop/start cycles with a 5-second interval
+	@$(call log_test,dev-sim-api-loop)
+	for i in {1..10}; do \
+		echo "[restart $$i] stopping api-dev..."; \
+		$(dev_compose) stop api-dev; \
+		sleep 2; \
+		echo "[restart $$i] starting api-dev..."; \
+		$(dev_compose) up -d api-dev; \
+		echo "[restart $$i] done, waiting 5s..."; \
+		sleep 5; \
+	done
+	@echo "==> Simulation finished"
+
+dev-sim-api-down: ## Simulate a temporary API outage for 2 minutes
+	@$(call log_test,dev-sim-api-down)
+	$(dev_compose) stop api-dev
+	sleep 120
+	$(dev_compose) up -d api-dev

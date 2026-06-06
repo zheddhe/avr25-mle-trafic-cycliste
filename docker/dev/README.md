@@ -16,12 +16,6 @@ Compose commands from the repository root. New operational targets should prefer
 make dev-compose-config
 ```
 
-Equivalent explicit command:
-
-```bash
-make -f docker/dev/Makefile dev-compose-config
-```
-
 ## Start
 
 ```bash

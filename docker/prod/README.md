@@ -13,12 +13,6 @@ Airflow ML jobs.
 make prod-compose-config
 ```
 
-Equivalent explicit command:
-
-```bash
-make -f docker/prod/Makefile prod-compose-config
-```
-
 ## Start
 
 ```bash
