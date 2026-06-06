@@ -29,24 +29,15 @@ The root Makefile now includes the dedicated runtime Makefiles:
 - `docker/dev/Makefile` for local development Compose operations;
 - `docker/prod/Makefile` for local production-like Compose operations.
 
-Root aliases keep existing habits stable while making the active runtime clear:
-
-```bash
-make compose-config     # delegates to make dev-compose-config
-make ops                # delegates to make dev-ops
-make build              # delegates to make dev-build
-make mlops-pipeline     # delegates to make dev-mlops-pipeline
-```
-
 Explicit runtime commands are preferred for cross-checks:
 
 ```bash
 make dev-compose-config
-make dev-ops
+make dev-start
 make dev-ps
 
 make prod-compose-config
-make prod-ops
+make prod-start
 make prod-ps
 ```
 
@@ -195,7 +186,6 @@ injection mechanism before running authenticated flows.
 Minimum validation for this story:
 
 ```bash
-make compose-config
 make dev-compose-config
 make prod-compose-config
 ```
@@ -203,8 +193,8 @@ make prod-compose-config
 Additional local smoke checks after startup:
 
 ```bash
-make dev-ops
-make prod-ops
+make dev-start
+make prod-start
 make prod-ps
 
 docker compose --env-file .env -f docker/prod/docker-compose.yaml \
