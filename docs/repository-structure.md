@@ -1,27 +1,24 @@
 # Repository structure and runtime ownership
 
 This document clarifies how contributors should read and modify the repository
-while Phase 6 keeps the current local development runtime stable and prepares a
-future local production-like runtime.
-
-The goal is documentation and repository hygiene only. This story does not move
-large folders, restructure packages, or implement `docker/prod`.
+now that the project has symmetric local Compose runtime entrypoints for
+development and local production-like validation.
 
 ## Guiding rules
 
-- Keep the current `docker/dev` Compose workflow stable.
 - Use `src/` for reusable application, API, ML, metrics, and pipeline logic.
 - Keep deployment-specific Airflow DAGs close to their runtime assets.
-- Treat `data`, `logs`, and `models` as runtime workspaces, not normal source.
+- Treat root `data`, `logs`, and `models` as development and DVC workspaces.
+- Treat `docker/prod/runtime` as an ignored production-like runtime workspace.
 - Keep local environment files out of Git.
-- Introduce `docker/prod` only in a later production-like runtime story.
+- Keep dev and prod Compose files structurally comparable.
 
 ## Top-level responsibilities
 
 | Path | Responsibility |
 | ---- | -------------- |
 | `README.md` | Project entry point and links to detailed documentation. |
-| `Makefile` | Local setup, validation, DVC, and Docker Compose operation targets. |
+| `Makefile` | Repository setup, validation, DVC, and runtime Makefile inclusion. |
 | `.env.template` | Versioned template for local runtime variables. |
 | `.env` | Local-only runtime values created from `.env.template`. |
 | `pyproject.toml` | Local Python dependency groups and tooling configuration. |
@@ -30,9 +27,9 @@ large folders, restructure packages, or implement `docker/prod`.
 | `tests/` | Unit, integration, and regression tests. |
 | `docker/` | Dockerfiles, runtime config, Airflow DAG wiring, and service helpers. |
 | `docs/` | Architecture, operations, dependency, runtime, and repository docs. |
-| `data/` | Data workspace shared with local containers and DVC stages. |
-| `models/` | Generated model and forecast artifact workspace. |
-| `logs/` | Generated local runtime logs. |
+| `data/` | Development/DVC data workspace and root source input. |
+| `models/` | Development/DVC model and forecast artifact workspace. |
+| `logs/` | Development local runtime logs. |
 | `references/` | Static diagrams, exports, and explanatory material. |
 | `.dvc/` | DVC metadata and ignored local DVC state. |
 | `dvc.yaml` | Versioned DVC pipeline definition. |
@@ -52,22 +49,24 @@ large folders, restructure packages, or implement `docker/prod`.
 | `tests/` | Yes | No | No | No | No | No |
 | `docker-compose.yaml` | Yes | No | No | No | No | No |
 | `docker/dev/` | Yes | No | Partly | No | No | No |
-| `docker/prod/` | Planned | No | Planned | No | No | No |
+| `docker/prod/` | Yes | No | Partly | No | No | No |
+| `docker/prod/runtime/` | No | Yes | Yes | No | Yes | No |
 | `docker/common/` | Optional | No | Optional | No | No | No |
 | `docs/` | Yes | No | No | No | No | No |
 | `data/raw/` | Metadata or placeholders | Restored locally | Yes | Yes | Partly | No |
-| `data/interim/` | Metadata only | Yes | Yes | Yes | Partly | No |
-| `data/processed/` | Metadata only | Yes | Yes | Yes | Partly | No |
-| `data/final/` | Metadata only | Yes | Yes | Yes | Partly | No |
-| `models/` | Metadata only | Yes | Yes | Yes | Partly | No |
-| `logs/` | No | Yes | Yes | No | Yes | No |
+| `data/interim/` | Metadata only | Yes | Dev only | Yes | Partly | No |
+| `data/processed/` | Metadata only | Yes | Dev only | Yes | Partly | No |
+| `data/final/` | Metadata only | Yes | Dev only | Yes | Partly | No |
+| `models/` | Metadata only | Yes | Dev only | Yes | Partly | No |
+| `logs/` | No | Yes | Dev only | No | Yes | No |
 | `references/` | Yes | No | No | No | No | Yes |
 | `.dvc/config` | Yes | No | No | No | No | No |
 | `.dvc/config.local` | No | No | No | No | Yes | No |
 | `.dvc/cache/` | No | Yes | No | Local cache | Yes | No |
 
-`Partly` means a path can contain tracked placeholders or DVC metadata while
-large data payloads and runtime outputs remain ignored, restored, or reproduced.
+`Partly` means a path can contain tracked placeholders or runtime configuration
+while large data payloads and runtime outputs remain ignored, restored, or
+reproduced.
 
 ## Source code and runtime integration
 
@@ -81,28 +80,32 @@ They are coupled to local Airflow variables, connections, DockerOperator
 settings, service names, mounted paths, and the current worker model. They should
 not be moved into `src/` unless a separate packaging decision is made.
 
-DAG placement may differ between `docker/dev` and a future `docker/prod` area if
-operators, worker pools, queue names, image names, or artifact handoff mechanisms
-diverge.
+DAG placement may differ between `docker/dev` and `docker/prod` if operators,
+worker pools, queue names, image names, or artifact handoff mechanisms diverge.
 
 ## Docker runtime layout
 
 ### `docker/dev`
 
-`docker/dev` is the current local development runtime. It optimizes for host
+`docker/dev` is the canonical local development runtime. It optimizes for host
 visibility, debugging, demos, and fast iteration.
 
-It may use broad bind mounts such as `./data`, `./logs`, and `./models`, expose
+It may use broad bind mounts such as root `data`, `logs`, and `models`, expose
 local UIs, and keep Airflow DAGs, config files, and helper scripts close to the
 Airflow runtime that consumes them.
 
+The root `docker-compose.yaml` is kept as a compatibility entrypoint and mirrors
+the development runtime structure.
+
 ### `docker/prod`
 
-`docker/prod` is the expected future location for local production-like Compose
-assets. It should optimize for least privilege, reduced host mounts, stable
-service discovery, explicit artifact handoff, and narrower runtime boundaries.
+`docker/prod` is the local production-like Compose runtime. It optimizes for
+least privilege, reduced host mounts, stable service discovery, explicit
+workspace ownership, and narrower runtime boundaries.
 
-It is intentionally not implemented by this story.
+It writes generated operational data under `docker/prod/runtime`, which is
+ignored by Git and not DVC-managed. The only current root data dependency is the
+required source CSV mounted read-only from `data/raw` into the ingestion service.
 
 ### `docker/common`
 
@@ -115,8 +118,11 @@ runtime-specific clarity is preferable to premature abstraction.
 | Document or area | Responsibility |
 | ---------------- | -------------- |
 | `docs/repository-structure.md` | Repository paths, runtime ownership, artifacts, and dev/prod split. |
+| `docs/local-prod-runtime.md` | Dev/prod Compose operation model and local-prod constraints. |
 | `docs/runtime-communication-matrix.md` | Current service-to-service communication and mount coupling. |
 | `docs/runtime-security-boundaries.md` | Runtime identities and boundary design for Phase 6 and Phase 7. |
+| `docs/local-prod-network-topology.md` | Target local production-like network topology. |
+| `docs/airflow-job-runner-strategy.md` | Target Airflow job-runner worker-pool strategy. |
 | `docs/ports-and-services.md` | Host-exposed ports, local URLs, and internal-only services. |
 | `docs/dependency-strategy.md` | uv, image, dependency, and healthcheck strategy. |
 | `references/` | Static diagrams, exports, and explanatory assets. |
@@ -141,22 +147,27 @@ Directory expectations:
 
 - `data/raw/` contains input data restored locally or tracked through DVC
   metadata when needed.
-- `data/interim/`, `data/processed/`, and `data/final/` are generated pipeline
-  outputs restored, reproduced, or mounted by local runtime services.
-- `models/` is generated by training and prediction workflows.
-- `logs/` is generated by local services and batch jobs.
+- `data/interim/`, `data/processed/`, and `data/final/` are development and DVC
+  outputs restored, reproduced, or mounted by the development runtime.
+- `models/` is generated by development training and prediction workflows.
+- `logs/` is generated by local development services and batch jobs.
+- `docker/prod/runtime/data`, `docker/prod/runtime/models`, and
+  `docker/prod/runtime/logs` are production-like runtime outputs and are not
+  DVC-managed.
 - `.dvc/config` is versioned; `.dvc/config.local`, `.dvc/cache/`, and
   `.dvc/tmp/` are local-only.
 
-The current development runtime intentionally mounts `./data`, `./logs`, and
-`./models` for local visibility. A future production-like runtime should replace
-that broad visibility with explicit data release and artifact handoff contracts.
+The development runtime intentionally mounts root `data`, `logs`, and `models`
+for local visibility. The local production-like runtime avoids writing to those
+root workspaces and uses `docker/prod/runtime` instead until a stronger artifact
+handoff contract is introduced.
 
 ## Scripts and helper ownership
 
 A top-level `scripts/` folder, if introduced, should contain developer or
 operational helpers only. Runtime-specific helpers should stay near the runtime
-that executes them, for example under `docker/dev/airflow/scripts/`.
+that executes them, for example under `docker/dev/airflow/scripts/` or
+`docker/prod/airflow/scripts/`.
 
 Reusable business logic should live in `src/` with tests rather than in shell
 scripts or deployment folders.
@@ -165,8 +176,10 @@ scripts or deployment folders.
 
 - `.env.template` is versioned and contains placeholders or safe defaults.
 - `.env`, `.env.local`, `.env.dagshub`, and `.dvc/config.local` are local-only.
-- Runtime config files under `docker/dev/airflow/config/` may contain local IDs
-  or placeholders, but should not contain personal runtime values.
+- `docker/prod/runtime/` is local-only and ignored except for its `.gitignore`.
+- Runtime config files under `docker/dev/airflow/config/` and
+  `docker/prod/airflow/config/` may contain local placeholders, but should not
+  contain personal runtime values.
 
 ## Ignore-rule review
 
@@ -176,21 +189,23 @@ The current ignore strategy is consistent with this structure:
   files, `logs`, `mlruns`, and `mlflow.db`;
 - `.dvc/.gitignore` ignores local DVC config, cache, and temporary state;
 - `data/*/.gitignore` and `models/.gitignore` keep generated scenario outputs
-  out of normal Git commits.
+  out of normal Git commits;
+- `docker/prod/runtime/.gitignore` keeps production-like runtime outputs out of
+  Git and DVC ownership.
 
 There is no root `.dockerignore` at the time of this review. Adding one should
 be validated separately because current image build contexts rely on repository
 root visibility.
-
-No ignore-rule change is required in this story.
 
 ## Migration strategy
 
 Follow-up work should use this sequence:
 
 1. Keep `docker/dev` as the stable local development runtime.
-2. Design `docker/prod` as a separate local production-like runtime area.
-3. Define artifact handoff before reducing `data`, `logs`, or `models` mounts.
-4. Decide whether Airflow DAGs need separate dev and prod placement.
-5. Introduce `docker/common` only when concrete shared assets justify it.
-6. Update diagrams and operations docs after the target runtime is validated.
+2. Use `docker/prod` as the local production-like validation runtime.
+3. Keep root `data`, `logs`, and `models` dev/DVC-owned.
+4. Keep production-like generated outputs under `docker/prod/runtime`.
+5. Define artifact handoff before reducing remaining local runtime mounts.
+6. Decide whether Airflow DAGs need separate dev and prod placement.
+7. Introduce `docker/common` only when concrete shared assets justify it.
+8. Update diagrams and operations docs after the target runtime is validated.
