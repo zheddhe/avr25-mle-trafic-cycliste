@@ -10,26 +10,32 @@ Airflow ML jobs.
 ## Validate
 
 ```bash
+make prod-compose-config
+```
+
+Equivalent explicit command:
+
+```bash
 make -f docker/prod/Makefile prod-compose-config
 ```
 
 ## Start
 
 ```bash
-make -f docker/prod/Makefile prod-ops
+make prod-start
 ```
 
 The default production-like profile is `ptf`. Override it when needed:
 
 ```bash
-make -f docker/prod/Makefile prod-ops PROD_PROFILE=monitoring
+make prod-start PROD_PROFILE=monitoring
 ```
 
 ## Stop
 
 ```bash
-make -f docker/prod/Makefile prod-stop
-make -f docker/prod/Makefile prod-down
+make prod-stop
+make prod-down
 ```
 
 ## Design constraints
@@ -38,8 +44,8 @@ make -f docker/prod/Makefile prod-down
 - Do not reuse the broad `mlops_net` development network.
 - Keep only local operator-facing services published to the host.
 - Prefer read-only runtime configuration mounts.
-- Keep temporary data, model, and log bind mounts documented until an artifact
-  handoff story replaces them.
+- Keep production-like generated artifacts under `docker/prod/runtime` until an
+  artifact handoff story replaces the temporary local workspace.
 - Run custom API and ML containers as a non-root application user.
 
 See `docs/local-prod-runtime.md` for the full operating model and limitations.
