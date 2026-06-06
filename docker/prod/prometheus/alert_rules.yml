@@ -1,0 +1,20 @@
+groups:
+  - name: api_alerts
+    rules:
+      - alert: ApiServiceDown
+        expr: up{instance=~".*api-dev.*"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "API service is down"
+          description: "The API service has been unreachable for 30 seconds."
+
+      - alert: ApiServiceUnstable
+        expr: changes(up{instance=~".*api-dev.*"}[5m]) > 3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API service is unstable"
+          description: "The API service changed availability too often."
