@@ -135,8 +135,11 @@ and PostgreSQL services stay internal in `docker/prod`.
 | Airflow DAG/config files | Prod | Read-only | DAG and config placement is explicit for this runtime. |
 | Monitoring configs | Prod | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
 
-The expected next hardening step is an explicit artifact handoff contract using
-object storage, release manifests, or a promotion service.
+The artifact handoff strategy is documented in
+[`docs/artifact-handoff-strategy.md`](artifact-handoff-strategy.md). It keeps
+`docker/prod/runtime` as the first local backend while requiring API, Airflow,
+and runner consumers to use promoted manifests instead of implicit file
+conventions.
 
 ## Runtime identities and exceptions
 
