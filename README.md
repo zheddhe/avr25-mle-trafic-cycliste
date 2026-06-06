@@ -258,7 +258,9 @@ Runtime security boundaries and identities are documented in
 Runtime image, healthcheck, and dependency policies are documented in
 [`docs/dependency-strategy.md`](docs/dependency-strategy.md). Dev/prod Compose
 operation and workspace ownership are documented in
-[`docs/local-prod-runtime.md`](docs/local-prod-runtime.md).
+[`docs/local-prod-runtime.md`](docs/local-prod-runtime.md). Hybrid artifact
+promotion and local/object-storage handoff rules are documented in
+[`docs/artifact-handoff-strategy.md`](docs/artifact-handoff-strategy.md).
 
 For one-off ML pipeline containers in the development runtime, use:
 
