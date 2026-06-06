@@ -1,7 +1,7 @@
 # Runtime ports and service exposure
 
-This document describes local Docker Compose host port conventions. It is a
-local runtime convention only and does not represent a production security model.
+This document describes local Docker Compose host port conventions. It is a local
+runtime convention only and does not represent a production security model.
 
 Docker services communicate through their internal container ports and Docker
 networks. The variables below only control ports published on the host machine.
@@ -96,10 +96,10 @@ The following service families are intentionally not published on host ports:
 | Prometheus, Pushgateway, Alertmanager, cAdvisor, MailHog | Prod-like | Internal support services; host UI kept dev-only except Grafana |
 
 The hybrid artifact handoff strategy is documented in
-[`docs/artifact-handoff-strategy.md`](artifact-handoff-strategy.md). In the
-production-like runtime, MinIO can be referenced by optional `s3://` object URIs
-inside promoted manifests without publishing MinIO API or console ports to the
-host.
+[`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
+In the production-like runtime, MinIO can be referenced by optional `s3://`
+object URIs inside promoted manifests without publishing MinIO API or console
+ports to the host.
 
 `airflow-redis` used to publish `6379` on the host. It is now internal-only
 because no documented local workflow requires direct host access to the broker.

@@ -20,23 +20,15 @@ Dependency changes are split into two categories:
 The local Python environment is managed by uv and is not used to package this
 repository as a distributable Python package.
 
-The dependency groups have the following responsibilities:
-
 | Group | Responsibility |
 | ----- | -------------- |
 | `app` | Local import and execution surface for API, DAGs, ML scripts, MLflow, metrics, and orchestration code. |
 | `test` | Test and lint harness. Includes `app`. |
 | `dev` | Development harness. Includes `test` and DVC tooling. |
 
-The local uv environment is primarily used for:
-
-- IDE and Pylance import resolution;
-- local tests and static checks;
-- local script execution;
-- host-side experimentation.
-
-It is not the production runtime source of truth. Runtime containers keep their
-own minimal requirements files or use upstream images.
+The local uv environment is primarily used for IDE import resolution, local tests
+and static checks, local script execution, and host-side experimentation. Runtime
+containers keep their own minimal requirements files or use upstream images.
 
 ## Custom Docker images
 
@@ -54,10 +46,6 @@ repository.
 | ML features | Prod-like | `docker/prod/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
 | ML models | Prod-like | `docker/prod/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
 
-The standard baseline for custom images is Python 3.12. A different Python
-version should only be used if a service-specific dependency constraint requires
-it and the reason is documented.
-
 The prod-like Dockerfiles currently reuse the same requirements files as the dev
 images to avoid dependency drift while the runtime boundary is being introduced.
 A future hardening story may split requirements only when the operational need is
@@ -68,10 +56,6 @@ clear and validated.
 Runtime image variables are centralized in `.env.template` and consumed by the
 Compose entrypoints with `:?required` guards. They keep readable version tags for
 local developer ergonomics and for tools such as the VS Code Docker extension.
-
-Validated content digests are documented here when known. A future production
-hardening phase may replace readable tags with direct `@sha256:` image
-references.
 
 | Variable | Runtime image | Validated digest or note |
 | -------- | ------------- | ------------------------ |
@@ -90,9 +74,6 @@ references.
 | `MAILHOG_IMAGE` | `mailhog/mailhog` | `sha256:8d76a3d4ffa32a3661311944007a415332c4bb855657f4f6c57996405c009bea` |
 
 ## Compose managed service families
-
-Some services are provided by upstream images and are not governed by the local
-uv environment.
 
 | Service family | Current image policy |
 | -------------- | -------------------- |
@@ -148,14 +129,9 @@ bulk maintenance action:
 Runtime-sensitive upgrades must be isolated and validated with a dedicated PR or
 explicit validation section.
 
-## MLflow compatibility
+## Compatibility checks
 
-The ML models container acts as an MLflow client and the MLflow server container
-acts as the tracking server. Their versions do not need to be byte-for-byte
-identical, but compatibility must be intentionally reviewed before changing either
-side.
-
-For this project, MLflow compatibility checks should include:
+MLflow compatibility checks should include:
 
 - successful experiment creation;
 - parameter and metric logging;
@@ -163,8 +139,6 @@ For this project, MLflow compatibility checks should include:
 - artifact retrieval from the configured backend;
 - local Docker Compose tracking through MinIO and PostgreSQL;
 - optional DagsHub remote tracking when credentials are available.
-
-## Monitoring compatibility
 
 Monitoring runtime changes should validate at least:
 
@@ -198,8 +172,7 @@ make dev-logs SERVICE=api-dev
 
 Then verify:
 
-- prediction files are produced under root `data/final` for the development
-  runtime;
+- prediction files are produced under root `data/final` for the development runtime;
 - production-like generated artifacts stay under `docker/prod/runtime`;
 - model artifacts are produced under root `models` for the development runtime;
 - MLflow runs contain expected parameters, metrics, and artifacts;
@@ -208,8 +181,7 @@ Then verify:
 - Prometheus targets are healthy and ML/API metrics are visible;
 - Grafana starts and loads the provisioned Prometheus datasource;
 - Grafana dashboards load with current Prometheus metrics;
-- Prometheus metrics are not pushed during local tests when
-  `DISABLE_METRICS_PUSH=1`;
+- Prometheus metrics are not pushed during local tests when `DISABLE_METRICS_PUSH=1`;
 - Docker Compose services start without dependency resolution errors.
 
 ## Upgrade policy

@@ -3,84 +3,74 @@
 [![CI Main](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions/workflows/ci_main.yml/badge.svg)](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions)
 [![CI Branch](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions/workflows/ci_branch.yml/badge.svg)](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions)
 
-> A machine learning pipeline to provide bike traffic prediction in Paris.  
-> Developed as part of the April 2025 Machine Learning Engineering (MLE) full training program.
+Machine learning and MLOps project for daily refreshed bike traffic prediction in Paris.
 
-## 🧭 Overview
+The project was developed as part of the April 2025 Machine Learning Engineering
+training program. It combines data processing, time-series modelling, API
+serving, orchestration, tracking, monitoring, and local production-like runtime
+validation.
 
-This project implements a complete machine learning and MLOps architecture in three main stages:
+## Project scope
 
-### 1. 📐 Data Product Management
+The MLOps architecture is organized around one business goal:
 
-- Define business goals
-- Scope the data lifecycle
+> an external user can access daily refreshed bike traffic predictions.
 
-### 2. 📊 Data Science
+The implementation currently provides:
 
-- Data collection and preprocessing
-- Model development and evaluation
-- Time series prediction
+- reproducible local Python tooling with uv;
+- DVC-oriented development data and model workspaces;
+- FastAPI prediction serving;
+- ML pipeline containers for ingestion, features, and modelling;
+- Airflow orchestration for multi-counter workflows;
+- MLflow tracking with PostgreSQL and MinIO;
+- Prometheus, Grafana, Pushgateway, Alertmanager, cAdvisor, and MailHog;
+- explicit `docker/dev` and `docker/prod` Compose runtimes.
 
-### 3. ⚙️ MLOps
+Architecture diagrams are available under `references/`.
 
-- Reproducibility and continuous testing
-- Containerization with microservices
-- Security awareness
-- Monitoring and orchestration
-- Scalability
-
-> The MLOps architecture we designed focuses on interactions between components
-> to achieve our main business case: an external user can access daily refreshed
-> bike traffic predictions.
->
-> [![MLOps Architecture](references/Architecture_MLOps.drawio.png)](https://drive.google.com/file/d/1aglCRFaxXRVEEEwtE5ePFnW-vjE8CYa-/view?usp=sharing)
-
-## 🧱 GitHub Structure
+## Repository layout
 
 ```text
 avr25-mle-trafic-cycliste/
-├── LICENSE             <- MIT license
-├── README.md           <- This top-level README for developers using this project
-├── Makefile            <- Repo setup plus dev/prod runtime target inclusion
-├── .env.template       <- Template for local secrets and runtime variables
-├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff configuration
-├── uv.lock             <- uv lockfile for the local development environment
-├── data                <- Development and DVC data workspace
-├── logs                <- Development runtime logs
-├── models              <- Development and DVC model artifacts
-├── references          <- Data dictionaries, manuals, other explanatory material
+├── README.md           <- Project entrypoint
+├── Makefile            <- Repository setup, validation, local execution, and runtime Make inclusion
+├── .env.template       <- Versioned local runtime variable template
+├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff config
+├── uv.lock             <- uv lockfile for reproducible local validation
+├── data/               <- Development and DVC data workspace
+├── logs/               <- Development runtime logs
+├── models/             <- Development and DVC model artifacts
+├── references/         <- Diagrams and external explanatory material
 ├── src/                <- API and ML pipeline source code
-├── docker/             <- Dev/prod container architecture, Airflow assets, configs, and scripts
-├── docs/               <- Architecture, operations, and dependency documentation
+├── docker/             <- Dev/prod container architecture and runtime assets
+├── docs/               <- Runtime, architecture, and Phase 8 design documentation
 └── tests/              <- Unit and integration tests
 ```
 
-Detailed path ownership, generated artifact expectations, DVC responsibilities,
-and the `docker/dev` versus `docker/prod` split are documented in
-[`docs/repository-structure.md`](docs/repository-structure.md).
+Start with [`docs/README.md`](docs/README.md) for the documentation map.
 
-## ⚙️ Installation
+## Documentation map
 
-The installation flow is split in two parts:
+The documentation is intentionally split into three groups:
 
-1. **Pre-clone bootstrap**, before this repository is available locally.
-2. **Post-clone setup**, once the Makefile is available and should be preferred.
+| Area | Folder | Purpose |
+| ---- | ------ | ------- |
+| Current runtime and operations | `docs/current-runtime-and-operations/` | How to run, validate, and reason about what exists on `main`. |
+| Architecture references | `docs/architecture-references/` | Runtime communication, security boundaries, and implemented network topology. |
+| Next Phase design | `docs/next-phase-design/` | Phase 8 target contracts and implementation guidance. |
 
-### 1. Pre-clone bootstrap
+Key entrypoints:
 
-These commands are intentionally shown explicitly because the repository and its
-Makefile are not available yet.
+- [`docs/current-runtime-and-operations/local-prod-runtime.md`](docs/current-runtime-and-operations/local-prod-runtime.md)
+- [`docs/current-runtime-and-operations/repository-structure.md`](docs/current-runtime-and-operations/repository-structure.md)
+- [`docs/architecture-references/runtime-communication-matrix.md`](docs/architecture-references/runtime-communication-matrix.md)
+- [`docs/next-phase-design/artifact-handoff-strategy.md`](docs/next-phase-design/artifact-handoff-strategy.md)
+- [`docs/next-phase-design/airflow-job-runner-strategy.md`](docs/next-phase-design/airflow-job-runner-strategy.md)
 
-#### Optional virtual machine creation on Windows
+## First setup
 
-```powershell
-Set-Service -Name WSLService -StartupType Automatic
-Start-Service -Name WSLService
-Get-Service WSLService
-wsl --install -d Ubuntu
-```
-
-#### Linux bootstrap dependencies
+From a fresh machine, install the bootstrap tools before cloning if needed:
 
 ```bash
 sudo apt update
@@ -90,87 +80,40 @@ pipx ensurepath
 pipx install uv
 ```
 
-#### GitHub SSH access and repository cloning
+Clone the repository:
 
 ```bash
-ssh-keygen -t ed25519 -C "your_email@example.com"
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
-cat ~/.ssh/id_ed25519.pub
-ssh -T git@github.com
-
 git clone git@github.com:zheddhe/avr25-mle-trafic-cycliste.git
 cd avr25-mle-trafic-cycliste
 ```
 
-### 2. Post-clone project setup
-
-From this point, prefer Makefile targets over raw commands.
+Create local configuration:
 
 ```bash
-make help
 make env
 ```
 
-`make env` creates `.env` from `.env.template` if it does not already exist.
-Replace every `[replace_me]` placeholder in `.env` before running targets that
+Then replace `[replace_me]` placeholders in `.env` before running targets that
 need secrets or user-specific values.
 
-The `.env` file is intentionally not tracked by Git because it may contain
-secrets. Docker Compose reads `.env` automatically from the repository root.
-Makefile targets that need repository secrets can load it internally.
-
-Configure local Git identity and DVC credentials with:
+Configure Git and local DVC credentials when needed:
 
 ```bash
 make git-setup
 make dvc-setup
 ```
 
-`make dvc-setup` does not run `dvc init` on this repository because DVC is
-already initialized and `.dvc/config` is versioned. It only writes local DVC S3
-credentials to `.dvc/config.local`, which is ignored by `.dvc/.gitignore`.
-
-Use this convenience target when both steps are needed:
+For a first Docker installation on Ubuntu:
 
 ```bash
-make repo-setup
+make docker-install
 ```
 
-The versioned DVC remote is defined in `.dvc/config`:
+Open a new shell, or run `newgrp docker`, after Docker installation.
 
-```ini
-[core]
-    remote = origin
-['remote "origin"']
-    url = s3://dvc
-    endpointurl = https://dagshub.com/zheddhe/avr25-mle-trafic-cycliste.s3
-```
+## Local validation
 
-The matching local `.env` variables are:
-
-```bash
-DAGSHUB_ACCESS_KEY_ID="[replace_me]"
-DAGSHUB_SECRET_ACCESS_KEY="[replace_me]"
-```
-
-## 🚀 DevOps setup
-
-This repository is not packaged as a Python distribution. The local Python
-environment is managed by uv and is used for developer tooling, static analysis,
-tests, Pylance import resolution, and local execution of the application code.
-
-### uv dependency groups
-
-| Group | Purpose |
-| :---- | :------ |
-| `app` | Local application surface: API, DAGs, ML scripts, MLflow, metrics, and orchestration imports. |
-| `test` | Test and lint harness. Includes `app`. |
-| `dev` | Full development harness. Includes `test` and DVC tooling. |
-
-### Local validation targets
-
-Prefer these Makefile targets for day-to-day local validation:
+Common repository-level checks:
 
 ```bash
 make sync
@@ -180,9 +123,7 @@ make tests
 make checks
 ```
 
-`make checks` runs all the checks : lock check, Ruff linting, and the tests target.
-
-Useful maintenance targets:
+Useful cleanup targets:
 
 ```bash
 make clean-repo
@@ -190,43 +131,19 @@ make clean-env
 make clean-docker
 ```
 
-## MLOps setup
+`clean-docker` is a global Docker garbage-collection helper. Runtime-scoped
+cleanup is handled by `dev-clean` and `prod-clean`.
 
-> This section covers the project setup as a containerized microservices architecture from an MLOps point of view as illustrated in the schemas below.
-> [![Docker Compose Overview](references/Docker_Compose_Overview.drawio.png)](https://drive.google.com/file/d/1-C0uL1whFDYXiqkDn20CK2AUF_-S3Ytp/view?usp=drive_link)
-> [![Docker Compose Monitoring](references/Docker_Compose_Monitoring.drawio.png)](https://drive.google.com/file/d/14DbcNiD3w7nrdkPiIymbMpX0-vzXRupW/view?usp=drive_link)
->
-> Create and customize your own `.env` file from `.env.template` before starting
-> the stack. The file contains Docker Compose variables, Makefile defaults,
-> local credentials, and optional remote MLflow/DagsHub settings.
+## Compose runtimes
 
-### 1. Docker engine setup
+The project has two explicit runtime entrypoints.
 
-For a first Docker installation on Ubuntu, use the dedicated Makefile target
-after cloning the repository:
-
-```bash
-make docker-install
-```
-
-This installs Docker Engine, the Compose plugin, and adds the current user to
-the `docker` group. Open a new shell, or run `newgrp docker`, before using Docker.
-Docker Desktop can also be used during development on Windows, macOS, or Linux.
-
-### 2. Docker Compose operation targets
-
-The project now has two explicit Compose runtime entrypoints:
-
-| Runtime | Compose file | Make targets | Goal |
-| ------- | ------------ | ------------ | ---- |
-| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debug visibility, root `data/logs/models`, current Airflow DockerOperator jobs. |
+| Runtime | Compose file | Make targets | Main purpose |
+| ------- | ------------ | ------------ | ------------ |
+| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debugging, broad host visibility, DVC/local workspaces, current Airflow DockerOperator jobs. |
 | Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, isolated runtime workspace. |
 
-The root `docker-compose.yaml` remains a compatibility entrypoint for existing
-manual `docker compose` commands from the repository root, but operational checks
-should prefer the explicit runtime targets.
-
-Development commands:
+Development runtime:
 
 ```bash
 make dev-compose-config
@@ -234,9 +151,10 @@ make dev-build
 make dev-start
 make dev-ps
 make dev-logs SERVICE=api-dev
+make dev-clean
 ```
 
-Local production-like commands:
+Local production-like runtime:
 
 ```bash
 make prod-compose-config
@@ -244,25 +162,15 @@ make prod-build
 make prod-start
 make prod-ps
 make prod-logs SERVICE=api-dev
+make prod-clean
 ```
 
-The default profile is `ptf`, which combines MLflow, Airflow, monitoring, and
-API services. Use `DEV_PROFILE=api` or `PROD_PROFILE=api` for targeted startup.
+The default profile is `ptf`, combining MLflow, Airflow, monitoring, and API
+services. Use `DEV_PROFILE=api` or `PROD_PROFILE=api` for targeted startup.
 
-Runtime host ports and local URLs are documented in
-[`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime
-service-to-service communication is documented in
-[`docs/runtime-communication-matrix.md`](docs/runtime-communication-matrix.md).
-Runtime security boundaries and identities are documented in
-[`docs/runtime-security-boundaries.md`](docs/runtime-security-boundaries.md).
-Runtime image, healthcheck, and dependency policies are documented in
-[`docs/dependency-strategy.md`](docs/dependency-strategy.md). Dev/prod Compose
-operation and workspace ownership are documented in
-[`docs/local-prod-runtime.md`](docs/local-prod-runtime.md). Hybrid artifact
-promotion and local/object-storage handoff rules are documented in
-[`docs/artifact-handoff-strategy.md`](docs/artifact-handoff-strategy.md).
+## ML pipeline and tracking
 
-For one-off ML pipeline containers in the development runtime, use:
+Development one-off pipeline containers:
 
 ```bash
 make dev-mlops-ingest
@@ -271,23 +179,14 @@ make dev-mlops-models
 make dev-mlops-pipeline
 ```
 
-### 3. 📈 Experience tracker
+Local host-side execution:
 
-We use **MLflow** to record **metrics**, **params**, and training/prediction
-**artifacts** (scikit-learn pipeline, autoregressive transformer, train/test
-splits, predictions, metrics, and hyperparameters).
+```bash
+make local-pipeline
+make mlflow-local
+```
 
-MLflow runtime variables are managed through three explicit presets in
-`.env.template`. Each preset maps to the same runtime target variables so the
-shell state is deterministic when switching context.
-
-| Mode | Target |
-| ---- | ------ |
-| `make env-compose` | Docker Compose MLflow server and MinIO artifact store. |
-| `make env-local` | Local backend, with MLflow and AWS variables unset. |
-| `make env-dagshub` | Remote DagsHub MLflow tracking, with S3/AWS variables unset. |
-
-For interactive shell use, evaluate the desired preset:
+MLflow environment presets:
 
 ```bash
 eval "$(make --no-print-directory env-compose)"
@@ -295,93 +194,46 @@ eval "$(make --no-print-directory env-local)"
 eval "$(make --no-print-directory env-dagshub)"
 ```
 
-Compose runtime services read their values from `.env`. Host-side debug targets
-use explicit Makefile presets where needed.
+## Orchestration and monitoring
 
-```bash
-make dev-start
-make dev-mlops-pipeline
-make local-pipeline
-make mlflow-local
-```
+Airflow orchestrates multi-counter workflows:
 
-### 4. 🧩 Multi-counter orchestration
+- `bike_traffic_init`: historical bootstrap per counter;
+- `bike_traffic_daily`: rolling increment after initialization;
+- `bike_traffic_orchestrator`: orchestrates configured counters.
 
-Airflow orchestrates the multi-counter ML pipeline. The Docker Compose service
-model is the source of truth for Airflow service wiring and runtime identities.
+Monitoring uses Prometheus, Grafana, Pushgateway, cAdvisor, Alertmanager, and
+MailHog. Batch metric push is controlled through `DISABLE_METRICS_PUSH` in
+`.env`.
 
-- `airflow-init` imports Airflow variables and connections from
-  `./docker/dev/airflow/config/`.
-- Runtime Airflow containers mount
-  `/opt/airflow/config/bike_dag_config.json` read-only from
-  `./docker/dev/airflow/config/bike_dag_config.json`.
-- Runtime secrets and IDs are provided through `.env.template`, including
-  `AIRFLOW_FERNET_KEY`, `AIRFLOW_API_AUTH_JWT_SECRET`, and
-  `AIRFLOW_POSTGRES_PASSWORD`.
+## Phase 8 direction
 
-DAG roles:
+Phases 6 and 7 established the documentation baseline, runtime boundaries, and
+`docker/dev` / `docker/prod` split.
 
-- `bike_traffic_init`: one-shot historical bootstrap per counter.
-- `bike_traffic_daily`: rolling increment assuming init has been done.
-- `bike_traffic_orchestrator`: triggers `init` then `daily` for each configured
-  counter.
+Phase 8 focuses on:
 
-### 5. 🧩 Monitoring and alerting
+- manifest-first hybrid artifact handoff;
+- typed pipeline job contracts;
+- internal `job-runner-api`;
+- runner-based execution for `docker/prod`;
+- production-like Airflow DAGs without Docker socket;
+- artifact-aware API serving;
+- production-like smoke validation;
+- runtime configuration and secret validation.
 
-The local monitoring stack uses Prometheus, Grafana, Pushgateway, cAdvisor,
-Alertmanager, and MailHog.
+See [`docs/next-phase-design/`](docs/next-phase-design/) for the design inputs.
 
-- Grafana dashboards use Prometheus metrics to monitor containers, restarts,
-  memory, CPU, and ML/API business metrics.
-- Pushgateway receives batch metrics from ML pipeline jobs when enabled.
-- Alertmanager can route local alerts to MailHog for development validation.
+## Collaboration
 
-The Pushgateway behavior is controlled by the `DISABLE_METRICS_PUSH` variable in
-`.env`:
+- Create one branch per story or bugfix.
+- Open a pull request against `main`.
+- Keep story-specific implementation notes in the pull request body.
+- Update the relevant documentation group when a target design becomes current state.
 
-```bash
-# Inhibit push metrics to Pushgateway: 1 = disabled, other values = enabled.
-DISABLE_METRICS_PUSH=1
-```
+Contributors:
 
-## 🤝 Team collaboration
-
-### 1. 📖 External Documentation
-
-- [Data exploration report](https://docs.google.com/spreadsheets/d/1tlDfN-8h9XTJAoKY0zAzmgrJqX90ZAeer48mFxZ_IQg/edit?usp=drive_link)
-- [Data processing and modeling report](https://docs.google.com/document/d/1vpRAWaIRX5tjIalEjGLTIjNqwEh1z1kXRZjJA9cgeWo/edit?usp=drive_link)
-
-### 2. 🗺️ GitHub Dashboards
-
-- [Roadmap](https://github.com/users/zheddhe/projects/6/views/2)
-- [Current Iteration](https://github.com/users/zheddhe/projects/6/views/3)
-
-### 3. 🔀 Branch Workflow
-
-Based on [jbenet/simple-git-branching-model.md](https://gist.github.com/jbenet/ee6c9ac48068889b0912) and illustrated below:
-
-- Create one branch per story/bugfix and merge via pull requests.
-- Tag stable versions ideally after each successful story/bugfix merge.
-
-[![Collaborative branch workflow](references/Branch_Workflow.drawio.png)](https://drive.google.com/file/d/1ctszHKpKDMjhGkC_sdQ3RD8RGAonb967/view?usp=drive_link)
-
-### 4. 🧪 Testing and Continuous Integration
-
-Tests are executed using `pytest`, including:
-
-- ✅ Unit tests for each service separately (`tests/unitary/`)  
-- ✅ Cross-service integration tests (`tests/integration/`)
-
-Continuous Integration workflows are handled with GitHub Actions:
-
-- `ci_main.yml`: runs on every push or pull request to the `main` branch  
-- `ci_branch.yml`: runs on every push to any other branch
-
-The CI environment uses uv dependency groups directly and runs Ruff before pytest.
-
-### 5. 👥 Contributors
-
-- Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
-- Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
-- Koladé Houessou – [@koladehouessou@gmail.com](mailto:koladehouessou@gmail.com)
-- Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofia.bouizzoul@gmail.com)
+- Rémy Canal
+- Elias Djouadi
+- Koladé Houessou
+- Sofia Bouizzoul

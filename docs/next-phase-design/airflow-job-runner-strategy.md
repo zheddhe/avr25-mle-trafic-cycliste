@@ -13,17 +13,15 @@ narrow job submission interface instead of container-runtime access.
 
 ## Scope and inputs
 
-The design uses these project inputs:
-
 | Source | Use in this design |
 | ------ | ------------------ |
-| `docs/README.md` | Documentation hierarchy and reading order. |
-| `docs/local-prod-runtime.md` | Current dev/prod runtime split and known production-like gaps. |
-| `docs/runtime-communication-matrix.md` | Current Docker socket execution path, service traffic, and Phase 8 additions. |
-| `docs/runtime-security-boundaries.md` | Runtime identities, Docker socket risk, non-root targets, and job execution boundary. |
-| `docs/local-prod-network-topology.md` | Implemented functional networks and the `pipeline_runtime_net` boundary. |
-| `docs/artifact-handoff-strategy.md` | Manifest-first artifact handoff contract used by runner outputs. |
-| `docs/repository-structure.md` | DAG placement rules and the `docker/dev` versus `docker/prod` split. |
+| [`../README.md`](../README.md) | Documentation hierarchy and reading order. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Current dev/prod runtime split and known production-like gaps. |
+| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Current Docker socket execution path, service traffic, and Phase 8 additions. |
+| [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, non-root targets, and job execution boundary. |
+| [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented functional networks and the `pipeline_runtime_net` boundary. |
+| [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) | Manifest-first artifact handoff contract used by runner outputs. |
+| [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | DAG placement rules and the `docker/dev` versus `docker/prod` split. |
 | `docker/dev/airflow/config/variables.json` | Current dev Docker image names, network, MLflow, MinIO, Pushgateway, UID, and GID variables. |
 | `docker/dev/airflow/config/connections.json` | Current Airflow HTTP connection to `api-dev`. |
 | `docker/dev/airflow/scripts/airflow-init.sh` | Current Airflow variable, connection, and pool bootstrap flow. |
@@ -102,11 +100,8 @@ available to the daemon.
 
 The development `airflow-worker` therefore mixes two responsibilities:
 
-- orchestration: schedule tasks, track dependencies, expose retries, and keep DAG
-  state;
+- orchestration: schedule tasks, track dependencies, expose retries, and keep DAG state;
 - execution control: create runtime containers with host-level Docker privileges.
-
-This coupling creates production-like concerns:
 
 | Concern | Development behavior | Production-like target behavior |
 | ------- | -------------------- | ------------------------------- |
@@ -221,9 +216,6 @@ existing `job_id` instead of duplicating work.
 
 ## Impact on Airflow DAGs
 
-The production-like DAG change should replace direct container creation with a
-narrow job client.
-
 Development DAG responsibility:
 
 - build container commands;
@@ -255,8 +247,7 @@ runtime that consumes it.
 2. For each configured counter, submit `ingest`.
 3. Submit `features` only after the matching ingest job succeeds.
 4. Submit `models` only after the matching feature job succeeds.
-5. Promote or refresh final prediction data only after required model outputs are
-   promoted.
+5. Promote or refresh final prediction data only after required model outputs are promoted.
 6. Fail the Airflow run if any required runner job fails.
 
 ### Daily DAG

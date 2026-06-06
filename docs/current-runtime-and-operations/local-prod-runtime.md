@@ -1,7 +1,7 @@
 # Local Compose runtimes
 
-This document describes the current local Docker Compose runtime model on
-`main` after Phases 6 and 7.
+This document describes the current local Docker Compose runtime model on `main`
+after Phases 6 and 7.
 
 The development runtime optimizes for debugging, host visibility, live-mounted
 runtime assets, and direct inspection of local service UIs. The production-like
@@ -9,7 +9,7 @@ runtime optimizes for stricter local operation, reduced host exposure, functiona
 networks, non-root custom application images, and explicit temporary exceptions.
 
 The Phase 7 implementation introduced the symmetric `docker/dev` and
-`docker/prod` layout. Phase 8 now focuses on replacing the remaining temporary
+`docker/prod` layout. Phase 8 focuses on replacing the remaining temporary
 exceptions with runner-based execution and manifest-based artifact handoff.
 
 ## When to use each runtime
@@ -21,23 +21,25 @@ exceptions with runner-based execution and manifest-based artifact handoff.
 | Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, least-privilege rehearsal, monitoring smoke tests, future runner integration. |
 
 Use `docker/dev` when iterating on DAGs, ML CLI containers, root-level DVC data,
-logs, or model outputs. Use `docker/prod` when validating service boundaries,
-reduced host exposure, non-root application containers, isolated runtime
-workspaces, and the future runner migration path.
+logs, or model outputs.
+
+Use `docker/prod` when validating service boundaries, reduced host exposure,
+non-root application containers, isolated runtime workspaces, and the future
+runner migration path.
 
 ## Related documentation
 
-Start from [`docs/README.md`](README.md) for the full documentation map.
+Start from [`../README.md`](../README.md) for the full documentation map.
 
 | Document | Role |
 | -------- | ---- |
 | [`repository-structure.md`](repository-structure.md) | Repository ownership, DVC boundaries, and runtime workspace ownership. |
 | [`ports-and-services.md`](ports-and-services.md) | Host exposure and internal-only services. |
-| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and Phase 8 additions. |
-| [`runtime-security-boundaries.md`](runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and security boundaries. |
-| [`local-prod-network-topology.md`](local-prod-network-topology.md) | Implemented production-like network topology. |
-| [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) | Phase 8 hybrid manifest-first artifact handoff contract. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Phase 8 runner-based Airflow execution target. |
+| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Current service traffic and Phase 8 additions. |
+| [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and security boundaries. |
+| [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented production-like network topology. |
+| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Phase 8 hybrid manifest-first artifact handoff contract. |
+| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Phase 8 runner-based Airflow execution target. |
 
 ## Operational commands
 
@@ -58,6 +60,13 @@ make prod-start
 make prod-ps
 ```
 
+Runtime-scoped cleanups:
+
+```bash
+make dev-clean
+make prod-clean
+```
+
 ## Runtime workspace strategy
 
 The root `data`, `models`, and `logs` folders are development, DVC, and
@@ -72,6 +81,7 @@ The local production-like runtime writes to ignored runtime workspaces under
 | `docker/prod/runtime/data` | Production-like generated data workspace. |
 | `docker/prod/runtime/models` | Production-like generated model workspace. |
 | `docker/prod/runtime/logs` | Production-like service and batch logs. |
+| `docker/prod/runtime/artifacts` | Phase 8 manifest-first artifact handoff root. |
 
 Only the required business source CSV is mounted from the root development/DVC
 workspace into the production-like ingestion service as read-only input:
@@ -85,12 +95,12 @@ to run without writing into root `data`, `models`, or `logs`.
 
 Phase 8 adds a manifest-first handoff contract. The manifest becomes the
 promotion authority and may reference local runtime paths or optional MinIO object
-URIs. See [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md).
+URIs. See [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
 
 ## Network topology
 
 The `docker/prod` Compose file implements the functional network design from
-[`local-prod-network-topology.md`](local-prod-network-topology.md).
+[`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md).
 
 | Network | Main responsibility |
 | ------- | ------------------- |
@@ -114,8 +124,7 @@ Current behavior:
 
 - Airflow services do not mount `/var/run/docker.sock` in `docker/prod`.
 - The Airflow worker does not run through the development Docker socket entrypoint.
-- Production-like Airflow config points to `pipeline_runtime_net`, not
-  `mlops_net`.
+- Production-like Airflow config points to `pipeline_runtime_net`, not `mlops_net`.
 - DockerOperator-based ML DAG execution remains available in `docker/dev` only.
 
 Remaining Phase 8 work:
@@ -127,7 +136,7 @@ Remaining Phase 8 work:
 4. Validate init and daily DAGs through the runner.
 
 The target design is documented in
-[`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md).
+[`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md).
 
 ## Host exposure
 
@@ -161,10 +170,10 @@ rules, not by making the root development workspace production-like.
 
 ## Runtime identities and exceptions
 
-Custom API and ML containers run as a non-root application user in
-`docker/prod`. They also drop Linux capabilities and use `no-new-privileges`.
-The prod Dockerfiles default this user to UID/GID `1000` to keep local bind-mount
-writes compatible with common developer hosts.
+Custom API and ML containers run as a non-root application user in `docker/prod`.
+They also drop Linux capabilities and use `no-new-privileges`. The prod
+Dockerfiles default this user to UID/GID `1000` to keep local bind-mount writes
+compatible with common developer hosts.
 
 Documented exceptions:
 

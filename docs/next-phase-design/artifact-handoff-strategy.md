@@ -5,7 +5,7 @@ manifest-first contract used to hand off generated artifacts between ML jobs,
 Airflow, the future job runner, MLflow, optional MinIO object storage, and the
 FastAPI prediction service.
 
-The goal is design only. This story does not implement Python manifest models,
+The goal is design only. This document does not implement Python manifest models,
 manifest writers, MinIO upload helpers, API serving changes, or ML job changes.
 Those changes are intentionally split into later Phase 8 stories.
 
@@ -28,22 +28,20 @@ stable contract that can later point to MinIO without changing every consumer.
 
 ## Scope and inputs
 
-The strategy builds on the current runtime documentation:
-
 | Source | Use in this design |
 | ------ | ------------------ |
-| `docs/local-prod-runtime.md` | Dev/prod runtime split and `docker/prod/runtime` ownership. |
-| `docs/repository-structure.md` | Repository path ownership and DVC boundary. |
-| `docs/ports-and-services.md` | Local host exposure and internal-only MinIO policy. |
-| `docs/dependency-strategy.md` | MLflow, MinIO, and runtime dependency compatibility. |
-| `docs/airflow-job-runner-strategy.md` | Target runner and worker-pool execution model. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Dev/prod runtime split and `docker/prod/runtime` ownership. |
+| [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | Repository path ownership and DVC boundary. |
+| [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Local host exposure and internal-only MinIO policy. |
+| [`../current-runtime-and-operations/dependency-strategy.md`](../current-runtime-and-operations/dependency-strategy.md) | MLflow, MinIO, and runtime dependency compatibility. |
+| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Target runner and worker-pool execution model. |
 | Phase 7 issue #57 | Production-like Compose runtime foundation. |
 
 ## Why manifest-first
 
 The current development flow can tolerate visible folders and manual inspection.
 The production-like runtime needs a stricter handoff because implicit filesystem
-conventions create MLOps risks:
+conventions create MLOps risks.
 
 | Risk | Manifest-first mitigation |
 | ---- | ------------------------- |
@@ -65,8 +63,6 @@ valid for local experiments, DVC reproduction, notebook exploration, and the
 `docker/prod/runtime` is the local production-like runtime workspace. It is
 ignored by Git, not DVC-managed, and owns generated artifacts produced while
 validating `docker/prod`.
-
-Consumers must not mix those boundaries:
 
 | Workspace | Owner | Main use | Promotion role |
 | --------- | ----- | -------- | -------------- |
@@ -98,14 +94,10 @@ operational observation, not a replacement for `promoted`.
 A manifest is created by the component that has the best evidence about the
 artifact:
 
-- ML prediction jobs know the output path, counter, dataset, model, metrics, and
-  checksum evidence.
-- A runner or promotion helper can validate the manifest and update the stable
-  promoted pointer.
-- Airflow orchestrates job order and records the manifest reference, but should
-  not fabricate artifact metadata that belongs to ML code.
-- The API reads the promoted manifest and must not guess file paths when the
-  manifest is available.
+- ML prediction jobs know the output path, counter, dataset, model, metrics, and checksum evidence.
+- A runner or promotion helper can validate the manifest and update the stable promoted pointer.
+- Airflow orchestrates job order and records the manifest reference, but should not fabricate artifact metadata that belongs to ML code.
+- The API reads the promoted manifest and must not guess file paths when the manifest is available.
 
 The first implementation should write a real `current.json` file instead of a
 symlink. This is more portable across Windows, WSL, Docker bind mounts, and CI
@@ -114,7 +106,8 @@ runners.
 ## Local backend conventions
 
 Local production-like artifacts should stay under `docker/prod/runtime`.
-Recommended paths are:
+
+Recommended paths:
 
 ```text
 docker/prod/runtime/artifacts/
@@ -134,18 +127,7 @@ docker/prod/runtime/artifacts/
             └── model.joblib
 ```
 
-The exact file format can evolve by artifact type. The manifest must stay stable
-enough for consumers to resolve the current artifact without scanning folders.
-
-Local paths stored in manifests should be repository-relative when possible, for
-example:
-
-```text
-docker/prod/runtime/artifacts/data/final/Sebastopol_N-S_airflow/2026-06-06T140000Z-sebastopol-ns/predictions.parquet
-```
-
-Absolute host paths should be avoided in versioned docs and manifests because
-they are not portable across developer machines, WSL, CI, or future runners.
+Local paths stored in manifests should be repository-relative when possible.
 
 ## Optional MinIO object URI conventions
 
@@ -159,19 +141,10 @@ Recommended URI shape:
 s3://<bucket>/artifacts/<artifact_type>/<counter_id>/<run_id>/<file_name>
 ```
 
-Example:
-
-```text
-s3://mlflow/artifacts/predictions/Sebastopol_N-S_airflow/2026-06-06T140000Z-sebastopol-ns/predictions.parquet
-```
-
-The URI records object identity. Credentials, endpoint URLs, and access keys must
-remain runtime configuration and must not be embedded in manifests.
+Credentials, endpoint URLs, and access keys must remain runtime configuration and
+must not be embedded in manifests.
 
 ## Identifier conventions
-
-Identifiers must be deterministic enough for audit and safe enough for file paths
-or object keys.
 
 | Field | Convention | Example |
 | ----- | ---------- | ------- |
@@ -291,7 +264,7 @@ Known Phase 8 consumers are:
 - #72: add production-like smoke validation;
 - #73: harden runtime configuration and secrets validation.
 
-## Out of scope for this story
+## Out of scope for this design
 
 - Python Pydantic schemas.
 - Manifest store implementation.

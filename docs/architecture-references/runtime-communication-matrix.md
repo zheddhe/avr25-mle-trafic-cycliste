@@ -11,8 +11,9 @@ The current runtime has two Compose views:
 | Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces. |
 
 Host port ranges and local URLs are documented in
-[`ports-and-services.md`](ports-and-services.md). Runtime ownership and remaining
-exceptions are documented in [`local-prod-runtime.md`](local-prod-runtime.md).
+[`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
+Runtime ownership and remaining exceptions are documented in
+[`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md).
 
 ## Development communication model
 
@@ -81,7 +82,8 @@ publishes only operator-facing services by default.
 | MailHog | Host exposed | Internal-only |
 | PostgreSQL and Redis | Internal-only | Internal-only |
 
-See [`ports-and-services.md`](ports-and-services.md) for exact ports and URLs.
+See [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md)
+for exact ports and URLs.
 
 ## Shared mount coupling
 
@@ -101,8 +103,8 @@ Phase 8 introduces explicit contracts instead of adding broad communication path
 
 | Addition | Expected communication | Reference |
 | -------- | ---------------------- | --------- |
-| Artifact manifests | ML jobs write manifests; API and runner read promoted manifests. | [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) |
-| Job contracts | Airflow and runner exchange typed job payloads. | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Artifact manifests | ML jobs write manifests; API and runner read promoted manifests. | [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) |
+| Job contracts | Airflow and runner exchange typed job payloads. | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) |
 | `job-runner-api` | Airflow submits jobs through `pipeline_runtime_net`; service is internal-only. | #68 |
 | Runner execution | Runner executes typed jobs and returns manifest references. | #69 |
 | Prod Airflow DAG | Airflow observes runner job states instead of creating containers. | #70 |
@@ -115,6 +117,7 @@ Phase 8 introduces explicit contracts instead of adding broad communication path
 - Do not copy the broad `mlops_net` development model into `docker/prod`.
 - Prefer explicit functional networks over pairwise networks unless sensitive
   state or privileged control surfaces require isolation.
-- Keep host exposure in `ports-and-services.md` synchronized with Compose.
+- Keep host exposure in `../current-runtime-and-operations/ports-and-services.md`
+  synchronized with Compose.
 - Keep artifact handoff changes aligned with
-  [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md).
+  [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).

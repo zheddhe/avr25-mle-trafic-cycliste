@@ -1,9 +1,9 @@
 # Local production-like network topology
 
-This document describes the implemented `docker/prod` functional network
-topology after Phase 7. It started as the Phase 7 design artifact for issue #55
-and now acts as the reference for current production-like Compose service
-placement and for Phase 8 service additions.
+This document describes the implemented `docker/prod` functional network topology
+after Phase 7. It started as the Phase 7 design artifact for issue #55 and now
+acts as the reference for current production-like Compose service placement and
+for Phase 8 service additions.
 
 `docker/dev` intentionally keeps its broader development-oriented network model.
 `docker/prod` uses bounded functional domains instead of the broad development
@@ -13,11 +13,11 @@ placement and for Phase 8 service additions.
 
 | Document | Role |
 | -------- | ---- |
-| [`local-prod-runtime.md`](local-prod-runtime.md) | Operational runtime guide and workspace ownership. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Operational runtime guide and workspace ownership. |
 | [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and Phase 8 additions. |
 | [`runtime-security-boundaries.md`](runtime-security-boundaries.md) | Runtime identities and security boundaries. |
-| [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) | Phase 8 artifact handoff contract. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Phase 8 runner execution target. |
+| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Phase 8 artifact handoff contract. |
+| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Phase 8 runner execution target. |
 
 ## Design principle
 
@@ -29,8 +29,7 @@ A network is justified when at least one of these statements is true:
 
 - it protects stateful backend services such as PostgreSQL, Redis, or MinIO;
 - it represents a stable many-to-one communication pattern such as monitoring;
-- it separates local-development support services from production-like runtime
-  services;
+- it separates local-development support services from production-like runtime services;
 - it carries privileged or controlled job-execution concerns such as the future
   runner API and typed workers.
 
@@ -112,7 +111,8 @@ Phase 8 should place new services according to these rules:
 - Typed ML workers should attach only to the networks required for their stage.
 - Model workers may attach to `tracking_client_net`; ingest and feature workers
   should not receive MLflow or MinIO access unless they need it.
-- Artifact handoff should follow [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md)
+- Artifact handoff should follow
+  [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md)
   before introducing any new network.
 
 ## Services that should not share a broad network
