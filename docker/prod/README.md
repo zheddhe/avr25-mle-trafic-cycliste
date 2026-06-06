@@ -2,10 +2,10 @@
 
 This folder contains the local production-like runtime introduced for Phase 7.
 
-It is intentionally separate from the root `docker-compose.yaml` and the
-`docker/dev` assets. The development runtime remains the correct target for
-interactive debugging, broad host visibility, and current DockerOperator-based
-Airflow ML jobs.
+It is intentionally separate from the deprecated root `docker-compose.yaml`
+compatibility entrypoint and the `docker/dev` assets. The development runtime
+remains the correct target for interactive debugging, broad host visibility, and
+current DockerOperator-based Airflow ML jobs.
 
 ## Validate
 
@@ -38,8 +38,9 @@ make prod-down
 - Do not reuse the broad `mlops_net` development network.
 - Keep only local operator-facing services published to the host.
 - Prefer read-only runtime configuration mounts.
-- Keep production-like generated artifacts under `docker/prod/runtime` until an
-  artifact handoff story replaces the temporary local workspace.
+- Keep production-like generated artifacts under `docker/prod/runtime` and use
+  the Phase 8 manifest handoff contract for promoted artifacts.
 - Run custom API and ML containers as a non-root application user.
 
-See `docs/local-prod-runtime.md` for the full operating model and limitations.
+See `docs/current-runtime-and-operations/local-prod-runtime.md` for the full
+operating model and limitations.

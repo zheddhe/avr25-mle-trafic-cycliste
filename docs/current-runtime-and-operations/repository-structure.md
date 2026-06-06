@@ -95,8 +95,8 @@ It may use broad bind mounts such as root `data`, `logs`, and `models`, expose
 local UIs, and keep Airflow DAGs, config files, and helper scripts close to the
 Airflow runtime that consumes them.
 
-The root `docker-compose.yaml` is kept as a compatibility entrypoint and mirrors
-the development runtime structure.
+The root `docker-compose.yaml` is kept as a deprecated compatibility entrypoint
+and mirrors the development runtime structure.
 
 ### `docker/prod`
 
@@ -190,13 +190,16 @@ visibility.
 
 ## Migration strategy
 
-Follow-up work should use this sequence:
+Phase 7 completed the structural runtime split:
 
-1. Keep `docker/dev` as the stable local development runtime.
-2. Use `docker/prod` as the local production-like validation runtime.
-3. Keep root `data`, `logs`, and `models` dev/DVC-owned.
-4. Keep production-like generated outputs under `docker/prod/runtime`.
-5. Use the artifact handoff contract before reducing remaining local runtime mounts.
-6. Decide whether Airflow DAGs need separate dev and prod placement.
-7. Introduce `docker/common` only when concrete shared assets justify it.
-8. Update diagrams and operations docs after the target runtime is validated.
+1. `docker/dev` is the stable local development runtime.
+2. `docker/prod` is the local production-like validation runtime.
+3. Root `data`, `logs`, and `models` remain dev/DVC-owned.
+4. Production-like generated outputs stay under `docker/prod/runtime`.
+
+Follow-up work should continue with:
+
+1. Use the artifact handoff contract before reducing remaining local runtime mounts.
+2. Decide whether Airflow DAGs need separate dev and prod placement.
+3. Introduce `docker/common` only when concrete shared assets justify it.
+4. Update diagrams and operations docs after the target runtime is validated.

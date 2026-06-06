@@ -18,14 +18,14 @@ exceptions with runner-based execution and manifest-based artifact handoff.
 | Runtime | Entry point | Primary use |
 | ------- | ----------- | ----------- |
 | Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
-| Compatibility dev entrypoint | `docker-compose.yaml` | Existing habits and raw `docker compose` commands from the repository root. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, least-privilege rehearsal, monitoring smoke tests, future runner integration. |
+| Deprecated compatibility dev entrypoint | `docker-compose.yaml` | Existing root Compose habits only; prefer `docker/dev/docker-compose.yaml` for new commands. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, least-privilege rehearsal, monitoring smoke tests, and Phase 8 runner integration (#67-#70). |
 
 Use `docker/dev` when iterating on DAGs, ML CLI containers, root-level DVC data,
 logs, or model outputs.
 
 Use `docker/prod` when validating service boundaries, reduced host exposure,
-non-root application containers, isolated runtime workspaces, and the future
+non-root application containers, isolated runtime workspaces, and the Phase 8
 runner migration path.
 
 ## Related documentation
