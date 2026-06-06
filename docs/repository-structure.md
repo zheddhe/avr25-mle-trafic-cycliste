@@ -10,6 +10,7 @@ development and local production-like validation.
 - Keep deployment-specific Airflow DAGs close to their runtime assets.
 - Treat root `data`, `logs`, and `models` as development and DVC workspaces.
 - Treat `docker/prod/runtime` as an ignored production-like runtime workspace.
+- Use promoted artifact manifests as the runtime handoff contract.
 - Keep local environment files out of Git.
 - Keep dev and prod Compose files structurally comparable.
 
@@ -51,6 +52,7 @@ development and local production-like validation.
 | `docker/dev/` | Yes | No | Partly | No | No | No |
 | `docker/prod/` | Yes | No | Partly | No | No | No |
 | `docker/prod/runtime/` | No | Yes | Yes | No | Yes | No |
+| `docker/prod/runtime/artifacts/` | No | Yes | Yes | No | Yes | No |
 | `docker/common/` | Optional | No | Optional | No | No | No |
 | `docs/` | Yes | No | No | No | No | No |
 | `data/raw/` | Metadata or placeholders | Restored locally | Yes | Yes | Partly | No |
@@ -107,6 +109,11 @@ It writes generated operational data under `docker/prod/runtime`, which is
 ignored by Git and not DVC-managed. The only current root data dependency is the
 required source CSV mounted read-only from `data/raw` into the ingestion service.
 
+Runtime artifact promotion is defined by
+[`docs/artifact-handoff-strategy.md`](artifact-handoff-strategy.md). Consumers in
+`docker/prod` should use promoted manifests rather than scanning runtime folders
+for the newest files.
+
 ### `docker/common`
 
 `docker/common` may be introduced only when dev and prod runtimes share enough
@@ -119,6 +126,7 @@ runtime-specific clarity is preferable to premature abstraction.
 | ---------------- | -------------- |
 | `docs/repository-structure.md` | Repository paths, runtime ownership, artifacts, and dev/prod split. |
 | `docs/local-prod-runtime.md` | Dev/prod Compose operation model and local-prod constraints. |
+| `docs/artifact-handoff-strategy.md` | Manifest-first artifact promotion and local/object storage handoff contract. |
 | `docs/runtime-communication-matrix.md` | Current service-to-service communication and mount coupling. |
 | `docs/runtime-security-boundaries.md` | Runtime identities and boundary design for Phase 6 and Phase 7. |
 | `docs/local-prod-network-topology.md` | Target local production-like network topology. |
@@ -154,13 +162,15 @@ Directory expectations:
 - `docker/prod/runtime/data`, `docker/prod/runtime/models`, and
   `docker/prod/runtime/logs` are production-like runtime outputs and are not
   DVC-managed.
+- `docker/prod/runtime/artifacts` is the expected local root for promoted
+  manifest files and artifact payloads in the first manifest-first runtime.
 - `.dvc/config` is versioned; `.dvc/config.local`, `.dvc/cache/`, and
   `.dvc/tmp/` are local-only.
 
 The development runtime intentionally mounts root `data`, `logs`, and `models`
 for local visibility. The local production-like runtime avoids writing to those
-root workspaces and uses `docker/prod/runtime` instead until a stronger artifact
-handoff contract is introduced.
+root workspaces and uses `docker/prod/runtime` plus promoted manifests instead of
+implicit filesystem discovery.
 
 ## Scripts and helper ownership
 
@@ -205,7 +215,8 @@ Follow-up work should use this sequence:
 2. Use `docker/prod` as the local production-like validation runtime.
 3. Keep root `data`, `logs`, and `models` dev/DVC-owned.
 4. Keep production-like generated outputs under `docker/prod/runtime`.
-5. Define artifact handoff before reducing remaining local runtime mounts.
+5. Use the artifact handoff contract before reducing remaining local runtime
+   mounts.
 6. Decide whether Airflow DAGs need separate dev and prod placement.
 7. Introduce `docker/common` only when concrete shared assets justify it.
 8. Update diagrams and operations docs after the target runtime is validated.
