@@ -7,10 +7,11 @@ and the prediction API. It stays independent from runtime framework internals.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -91,7 +92,7 @@ class ArtifactSource(StrictArtifactModel):
     )
 
     @model_validator(mode="after")
-    def validate_lineage_metadata(self) -> "ArtifactSource":
+    def validate_lineage_metadata(self) -> ArtifactSource:
         """Require at least one lineage reference in the source block."""
 
         values = (self.raw_file_name, self.dataset_version, self.model_version)
@@ -176,7 +177,7 @@ class ArtifactStorage(StrictArtifactModel):
         return value.lower()
 
     @model_validator(mode="after")
-    def validate_backend_references(self) -> "ArtifactStorage":
+    def validate_backend_references(self) -> ArtifactStorage:
         """Ensure every backend has the references it needs."""
 
         if self.primary_backend == StorageBackend.LOCAL and self.local_path is None:

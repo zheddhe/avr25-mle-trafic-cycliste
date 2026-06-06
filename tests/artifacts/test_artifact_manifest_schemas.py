@@ -9,7 +9,6 @@ from pydantic import ValidationError
 
 from artifacts.schemas import ArtifactManifest, StorageBackend
 
-
 VALID_CHECKSUM = "a" * 64
 
 
