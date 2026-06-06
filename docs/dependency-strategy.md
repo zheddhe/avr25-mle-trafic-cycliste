@@ -43,23 +43,31 @@ own minimal requirements files or use upstream images.
 Custom images are the runtime source of truth for services built by this
 repository.
 
-| Service image | Dockerfile | Requirements file | Python baseline |
-| ------------- | ---------- | ----------------- | --------------- |
-| API | `docker/dev/api/Dockerfile` | `docker/dev/api/requirements.txt` | Python 3.12 |
-| ML ingest | `docker/dev/ml/ingest/Dockerfile` | `docker/dev/ml/ingest/requirements.txt` | Python 3.12 |
-| ML features | `docker/dev/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
-| ML models | `docker/dev/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
+| Service image | Runtime | Dockerfile | Requirements file | Python baseline |
+| ------------- | ------- | ---------- | ----------------- | --------------- |
+| API | Dev | `docker/dev/api/Dockerfile` | `docker/dev/api/requirements.txt` | Python 3.12 |
+| ML ingest | Dev | `docker/dev/ml/ingest/Dockerfile` | `docker/dev/ml/ingest/requirements.txt` | Python 3.12 |
+| ML features | Dev | `docker/dev/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
+| ML models | Dev | `docker/dev/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
+| API | Prod-like | `docker/prod/api/Dockerfile` | `docker/dev/api/requirements.txt` | Python 3.12 |
+| ML ingest | Prod-like | `docker/prod/ml/ingest/Dockerfile` | `docker/dev/ml/ingest/requirements.txt` | Python 3.12 |
+| ML features | Prod-like | `docker/prod/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
+| ML models | Prod-like | `docker/prod/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
 
 The standard baseline for custom images is Python 3.12. A different Python
 version should only be used if a service-specific dependency constraint requires
 it and the reason is documented.
 
+The prod-like Dockerfiles currently reuse the same requirements files as the dev
+images to avoid dependency drift while the runtime boundary is being introduced.
+A future hardening story may split requirements only when the operational need is
+clear and validated.
+
 ## Compose runtime image policy
 
-Runtime image variables are centralized in `.env.template` and consumed by
-`docker-compose.yaml` with `:?required` guards. They keep readable version tags
-for local developer ergonomics and for tools such as the VS Code Docker
-extension.
+Runtime image variables are centralized in `.env.template` and consumed by the
+Compose entrypoints with `:?required` guards. They keep readable version tags for
+local developer ergonomics and for tools such as the VS Code Docker extension.
 
 Validated content digests are documented here when known. A future production
 hardening phase may replace readable tags with direct `@sha256:` image
@@ -88,10 +96,10 @@ uv environment.
 
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Orchestration Services | Uses `Airflow`, `PostgreSQL`, `Redis` images |
-| Experimentation Services | Uses `MLFlow`, `PostgreSQL`, `Minio`, `MC` images |
-| Monitoring Services | Uses `Prometheus`, `Grafana`, `Pushgateway`, `Alertmanager`, `cAdvisor` images |
-| Development helpers | Uses `MailHog` images |
+| Orchestration services | Uses Airflow, PostgreSQL, and Redis images |
+| Experimentation services | Uses MLflow, PostgreSQL, MinIO, and MC images |
+| Monitoring services | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor images |
+| Development helpers | Uses MailHog images |
 
 ## Healthchecks
 
@@ -101,6 +109,7 @@ it is part of the selected image.
 
 | Service | Healthcheck strategy |
 | ------- | -------------------- |
+| `api-dev` | Python `urllib` read check on `/docs`. |
 | `mlflow-postgres` | `pg_isready` against the MLflow metadata database. |
 | `mlflow-minio` | curl check on `/minio/health/live`. |
 | `mlflow-server` | Python `urllib` read check on `/health`. |
@@ -109,15 +118,15 @@ it is part of the selected image.
 | `airflow-api-server` | curl check on `/api/v2/monitor/health`. |
 | `airflow-scheduler` | `airflow jobs check --job-type SchedulerJob`. |
 | `airflow-dag-processor` | `airflow jobs check --job-type DagProcessorJob`. |
-| `airflow-worker` | Celery ping executed as the `airflow` user because the worker container entrypoint starts as root only to adjust Docker socket access. |
+| `airflow-worker` | Celery ping. The dev worker executes the check as the `airflow` user because its entrypoint starts as root only to adjust Docker socket access. |
 | `airflow-triggerer` | `airflow jobs check --job-type TriggererJob`. |
-| `airflow-flower` | curl check on `/`. |
+| `airflow-flower` | curl check on `/` in the dev runtime. |
 | `monitoring-prometheus` | wget check on `/-/ready`. |
 | `monitoring-grafana` | wget check on `/api/health`. |
 | `monitoring-pushgateway` | wget check on `/-/ready`. |
 | `monitoring-alertmanager` | wget check on `/-/ready`. |
 | `monitoring-cadvisor` | wget check on `/healthz`. |
-| `mailhog` | curl check on `/`. |
+| `monitoring-mailhog` | wget check on `/`. |
 
 ## Runtime-sensitive dependencies
 
@@ -176,18 +185,23 @@ Before merging a runtime dependency upgrade, validate at least:
 ```bash
 make sync
 make lint
-make test
-make compose-config
-make build
-make start PROFILE=ptf
-make mlops-pipeline
-make logs SERVICE=api-dev
+make tests
+make dev-compose-config
+make prod-compose-config
+make dev-build
+make prod-build
+make dev-start DEV_PROFILE=ptf
+make prod-start PROD_PROFILE=ptf
+make dev-mlops-pipeline
+make dev-logs SERVICE=api-dev
 ```
 
 Then verify:
 
-- prediction files are produced under `data/final`;
-- model artifacts are produced under `models`;
+- prediction files are produced under root `data/final` for the development
+  runtime;
+- production-like generated artifacts stay under `docker/prod/runtime`;
+- model artifacts are produced under root `models` for the development runtime;
 - MLflow runs contain expected parameters, metrics, and artifacts;
 - API `/docs` is reachable;
 - API prediction endpoints still return the expected schema;

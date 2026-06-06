@@ -1,35 +1,51 @@
 # ========================
-# LOCAL DEVELOPMENT RUNTIME
+# LOCAL PRODUCTION-LIKE RUNTIME
 # ========================
-# Compatibility entrypoint. The canonical development runtime now lives in
-# docker/dev/docker-compose.yaml and keeps the same services and behavior.
+# This runtime is intentionally separate from the root development runtime.
+# It follows docs/local-prod-network-topology.md and keeps the current runner
+# gap explicit in docs/local-prod-runtime.md.
 
 volumes:
-  mlflow-postgres-db:
-    name: mlflow-postgres-db
-  mlflow-minio-data:
-    name: mlflow-minio-data
-  airflow-postgres-db:
-    name: airflow-postgres-db
-  airflow-redis-data:
-    name: airflow-redis-data
-  monitoring-prometheus-data:
-    name: monitoring-prometheus-data
-  monitoring-grafana-data:
-    name: monitoring-grafana-data
-  monitoring-alertmanager-data:
-    name: monitoring-alertmanager-data
+  prod-mlflow-postgres-db:
+    name: prod-mlflow-postgres-db
+  prod-mlflow-minio-data:
+    name: prod-mlflow-minio-data
+  prod-airflow-postgres-db:
+    name: prod-airflow-postgres-db
+  prod-airflow-redis-data:
+    name: prod-airflow-redis-data
+  prod-prometheus-data:
+    name: prod-prometheus-data
+  prod-grafana-data:
+    name: prod-grafana-data
+  prod-alertmanager-data:
+    name: prod-alertmanager-data
 
 networks:
-  airflow_net:
-    name: airflow_net
+  orchestration_net:
+    name: orchestration_net
     driver: bridge
-  mlflow_net:
-    name: mlflow_net
+  pipeline_runtime_net:
+    name: pipeline_runtime_net
     driver: bridge
-  mlops_net:
-    name: mlops_net
+  tracking_client_net:
+    name: tracking_client_net
     driver: bridge
+  tracking_backend_net:
+    name: tracking_backend_net
+    driver: bridge
+  observability_net:
+    name: observability_net
+    driver: bridge
+  dev_support_net:
+    name: dev_support_net
+    driver: bridge
+
+x-prod-security: &prod-security
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
 
 x-airflow-common: &airflow-common
   image: ${AIRFLOW_IMAGE_NAME:?required}
@@ -58,24 +74,25 @@ x-airflow-common: &airflow-common
     airflow-postgres:
       condition: service_healthy
   volumes:
-    - ./logs:/opt/airflow/logs
-    - ./data:/opt/airflow/data
-    - ./docker/dev/airflow/dags:/opt/airflow/dags
-    - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+    - ./runtime/logs/airflow:/opt/airflow/logs
+    - ./runtime/data:/opt/airflow/data
+    - ../dev/airflow/dags:/opt/airflow/dags:ro
+    - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
-    - airflow_net
-    - mlops_net
+    - orchestration_net
+    - dev_support_net
   profiles: ["all", "airflow", "ptf"]
 
 services:
   # ========================
   # BUSINESS SERVICES
   # ========================
-  ml-ingest-dev:
-    image: ml-ingest:dev
+  ml-ingest-prod:
+    <<: *prod-security
+    image: ml-ingest:prod
     build:
-      context: .
-      dockerfile: ./docker/dev/ml/ingest/Dockerfile
+      context: ../..
+      dockerfile: ./docker/prod/ml/ingest/Dockerfile
     command:
       - --raw-path
       - /app/data/raw/${RAW_FILE_NAME}
@@ -98,18 +115,19 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./runtime/data:/app/data
+      - ../../data/raw/${RAW_FILE_NAME}:/app/data/raw/${RAW_FILE_NAME}:ro
+      - ./runtime/logs/ml:/app/logs
     networks:
-      - airflow_net
-      - mlops_net
+      - pipeline_runtime_net
     profiles: ["ml", "all"]
 
-  ml-features-dev:
-    image: ml-features:dev
+  ml-features-prod:
+    <<: *prod-security
+    image: ml-features:prod
     build:
-      context: .
-      dockerfile: ./docker/dev/ml/features/Dockerfile
+      context: ../..
+      dockerfile: ./docker/prod/ml/features/Dockerfile
     command:
       - --interim-path
       - /app/data/interim/${SUB_DIR}/${INTERIM_NAME}
@@ -124,18 +142,18 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/logs/ml:/app/logs
     networks:
-      - airflow_net
-      - mlops_net
+      - pipeline_runtime_net
     profiles: ["ml", "all"]
 
-  ml-models-dev:
-    image: ml-models:dev
+  ml-models-prod:
+    <<: *prod-security
+    image: ml-models:prod
     build:
-      context: .
-      dockerfile: ./docker/dev/ml/models/Dockerfile
+      context: ../..
+      dockerfile: ./docker/prod/ml/models/Dockerfile
     command:
       - --processed-path
       - /app/data/processed/${SUB_DIR}/${PROCESSED_NAME}
@@ -167,28 +185,28 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/models:/app/models
+      - ./runtime/logs/ml:/app/logs
     networks:
-      - airflow_net
-      - mlflow_net
-      - mlops_net
+      - pipeline_runtime_net
+      - tracking_client_net
     profiles: ["ml", "all"]
 
   api-dev:
-    image: api:dev
+    <<: *prod-security
+    image: api:prod
     build:
-      context: .
-      dockerfile: ./docker/dev/api/Dockerfile
+      context: ../..
+      dockerfile: ./docker/prod/api/Dockerfile
     ports:
       - "${API_HOST_PORT:-10000}:10000"
     restart: unless-stopped
     environment:
-      DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
+      DATA_FINAL_ROOT: /app/data/final
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./runtime/data/final:/app/data/final:ro
+      - ./runtime/logs/api:/app/logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -198,8 +216,8 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - airflow_net
-      - mlops_net
+      - pipeline_runtime_net
+      - observability_net
     profiles: ["all", "api", "ptf"]
 
   # ========================
@@ -213,14 +231,14 @@ services:
       POSTGRES_PASSWORD: ${MLFLOW_POSTGRES_PASSWORD:?required}
       POSTGRES_DB: ${MLFLOW_POSTGRES_DB:?required}
     volumes:
-      - mlflow-postgres-db:/var/lib/postgresql/data
+      - prod-mlflow-postgres-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MLFLOW_POSTGRES_USER:?required}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - mlflow_net
+      - tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-minio:
@@ -230,11 +248,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?required}
       MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?required}
-    ports:
-      - "${MINIO_API_HOST_PORT:-13000}:9000"
-      - "${MINIO_CONSOLE_HOST_PORT:-13002}:9001"
     volumes:
-      - mlflow-minio-data:/data
+      - prod-mlflow-minio-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -242,8 +257,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlflow_net
-      - mlops_net
+      - tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-mc-init:
@@ -259,7 +273,7 @@ services:
       touch /tmp/ok && sleep 1
       "
     networks:
-      - mlflow_net
+      - tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-server:
@@ -300,8 +314,9 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlflow_net
-      - mlops_net
+      - tracking_client_net
+      - tracking_backend_net
+      - observability_net
     profiles: ["all", "mlflow", "ptf"]
 
   # ========================
@@ -315,21 +330,21 @@ services:
       POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:?required}
       POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:?required}
     volumes:
-      - airflow-postgres-db:/var/lib/postgresql/data
+      - prod-airflow-postgres-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${AIRFLOW_POSTGRES_USER:?required}"]
       interval: 10s
       retries: 5
       start_period: 15s
     networks:
-      - airflow_net
+      - orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
     image: ${AIRFLOW_REDIS_IMAGE:?required}
     restart: unless-stopped
     volumes:
-      - airflow-redis-data:/data
+      - prod-airflow-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -337,7 +352,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - airflow_net
+      - orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
@@ -347,8 +362,8 @@ services:
       <<: *airflow-common-env
     command: ["bash", "/opt/airflow/scripts/airflow-init.sh"]
     volumes:
-      - ./docker/dev/airflow/config/:/opt/airflow/config/
-      - ./docker/dev/airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
+      - ./airflow/config/:/opt/airflow/config/:ro
+      - ./airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
     profiles: ["all", "airflow", "ptf"]
 
   airflow-api-server:
@@ -409,31 +424,18 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: ["celery", "worker"]
-    entrypoint: ["/opt/airflow/scripts/airflow-entrypoint.sh"]
-    user: "0:0"
-    group_add:
-      - ${AIRFLOW_GID:-0}
     environment:
       <<: *airflow-common-env
-      AIRFLOW_GID: ${AIRFLOW_GID:-0}
-      AIRFLOW_UID: ${AIRFLOW_UID:-50000}
-      DOCKER_HOST: unix:///var/run/docker.sock
-    volumes:
-      - ./logs:/opt/airflow/logs
-      - ./data:/opt/airflow/data
-      - ./docker/dev/airflow/dags:/opt/airflow/dags
-      - ./docker/dev/airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker/dev/airflow/scripts/airflow-entrypoint.sh:/opt/airflow/scripts/airflow-entrypoint.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "runuser --preserve-environment --user airflow -- /home/airflow/.local/bin/celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME} || runuser --preserve-environment --user airflow -- /home/airflow/.local/bin/celery --app airflow.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
+      test: ["CMD-SHELL", "celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME} || celery --app airflow.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
     networks:
-      - airflow_net
-      - mlops_net
+      - orchestration_net
+      - pipeline_runtime_net
+      - dev_support_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-triggerer:
@@ -452,26 +454,6 @@ services:
       start_period: 15s
     profiles: ["all", "airflow", "ptf"]
 
-  airflow-flower:
-    <<: *airflow-common
-    restart: unless-stopped
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
-    command: ["celery", "flower"]
-    ports:
-      - "${AIRFLOW_FLOWER_HOST_PORT:-12555}:5555"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    networks:
-      - airflow_net
-    profiles: ["all", "airflow", "ptf", "flower"]
-
   # ========================
   # MONITORING SERVICES
   # ========================
@@ -481,11 +463,9 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
-    ports:
-      - "${PROMETHEUS_HOST_PORT:-14090}:9090"
     volumes:
-      - ./docker/dev/prometheus:/etc/prometheus:ro
-      - monitoring-prometheus-data:/prometheus
+      - ./prometheus:/etc/prometheus:ro
+      - prod-prometheus-data:/prometheus
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
       interval: 10s
@@ -493,7 +473,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlops_net
+      - observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-grafana:
@@ -508,9 +488,9 @@ services:
     ports:
       - "${GRAFANA_HOST_PORT:-14300}:3000"
     volumes:
-      - monitoring-grafana-data:/var/lib/grafana
-      - ./docker/dev/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./docker/dev/grafana/dashboards:/var/lib/grafana/dashboards
+      - prod-grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../dev/grafana/dashboards:/var/lib/grafana/dashboards:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
       interval: 10s
@@ -518,20 +498,18 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlops_net
+      - observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-cadvisor:
     image: ${CADVISOR_IMAGE:?required}
     restart: unless-stopped
     privileged: true
-    ports:
-      - "${CADVISOR_HOST_PORT:-14200}:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
       interval: 10s
@@ -539,14 +517,12 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlops_net
+      - observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-pushgateway:
     image: ${PUSHGATEWAY_IMAGE:?required}
     restart: unless-stopped
-    ports:
-      - "${PUSHGATEWAY_HOST_PORT:-14091}:9091"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/ready"]
       interval: 10s
@@ -554,17 +530,16 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlops_net
+      - pipeline_runtime_net
+      - observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-alertmanager:
     image: ${ALERTMANAGER_IMAGE:?required}
     restart: unless-stopped
-    ports:
-      - "${ALERTMANAGER_HOST_PORT:-14093}:9093"
     volumes:
-      - ./docker/dev/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      - monitoring-alertmanager-data:/alertmanager
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - prod-alertmanager-data:/alertmanager
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/ready"]
       interval: 10s
@@ -572,15 +547,13 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlops_net
+      - observability_net
+      - dev_support_net
     profiles: ["all", "monitoring", "ptf"]
 
   monitoring-mailhog:
     image: ${MAILHOG_IMAGE:?required}
     restart: unless-stopped
-    ports:
-      - "${MAILHOG_SMTP_HOST_PORT:-15025}:1025"
-      - "${MAILHOG_UI_HOST_PORT:-15080}:8025"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8025 || exit 1"]
       interval: 10s
@@ -588,5 +561,5 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - mlops_net
+      - dev_support_net
     profiles: ["all", "monitoring", "ptf"]

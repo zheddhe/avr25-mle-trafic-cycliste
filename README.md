@@ -41,22 +41,22 @@ This project implements a complete machine learning and MLOps architecture in th
 avr25-mle-trafic-cycliste/
 ├── LICENSE             <- MIT license
 ├── README.md           <- This top-level README for developers using this project
-├── Makefile            <- Local developer and Docker Compose operation targets
+├── Makefile            <- Repo setup plus dev/prod runtime target inclusion
 ├── .env.template       <- Template for local secrets and runtime variables
 ├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff configuration
 ├── uv.lock             <- uv lockfile for the local development environment
-├── data                <- Data shared with host (read/write)
-├── logs                <- Logs shared with host (read/write)
-├── models              <- Model artifacts shared with host (read/write)
+├── data                <- Development and DVC data workspace
+├── logs                <- Development runtime logs
+├── models              <- Development and DVC model artifacts
 ├── references          <- Data dictionaries, manuals, other explanatory material
 ├── src/                <- API and ML pipeline source code
-├── docker/             <- Container architecture, Airflow DAGs, configs, and scripts
+├── docker/             <- Dev/prod container architecture, Airflow assets, configs, and scripts
 ├── docs/               <- Architecture, operations, and dependency documentation
 └── tests/              <- Unit and integration tests
 ```
 
 Detailed path ownership, generated artifact expectations, DVC responsibilities,
-and the `docker/dev` versus future `docker/prod` split are documented in
+and the `docker/dev` versus `docker/prod` split are documented in
 [`docs/repository-structure.md`](docs/repository-structure.md).
 
 ## ⚙️ Installation
@@ -135,7 +135,7 @@ credentials to `.dvc/config.local`, which is ignored by `.dvc/.gitignore`.
 Use this convenience target when both steps are needed:
 
 ```bash
-make repo_setup
+make repo-setup
 ```
 
 The versioned DVC remote is defined in `.dvc/config`:
@@ -177,24 +177,19 @@ Prefer these Makefile targets for day-to-day local validation:
 make sync
 make lock-check
 make lint
-make test
-make ci
+make tests
+make checks
 ```
 
-`make ci` chains the lock check, Ruff linting, and unit tests while excluding
-integration tests. This mirrors the local validation path used by CI without
-requiring Docker services.
+`make checks` runs all the checks : lock check, Ruff linting, and the tests target.
 
 Useful maintenance targets:
 
 ```bash
-make clean
-make clean_env
+make clean-repo
+make clean-env
+make clean-docker
 ```
-
-`make clean` removes local Python caches and test artifacts only. It does not
-remove Docker volumes. Use `make clean_env` only when you want to recreate the
-uv-managed virtual environment from scratch.
 
 ## MLOps setup
 
@@ -221,32 +216,39 @@ Docker Desktop can also be used during development on Windows, macOS, or Linux.
 
 ### 2. Docker Compose operation targets
 
-The project is assumed to be cloned when running operational commands. Prefer
-Makefile targets for project-level Docker operations:
+The project now has two explicit Compose runtime entrypoints:
+
+| Runtime | Compose file | Make targets | Goal |
+| ------- | ------------ | ------------ | ---- |
+| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debug visibility, root `data/logs/models`, current Airflow DockerOperator jobs. |
+| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, isolated runtime workspace. |
+
+The root `docker-compose.yaml` remains a compatibility entrypoint for existing
+manual `docker compose` commands from the repository root, but operational checks
+should prefer the explicit runtime targets.
+
+Development commands:
 
 ```bash
-make compose-config
-make build
-make ops
+make dev-compose-config
+make dev-build
+make dev-start
+make dev-ps
+make dev-logs SERVICE=api-dev
 ```
 
-`make ops` validates the Compose configuration and starts the default platform
-profile. The default profile is `ptf`, which combines MLflow, Airflow,
-monitoring, and API services.
-
-Targeted operations remain available when needed:
+Local production-like commands:
 
 ```bash
-make start PROFILE=api
-make stop PROFILE=api
-make logs SERVICE=api-dev
-make rebuild_full
-make clean_full
+make prod-compose-config
+make prod-build
+make prod-start
+make prod-ps
+make prod-logs SERVICE=api-dev
 ```
 
-`make start` uses `docker compose up -d` so it works from a clean environment
-where containers have not been created yet. `make clean_full` is intentionally
-destructive: it removes Docker images, volumes, and networks.
+The default profile is `ptf`, which combines MLflow, Airflow, monitoring, and
+API services. Use `DEV_PROFILE=api` or `PROD_PROFILE=api` for targeted startup.
 
 Runtime host ports and local URLs are documented in
 [`docs/ports-and-services.md`](docs/ports-and-services.md). Runtime
@@ -255,15 +257,17 @@ service-to-service communication is documented in
 Runtime security boundaries and identities are documented in
 [`docs/runtime-security-boundaries.md`](docs/runtime-security-boundaries.md).
 Runtime image, healthcheck, and dependency policies are documented in
-[`docs/dependency-strategy.md`](docs/dependency-strategy.md).
+[`docs/dependency-strategy.md`](docs/dependency-strategy.md). Dev/prod Compose
+operation and workspace ownership are documented in
+[`docs/local-prod-runtime.md`](docs/local-prod-runtime.md).
 
-For one-off ML pipeline containers, use the dedicated targets:
+For one-off ML pipeline containers in the development runtime, use:
 
 ```bash
-make mlops-ingest
-make mlops-features
-make mlops-models
-make mlops-pipeline
+make dev-mlops-ingest
+make dev-mlops-features
+make dev-mlops-models
+make dev-mlops-pipeline
 ```
 
 ### 3. 📈 Experience tracker
@@ -290,12 +294,12 @@ eval "$(make --no-print-directory env-local)"
 eval "$(make --no-print-directory env-dagshub)"
 ```
 
-The MLOps container targets automatically use the Compose preset. Local debug
-targets automatically use the local backend preset.
+Compose runtime services read their values from `.env`. Host-side debug targets
+use explicit Makefile presets where needed.
 
 ```bash
-make ops
-make mlops-pipeline
+make dev-start
+make dev-mlops-pipeline
 make local-pipeline
 make mlflow-local
 ```
@@ -378,5 +382,5 @@ The CI environment uses uv dependency groups directly and runs Ruff before pytes
 
 - Rémy Canal – [@remy.canal](mailto:remy.canal@live.fr)  
 - Elias Djouadi – [@elias.djouadi](mailto:elias.djouadi@gmail.com)
-- Koladé Houessou – [@kolade.houessou](mailto:koladehouessou@gmail.com)
+- Koladé Houessou – [@koladehouessou@gmail.com](mailto:koladehouessou@gmail.com)
 - Sofia Bouizzoul - [@sofia.bouizzoul](mailto:sofia.bouizzoul@gmail.com)
