@@ -19,7 +19,6 @@ from artifacts.exceptions import (
     ArtifactChecksumMismatchError,
     ArtifactManifestNotFoundError,
     ArtifactManifestValidationError,
-    ArtifactPayloadNotFoundError,
 )
 from artifacts.schemas import ArtifactManifest, ArtifactStatus
 
