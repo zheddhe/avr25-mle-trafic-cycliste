@@ -2,8 +2,8 @@ SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: prod-help prod-compose-config prod-build prod-ops prod-stop
-.PHONY: prod-down prod-ps prod-logs
+.PHONY: prod-help prod-prepare-runtime prod-compose-config prod-build
+.PHONY: prod-ops prod-stop prod-down prod-ps prod-logs
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
@@ -28,12 +28,24 @@ prod-help: ## Display local production-like runtime targets
 		} \
 	' $(MAKEFILE_LIST)
 
-prod-compose-config: ## Validate the local production-like Compose config
+prod-prepare-runtime: ## Create ignored local production-like runtime folders
+	@$(call prod_log_target,prod-prepare-runtime)
+	mkdir -p \
+		docker/prod/runtime/data/raw \
+		docker/prod/runtime/data/interim \
+		docker/prod/runtime/data/processed \
+		docker/prod/runtime/data/final \
+		docker/prod/runtime/models \
+		docker/prod/runtime/logs/api \
+		docker/prod/runtime/logs/airflow \
+		docker/prod/runtime/logs/ml
+
+prod-compose-config: prod-prepare-runtime ## Validate the local production-like Compose config
 	@$(call prod_log_target,prod-compose-config)
 	@$(prod_check_env)
 	$(prod_compose) --profile all config >/dev/null
 
-prod-build: ## Build local production-like Docker images
+prod-build: prod-prepare-runtime ## Build local production-like Docker images
 	@$(call prod_log_target,prod-build)
 	@$(prod_check_env)
 	$(prod_compose) --profile all build
