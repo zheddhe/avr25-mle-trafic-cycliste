@@ -95,6 +95,12 @@ The following service families are intentionally not published on host ports:
 | MinIO API and console | Prod-like | Internal artifact backend; host UI kept dev-only |
 | Prometheus, Pushgateway, Alertmanager, cAdvisor, MailHog | Prod-like | Internal support services; host UI kept dev-only except Grafana |
 
+The hybrid artifact handoff strategy is documented in
+[`docs/artifact-handoff-strategy.md`](artifact-handoff-strategy.md). In the
+production-like runtime, MinIO can be referenced by optional `s3://` object URIs
+inside promoted manifests without publishing MinIO API or console ports to the
+host.
+
 `airflow-redis` used to publish `6379` on the host. It is now internal-only
 because no documented local workflow requires direct host access to the broker.
 
