@@ -110,7 +110,6 @@ From this point, prefer Makefile targets over raw commands.
 ```bash
 make help
 make env
-make setup
 ```
 
 `make env` creates `.env` from `.env.template` if it does not already exist.

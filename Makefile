@@ -132,8 +132,6 @@ env-dagshub: ## Print shell exports for DagsHub MLflow mode
 	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
 	printf 'unset AWS_DEFAULT_REGION\n'
 
-setup: env sync dev-compose-config ## Prepare the local project after cloning
-
 git-setup: env ## Configure local Git identity from .env
 	@$(call log_test,git-setup)
 	@$(load_env)
