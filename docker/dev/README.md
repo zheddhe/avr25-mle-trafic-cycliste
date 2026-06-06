@@ -6,9 +6,9 @@ It mirrors the `docker/prod` folder structure so contributors can compare the
 development and local production-like runtimes without reading unrelated project
 setup targets.
 
-The root `docker-compose.yaml` is kept as a compatibility entrypoint for now.
-New operational targets should prefer `docker/dev/docker-compose.yaml` through
-`docker/dev/Makefile` or the root Makefile aliases.
+The root `docker-compose.yaml` is kept as a compatibility entrypoint for manual
+Compose commands from the repository root. New operational targets should prefer
+`docker/dev/docker-compose.yaml` through `docker/dev/Makefile`.
 
 ## Validate
 
@@ -25,13 +25,13 @@ make -f docker/dev/Makefile dev-compose-config
 ## Start
 
 ```bash
-make dev-ops
+make dev-start
 ```
 
 The default development profile is `ptf`. Override it when needed:
 
 ```bash
-make dev-ops DEV_PROFILE=api
+make dev-start DEV_PROFILE=api
 ```
 
 ## Stop
