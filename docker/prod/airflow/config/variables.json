@@ -1,0 +1,26 @@
+{
+  "docker_image_ingest": "ml-ingest:prod",
+  "docker_image_features": "ml-features:prod",
+  "docker_image_models": "ml-models:prod",
+  "docker_network": "pipeline_runtime_net",
+
+  "host_repo_root": "[replace_me]",
+  "container_repo_root": "/app",
+  "airflow_repo_root": "/opt/airflow",
+  "bike_dag_config": "/opt/airflow/config/bike_dag_config.json",
+  "default_counter_id": "Sebastopol_N-S_airflow",
+
+  "mlflow_tracking_uri": "http://mlflow-server:5000",
+  "mlflow_s3_endpoint_url": "http://mlflow-minio:9000",
+  "aws_access_key_id": "minio",
+  "aws_secret_access_key": "[replace_me]",
+  "aws_default_region": "us-east-1",
+
+  "airflow_uid": 1000,
+  "airflow_gid": 0,
+
+  "pushgateway_addr": "monitoring-pushgateway:9091",
+  "disable_metrics_push": "1",
+
+  "tz": "Europe/Paris"
+}
