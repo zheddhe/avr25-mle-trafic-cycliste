@@ -3,9 +3,10 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap docker-install env setup git-setup dvc-setup repo-setup
+.PHONY: help bootstrap docker-install env setup git-setup dvc-setup
+.PHONY: repo-setup repo_setup
 .PHONY: env-compose env-local env-dagshub
-.PHONY: sync lock-check lint tests ci compose-config
+.PHONY: sync lock-check lint test tests ci compose-config
 .PHONY: build rebuild_full ops start stop logs
 .PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
@@ -170,6 +171,8 @@ dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
 
 repo-setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
 
+repo_setup: repo-setup ## Backward-compatible alias for repo-setup
+
 sync: ## Sync the local uv environment from uv.lock
 	@$(call log_test,sync)
 	$(UV) sync --locked --group test --group dev
@@ -181,6 +184,8 @@ lock-check: ## Check that uv.lock is consistent with pyproject.toml
 lint: ## Run Ruff checks
 	@$(call log_test,lint)
 	$(UV) run --locked --group test ruff check .
+
+test: tests ## Backward-compatible alias for tests
 
 tests: ## Run integration tests scope
 	@$(call log_test,integration-test)
