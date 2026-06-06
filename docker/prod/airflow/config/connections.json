@@ -1,0 +1,10 @@
+{
+  "api_dev": {
+    "conn_type": "http",
+    "schema": "http",
+    "host": "api-dev",
+    "port": 10000,
+    "login": "[replace_me]",
+    "password": "[replace_me]"
+  }
+}
