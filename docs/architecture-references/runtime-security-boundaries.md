@@ -15,7 +15,8 @@ are already implemented in `docker/prod`, and which gaps remain.
 | [`local-prod-network-topology.md`](local-prod-network-topology.md) | Implemented functional network topology for `docker/prod`. |
 | [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, workspaces, and current exceptions. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Host exposure inventory. |
-| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact promotion contract. |
+| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact promotion contract and remaining plan. |
+| [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) | Implemented artifact store helpers for explicit promotion. |
 | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Target job execution boundary for Airflow and runner. |
 
 Communication paths justify permissions, not the opposite. A container, network,
@@ -26,7 +27,7 @@ documented service dependency needs it.
 
 | Boundary | Development runtime | Production-like runtime |
 | -------- | ------------------- | ----------------------- |
-| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-dev`; reads production-like runtime prediction workspace. |
+| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-dev`; currently reads production-like runtime prediction workspace; Phase 8 will move it to promoted manifests. |
 | Orchestration | Airflow uses DockerOperator and Docker socket. | Airflow does not mount Docker socket; runner integration remains Phase 8 work. |
 | Tracking | MLflow, PostgreSQL, and MinIO are visible for local debugging. | MLflow UI/API is host-exposed; PostgreSQL and MinIO stay internal. |
 | Monitoring | Prometheus, Pushgateway, Alertmanager, cAdvisor, Grafana, MailHog UIs are exposed for local debugging. | Grafana is host-exposed; supporting monitoring services stay internal. |
@@ -98,12 +99,12 @@ Exact port assignments are documented in
 | `docker/prod/runtime/data` | Prod-like | Generated runtime data. |
 | `docker/prod/runtime/models` | Prod-like | Generated runtime model artifacts. |
 | `docker/prod/runtime/logs` | Prod-like | Runtime service and job logs. |
-| `docker/prod/runtime/artifacts` | Prod-like | Phase 8 manifest-first artifact handoff root. |
+| `docker/prod/runtime/artifacts` | Prod-like | Manifest-first artifact handoff root. |
 | Service-owned Docker volumes | Dev and prod-like | Stateful backends for PostgreSQL, Redis, MinIO, Prometheus, Grafana, and Alertmanager. |
 
 The critical production-like handoff is the controlled publication of forecast
-data that the API can read. Phase 8 models that publication through promoted
-artifact manifests instead of implicit latest-file discovery.
+data that the API can read. The manifest models and store helpers are now
+implemented, while ML emission and API consumption remain later Phase 8 stories.
 
 ## Credential and secret review
 
@@ -139,14 +140,18 @@ without a service-specific validation story.
 
 ## Phase 8 hardening map
 
-| Story | Security role |
-| ----- | ------------- |
-| #64/#65/#66 | Make artifact promotion explicit and testable. |
-| #67/#68/#69 | Replace broad execution authority with typed runner contracts. |
-| #70 | Prove Airflow prod orchestration does not need Docker socket. |
-| #71 | Make the API consume promoted manifests rather than scanning files. |
-| #72 | Add smoke validation for runner, artifact, API, monitoring, and socket absence. |
-| #73 | Validate runtime configuration and secrets. |
+| Story | Security role | Status |
+| ----- | ------------- | ------ |
+| #64/#65 | Make artifact manifest validation and promotion helpers explicit and testable. | Implemented. |
+| #66 | Make ML jobs emit validated manifests instead of implicit output paths. | Remaining. |
+| #67/#68/#69 | Replace broad execution authority with typed runner contracts. | Remaining. |
+| #70 | Prove Airflow prod orchestration does not need Docker socket. | Remaining. |
+| #71 | Make the API consume promoted manifests rather than scanning files. | Remaining. |
+| #72 | Add smoke validation for runner, artifact, API, monitoring, and socket absence. | Remaining. |
+| #73 | Validate runtime configuration and secrets. | Remaining. |
+
+The artifact-specific remaining plan is maintained in
+[`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
 
 ## Validation expectations
 

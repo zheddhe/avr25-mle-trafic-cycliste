@@ -20,7 +20,8 @@ narrow job submission interface instead of container-runtime access.
 | [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Current Docker socket execution path, service traffic, and Phase 8 additions. |
 | [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, non-root targets, and job execution boundary. |
 | [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented functional networks and the `pipeline_runtime_net` boundary. |
-| [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) | Manifest-first artifact handoff contract used by runner outputs. |
+| [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) | Manifest-first artifact handoff contract and remaining plan. |
+| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented promotion helpers that runner jobs can call later. |
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | DAG placement rules and the `docker/dev` versus `docker/prod` split. |
 | `docker/dev/airflow/config/variables.json` | Current dev Docker image names, network, MLflow, MinIO, Pushgateway, UID, and GID variables. |
 | `docker/dev/airflow/config/connections.json` | Current Airflow HTTP connection to `api-dev`. |
@@ -33,7 +34,7 @@ socket from `docker/dev`, add Kubernetes, or introduce production secrets.
 
 ## Current status
 
-Implemented after Phase 7:
+Implemented after Phase 7 and the first artifact stories:
 
 - `docker/prod` exists as a local production-like runtime.
 - `docker/prod` uses functional networks instead of `mlops_net`.
@@ -41,8 +42,9 @@ Implemented after Phase 7:
 - Custom prod-like API and ML images run as non-root users.
 - Root `data`, `models`, and `logs` remain development/DVC workspaces.
 - Production-like generated outputs use `docker/prod/runtime`.
+- Artifact manifest models and store helpers are implemented under `src/artifacts`.
 
-Remaining Phase 8 work:
+Remaining runner work:
 
 - typed pipeline job contracts;
 - internal `job-runner-api`;
@@ -50,6 +52,9 @@ Remaining Phase 8 work:
 - production-like Airflow DAG variant using the runner;
 - artifact-aware API serving;
 - production-like smoke validation.
+
+The artifact-specific plan is centralized in
+[`artifact-handoff-strategy.md`](artifact-handoff-strategy.md).
 
 ## Decision summary
 
@@ -152,8 +157,8 @@ flowchart LR
     prometheus --> pushgateway
 ```
 
-The diagram is a target design. It should be implemented through Phase 8 stories,
-not treated as current `docker/prod` behavior.
+The diagram is a target design. It should be implemented through the remaining
+Phase 8 stories, not treated as current `docker/prod` behavior.
 
 ## Runner API
 
@@ -264,18 +269,22 @@ job runner to execute an allowed job type.
 
 ## Phase 8 story mapping
 
-| Story | Role |
-| ----- | ---- |
-| #64 | Implement artifact manifest models used by job results. |
-| #65 | Implement manifest writer and promotion helpers. |
-| #66 | Make ML jobs emit artifact manifests. |
-| #67 | Implement typed pipeline job contracts. |
-| #68 | Add the internal `job-runner-api` skeleton. |
-| #69 | Execute typed ML jobs through the runner. |
-| #70 | Add the production-like Airflow DAG using the runner API. |
-| #71 | Make the API serve promoted artifacts from manifests. |
-| #72 | Add production-like smoke validation. |
-| #73 | Harden runtime configuration and secrets validation. |
+| Story | Role | Status |
+| ----- | ---- | ------ |
+| #64 | Implement artifact manifest models used by job results. | Implemented. |
+| #65 | Implement manifest writer and promotion helpers. | Implemented. |
+| #66 | Make ML jobs emit artifact manifests. | Remaining. |
+| #67 | Implement typed pipeline job contracts. | Remaining. |
+| #68 | Add the internal `job-runner-api` skeleton. | Remaining. |
+| #69 | Execute typed ML jobs through the runner. | Remaining. |
+| #70 | Add the production-like Airflow DAG using the runner API. | Remaining. |
+| #71 | Make the API serve promoted artifacts from manifests. | Remaining. |
+| #72 | Add production-like smoke validation. | Remaining. |
+| #73 | Harden runtime configuration and secrets validation. | Remaining. |
+
+The artifact handoff status table in
+[`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) is the canonical
+remaining-plan reference for artifact promotion work.
 
 ## Validation target
 

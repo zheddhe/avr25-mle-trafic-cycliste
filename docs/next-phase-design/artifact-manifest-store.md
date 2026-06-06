@@ -4,6 +4,10 @@ This document records the implementation outcome for Phase 8 issue #65. It
 extends the manifest model work from issue #64 with local filesystem helpers for
 writing, validating, reading, and promoting artifact manifests.
 
+The strategy and remaining Phase 8 plan are kept in
+[`artifact-handoff-strategy.md`](artifact-handoff-strategy.md). This document is
+limited to the implemented Python store layer.
+
 ## Implemented package
 
 The reusable artifact package now includes:
@@ -90,12 +94,8 @@ They cover:
 - checksum mismatch handling;
 - rejection of non-promotable statuses.
 
-## Remaining Phase 8 work
+## Current integration status
 
-This story does not change ML jobs or API serving. The next stories should use
-these helpers to emit and consume promoted manifests:
-
-- #66 adapts ML jobs to emit validated artifact manifests;
-- #71 makes the API serve promoted artifacts from `current.json`;
-- later MinIO work can add object upload/download helpers without changing the
-  local manifest store contract.
+The helpers are available for later Phase 8 consumers, but no ML job, runner,
+Airflow DAG, or API endpoint calls them yet. Integration is tracked centrally in
+[`artifact-handoff-strategy.md`](artifact-handoff-strategy.md).
