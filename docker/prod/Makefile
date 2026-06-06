@@ -60,7 +60,7 @@ prod-stop: ## Stop local production-like services for the selected profile
 
 prod-down: ## Remove local production-like containers and networks
 	@$(call prod_log_target,prod-down)
-	$(prod_compose) --profile all down
+	$(prod_compose) --profile all down --remove-orphans
 
 prod-ps: ## Show local production-like service status
 	@$(call prod_log_target,prod-ps)
@@ -70,6 +70,7 @@ prod-logs: ## Follow logs for SERVICE in the local production-like runtime
 	@$(call prod_log_target,prod-logs SERVICE=$(SERVICE))
 	$(prod_compose) logs -f -t $(SERVICE)
 
-prod-clean: ## Remove Docker artifacts, including images and volumes
-	@$(call log_test,prod-clean)
-	$(prod_compose) --profile all down -v --rmi all
+prod-clean: ## Remove production-like containers, networks, and volumes
+	@$(call prod_log_target,prod-clean)
+	@$(prod_check_env)
+	$(prod_compose) --profile all down -v --remove-orphans
