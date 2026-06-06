@@ -6,7 +6,7 @@ SHELL := /bin/bash
 .PHONY: dev-start dev-stop dev-down dev-ps dev-logs dev-clean
 .PHONY: dev-mlops-ingest dev-mlops-features dev-mlops-models
 .PHONY: dev-mlops-pipeline
-.PHONY: dev-sim-api-loop dev-sim-api-down 
+.PHONY: dev-sim-api-loop dev-sim-api-down
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
@@ -52,7 +52,7 @@ dev-stop: ## Stop development services for the selected profile
 
 dev-down: ## Remove development containers and networks
 	@$(call dev_log_target,dev-down)
-	$(dev_compose) --profile all down
+	$(dev_compose) --profile all down --remove-orphans
 
 dev-ps: ## Show development service status
 	@$(call dev_log_target,dev-ps)
@@ -62,9 +62,10 @@ dev-logs: ## Follow logs for SERVICE in the development runtime
 	@$(call dev_log_target,dev-logs SERVICE=$(SERVICE))
 	$(dev_compose) logs -f -t $(SERVICE)
 
-dev-clean: ## Remove Docker artifacts, including images and volumes
-	@$(call log_test,dev-clean)
-	$(prod_compose) --profile all down -v --rmi all
+dev-clean: ## Remove development containers, networks, and volumes
+	@$(call dev_log_target,dev-clean)
+	@$(dev_check_env)
+	$(dev_compose) --profile all down -v --remove-orphans
 
 dev-mlops-ingest: ## Run the development ML ingestion container once
 	@$(call dev_log_target,dev-mlops-ingest)
@@ -84,7 +85,7 @@ dev-mlops-models: ## Run the development ML model container once
 dev-mlops-pipeline: dev-mlops-ingest dev-mlops-features dev-mlops-models ## Run the full development ML pipeline
 
 dev-sim-api-loop: ## Simulate 10 API stop/start cycles with a 5-second interval
-	@$(call log_test,dev-sim-api-loop)
+	@$(call dev_log_target,dev-sim-api-loop)
 	for i in {1..10}; do \
 		echo "[restart $$i] stopping api-dev..."; \
 		$(dev_compose) stop api-dev; \
@@ -97,7 +98,7 @@ dev-sim-api-loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@echo "==> Simulation finished"
 
 dev-sim-api-down: ## Simulate a temporary API outage for 2 minutes
-	@$(call log_test,dev-sim-api-down)
+	@$(call dev_log_target,dev-sim-api-down)
 	$(dev_compose) stop api-dev
 	sleep 120
 	$(dev_compose) up -d api-dev
