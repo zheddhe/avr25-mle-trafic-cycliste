@@ -177,13 +177,12 @@ Prefer these Makefile targets for day-to-day local validation:
 make sync
 make lock-check
 make lint
-make test
+make tests
 make ci
 ```
 
-`make test` is a compatibility alias for the current `tests` target, which runs
-the integration test scope. `make ci` chains the lock check, Ruff linting, and
-this test target.
+`make tests` runs the current integration test scope. `make ci` chains the lock
+check, Ruff linting, and this test target.
 
 Useful maintenance targets:
 
