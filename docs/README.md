@@ -38,6 +38,7 @@ Use these documents when implementing Phase 8 stories.
 | Document | Purpose |
 | -------- | ------- |
 | [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md) | Hybrid manifest-first artifact promotion contract using local runtime paths and optional MinIO object URIs. |
+| [`next-phase-design/artifact-manifest-models.md`](next-phase-design/artifact-manifest-models.md) | Implemented Pydantic artifact manifest models, validation rules, and test coverage for issue #64. |
 | [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md) | Target runner-based Airflow execution model that replaces DockerOperator in `docker/prod`. |
 
 ## Reading order
@@ -52,9 +53,10 @@ For runtime work, read:
 For Phase 8 implementation, read:
 
 1. [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md)
-2. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
-3. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
-4. The issue body for the current Phase 8 story.
+2. [`next-phase-design/artifact-manifest-models.md`](next-phase-design/artifact-manifest-models.md)
+3. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
+4. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+5. The issue body for the current Phase 8 story.
 
 ## Documentation rules
 
