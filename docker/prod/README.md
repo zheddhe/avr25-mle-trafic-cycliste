@@ -2,10 +2,18 @@
 
 This folder contains the local production-like runtime introduced for Phase 7.
 
-It is intentionally separate from the deprecated root `docker-compose.yaml`
-compatibility entrypoint and the `docker/dev` assets. The development runtime
-remains the correct target for interactive debugging, broad host visibility, and
-current DockerOperator-based Airflow ML jobs.
+It is intentionally separate from the `docker/dev` assets. The development
+runtime remains the correct target for interactive debugging, broad host
+visibility, and current DockerOperator-based Airflow ML jobs.
+
+Use the runtime through Make targets or an explicit Compose file:
+
+```bash
+make prod-compose-config
+make prod-start
+
+docker compose --env-file .env -f docker/prod/docker-compose.yaml config
+```
 
 ## Validate
 

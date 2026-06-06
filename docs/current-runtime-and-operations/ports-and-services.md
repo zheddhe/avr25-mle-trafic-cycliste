@@ -25,7 +25,6 @@ than the local production-like runtime.
 | Runtime | Compose file | Exposure model |
 | ------- | ------------ | -------------- |
 | Development | `docker/dev/docker-compose.yaml` | Broad local UI and debug exposure. |
-| Deprecated compatibility dev entrypoint | `docker-compose.yaml` | Same development exposure from the repository root. |
 | Local production-like | `docker/prod/docker-compose.yaml` | Reduced host exposure for operator-facing services only. |
 
 ## Development host-exposed services

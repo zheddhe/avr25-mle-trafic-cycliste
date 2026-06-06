@@ -6,9 +6,14 @@ It mirrors the `docker/prod` folder structure so contributors can compare the
 development and local production-like runtimes without reading unrelated project
 setup targets.
 
-The root `docker-compose.yaml` is kept as a deprecated compatibility entrypoint
-for manual Compose commands from the repository root. New operational targets
-should prefer `docker/dev/docker-compose.yaml` through `docker/dev/Makefile`.
+Use the runtime through Make targets or an explicit Compose file:
+
+```bash
+make dev-compose-config
+make dev-start
+
+docker compose --env-file .env -f docker/dev/docker-compose.yaml config
+```
 
 ## Validate
 
