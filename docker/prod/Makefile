@@ -3,7 +3,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 .PHONY: prod-help prod-prepare-runtime prod-compose-config prod-build
-.PHONY: prod-ops prod-stop prod-down prod-ps prod-logs
+.PHONY: prod-start prod-stop prod-down prod-ps prod-logs
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
@@ -50,7 +50,7 @@ prod-build: prod-prepare-runtime ## Build local production-like Docker images
 	@$(prod_check_env)
 	$(prod_compose) --profile all build
 
-prod-ops: prod-compose-config ## Start local production-like platform services
+prod-start: prod-compose-config ## Start local production-like platform services
 	@$(call prod_log_target,prod-ops PROD_PROFILE=$(PROD_PROFILE))
 	$(prod_compose) --profile $(PROD_PROFILE) up -d
 

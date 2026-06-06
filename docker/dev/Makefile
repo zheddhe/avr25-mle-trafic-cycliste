@@ -2,8 +2,8 @@ SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: dev-help dev-compose-config dev-build dev-rebuild-full
-.PHONY: dev-ops dev-start dev-stop dev-down dev-ps dev-logs
+.PHONY: dev-help dev-compose-config dev-build
+.PHONY: dev-start dev-stop dev-down dev-ps dev-logs
 .PHONY: dev-mlops-ingest dev-mlops-features dev-mlops-models
 .PHONY: dev-mlops-pipeline
 
@@ -39,15 +39,6 @@ dev-build: ## Build local development Docker images
 	@$(call dev_log_target,dev-build)
 	@$(dev_check_env)
 	$(dev_compose) --profile all build
-
-dev-rebuild-full: dev-build ## Rebuild and restart development platform services
-	@$(call dev_log_target,dev-rebuild-full)
-	$(dev_compose) --profile all down
-	$(dev_compose) --profile ptf up -d
-
-dev-ops: dev-compose-config ## Start local development platform services
-	@$(call dev_log_target,dev-ops DEV_PROFILE=$(DEV_PROFILE))
-	$(dev_compose) --profile $(DEV_PROFILE) up -d
 
 dev-start: ## Start development services for the selected profile
 	@$(call dev_log_target,dev-start DEV_PROFILE=$(DEV_PROFILE))

@@ -4,10 +4,10 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup
-.PHONY: repo-setup repo_setup
+.PHONY: repo-setup
 .PHONY: env-compose env-local env-dagshub
 .PHONY: sync lock-check lint test tests ci compose-config
-.PHONY: build rebuild_full ops start stop logs
+.PHONY: build ops start stop logs
 .PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
 .PHONY: sim_api_loop sim_api_down sim_api_req
@@ -171,8 +171,6 @@ dvc-setup: env sync ## Configure local DVC credentials in .dvc/config.local
 
 repo-setup: git-setup dvc-setup ## Configure Git identity and local DVC credentials
 
-repo_setup: repo-setup ## Backward-compatible alias for repo-setup
-
 sync: ## Sync the local uv environment from uv.lock
 	@$(call log_test,sync)
 	$(UV) sync --locked --group test --group dev
@@ -192,28 +190,6 @@ tests: ## Run integration tests scope
 	$(UV) run --locked --group test pytest -m "integration" -v
 
 ci: lock-check lint tests ## Run local CI checks
-
-compose-config: dev-compose-config ## Validate the development Compose configuration
-
-build: dev-build ## Build development Docker images
-
-rebuild_full: dev-rebuild-full ## Rebuild development images and restart services
-
-ops: dev-ops ## Start development platform services
-
-start: dev-start ## Start development services for the selected profile
-
-stop: dev-stop ## Stop development services for the selected profile
-
-logs: dev-logs ## Follow development Docker Compose logs for SERVICE
-
-mlops-ingest: dev-mlops-ingest ## Run the development ML ingestion container once
-
-mlops-features: dev-mlops-features ## Run the development ML feature container once
-
-mlops-models: dev-mlops-models ## Run the development ML model container once
-
-mlops-pipeline: dev-mlops-pipeline ## Run the full development ML pipeline
 
 dvc-pipeline: env ## Run the full DVC pipeline
 	@$(call log_test,dvc-pipeline)
