@@ -1,57 +1,97 @@
-# Local production-like Compose runtime
+# Local Compose runtimes
 
 This document is the Phase 7 implementation note for issue #57. It introduces
-and explains the separate local production-like Docker Compose entrypoint under
-`docker/prod`.
+and explains the symmetric local Docker Compose runtime layout under
+`docker/dev` and `docker/prod`.
 
-The current root `docker-compose.yaml` and `docker/dev` runtime remain the local
-development runtime. They optimize for debugging, host visibility, live-mounted
-runtime assets, and direct inspection of local service UIs.
-
-The `docker/prod` runtime optimizes for a different goal: it gives the project a
-local target that is closer to a production operating model while still running
-on a single developer host.
+The development runtime optimizes for debugging, host visibility, live-mounted
+runtime assets, and direct inspection of local service UIs. The production-like
+runtime optimizes for stricter local operation, reduced host exposure, functional
+networks, non-root custom application images, and explicit temporary exceptions.
 
 ## When to use each runtime
 
 | Runtime | Entry point | Primary use |
 | ------- | ----------- | ----------- |
-| Development | `docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
+| Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
+| Compatibility dev entrypoint | `docker-compose.yaml` | Existing habits and raw `docker compose` commands from the repository root. |
 | Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, least-privilege rehearsal, monitoring smoke tests, future runner integration. |
 
-Use `docker/dev` when iterating on DAGs, ML CLI containers, data files, logs, or
-model outputs. Use `docker/prod` when validating service boundaries, reduced
-host exposure, non-root application containers, and the future runner migration
-path.
+Use `docker/dev` when iterating on DAGs, ML CLI containers, root-level DVC data,
+logs, or model outputs. Use `docker/prod` when validating service boundaries,
+reduced host exposure, non-root application containers, isolated runtime
+workspaces, and the future runner migration path.
 
 ## Operational commands
 
-The local production-like runtime has a dedicated Makefile so the root Makefile
-and the current development workflow stay unchanged.
+The root Makefile now includes the dedicated runtime Makefiles:
+
+- `docker/dev/Makefile` for local development Compose operations;
+- `docker/prod/Makefile` for local production-like Compose operations.
+
+Root aliases keep existing habits stable while making the active runtime clear:
 
 ```bash
-make -f docker/prod/Makefile prod-compose-config
-make -f docker/prod/Makefile prod-ops
-make -f docker/prod/Makefile prod-ps
-make -f docker/prod/Makefile prod-logs SERVICE=api-dev
-make -f docker/prod/Makefile prod-stop
+make compose-config     # delegates to make dev-compose-config
+make ops                # delegates to make dev-ops
+make build              # delegates to make dev-build
+make mlops-pipeline     # delegates to make dev-mlops-pipeline
 ```
 
-The equivalent raw Compose validation command is:
+Explicit runtime commands are preferred for cross-checks:
+
+```bash
+make dev-compose-config
+make dev-ops
+make dev-ps
+
+make prod-compose-config
+make prod-ops
+make prod-ps
+```
+
+Equivalent raw Compose validation commands:
 
 ```bash
 docker compose \
     --env-file .env \
+    -f docker/dev/docker-compose.yaml \
+    -p trafic-cycliste-dev \
+    --profile all \
+    config
+
+docker compose \
+    --env-file .env \
     -f docker/prod/docker-compose.yaml \
+    -p trafic-cycliste-prod \
     --profile all \
     config
 ```
 
-The existing validation command remains valid for the development runtime:
+## Runtime workspace strategy
 
-```bash
-make compose-config
+The root `data`, `models`, and `logs` folders remain development, DVC, and
+host-local workspaces. They are still used by the development runtime and by
+local Python/DVC commands.
+
+The local production-like runtime writes to ignored runtime workspaces under
+`docker/prod/runtime`:
+
+| Path | Purpose |
+| ---- | ------- |
+| `docker/prod/runtime/data` | Production-like generated data workspace. |
+| `docker/prod/runtime/models` | Production-like generated model workspace. |
+| `docker/prod/runtime/logs` | Production-like service and batch logs. |
+
+Only the required business source CSV is mounted from the root development/DVC
+workspace into the production-like ingestion service as read-only input:
+
+```text
+data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
 ```
+
+This keeps DVC ownership local to the root workspace while allowing `docker/prod`
+to run without writing into root `data`, `models`, or `logs`.
 
 ## Network topology
 
@@ -67,7 +107,9 @@ The `docker/prod` Compose file follows the target functional network design from
 | `observability_net` | Prometheus scrapes, Grafana datasource access, and alert routing. |
 | `dev_support_net` | Local SMTP capture for Airflow and Alertmanager. |
 
-The broad development `mlops_net` is not used by `docker/prod`.
+The broad development `mlops_net` remains available in `docker/dev` because the
+current Airflow DockerOperator path depends on the development network model. It
+is not used by `docker/prod`.
 
 ## Worker-pool status
 
@@ -110,17 +152,15 @@ and PostgreSQL services stay internal in `docker/prod`.
 
 ## Mount strategy
 
-The production-like runtime reduces direct host mounts, but it does not remove
-all artifact mounts in the first implementation.
-
-| Mount | Status | Reason |
-| ----- | ------ | ------ |
-| `data/final` into API | Read-only | API serving needs promoted prediction artifacts. |
-| `data` into ML one-off services | Writable temporary exception | The runner and artifact handoff contract are not implemented yet. |
-| `models` into model service | Writable temporary exception | Model artifacts still use the local workspace. |
-| `logs` into API, Airflow, and ML services | Writable temporary exception | Local log inspection remains the current evidence path. |
-| Airflow DAG/config files | Read-only | DAG and config placement is explicit for this runtime. |
-| Monitoring configs | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
+| Mount | Runtime | Status | Reason |
+| ----- | ------- | ------ | ------ |
+| Root `data`, `models`, `logs` | Dev | Writable | Debug visibility, local DVC, and current DockerOperator jobs. |
+| Root source CSV | Prod | Read-only | Required business input for ingestion. |
+| `docker/prod/runtime/data` | Prod | Writable | Temporary production-like data workspace. |
+| `docker/prod/runtime/models` | Prod | Writable | Temporary production-like model workspace. |
+| `docker/prod/runtime/logs` | Prod | Writable | Temporary production-like log workspace. |
+| Airflow DAG/config files | Prod | Read-only | DAG and config placement is explicit for this runtime. |
+| Monitoring configs | Prod | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
 
 The expected next hardening step is an explicit artifact handoff contract using
 object storage, release manifests, or a promotion service.
@@ -129,6 +169,8 @@ object storage, release manifests, or a promotion service.
 
 Custom API and ML containers run as a non-root application user in
 `docker/prod`. They also drop Linux capabilities and use `no-new-privileges`.
+The prod Dockerfiles default this user to UID/GID `1000` to keep local bind-mount
+writes compatible with common developer hosts.
 
 Documented exceptions:
 
@@ -141,8 +183,8 @@ Documented exceptions:
 
 ## Secrets and placeholders
 
-`docker/prod` still reads `.env` from the repository root. Do not commit a
-populated `.env` file.
+`docker/dev` and `docker/prod` still read `.env` from the repository root. Do not
+commit a populated `.env` file.
 
 The production-like Airflow config uses placeholder credentials where values are
 not safe to commit. Replace placeholders in a local branch or use a future secret
@@ -154,24 +196,28 @@ Minimum validation for this story:
 
 ```bash
 make compose-config
-make -f docker/prod/Makefile prod-compose-config
+make dev-compose-config
+make prod-compose-config
 ```
 
 Additional local smoke checks after startup:
 
 ```bash
-make -f docker/prod/Makefile prod-ops
-make -f docker/prod/Makefile prod-ps
+make dev-ops
+make prod-ops
+make prod-ps
 
 docker compose --env-file .env -f docker/prod/docker-compose.yaml \
-    exec monitoring-prometheus wget -qO- http://api-dev:10000/metrics
+    -p trafic-cycliste-prod exec monitoring-prometheus \
+    wget -qO- http://api-dev:10000/metrics
 
 docker compose --env-file .env -f docker/prod/docker-compose.yaml \
-    exec monitoring-grafana wget -qO- http://monitoring-prometheus:9090/-/ready
+    -p trafic-cycliste-prod exec monitoring-grafana \
+    wget -qO- http://monitoring-prometheus:9090/-/ready
 
 docker compose --env-file .env -f docker/prod/docker-compose.yaml \
-    exec mlflow-server getent hosts mlflow-postgres
+    -p trafic-cycliste-prod exec mlflow-server getent hosts mlflow-postgres
 
 docker compose --env-file .env -f docker/prod/docker-compose.yaml \
-    exec airflow-worker getent hosts api-dev
+    -p trafic-cycliste-prod exec airflow-worker getent hosts api-dev
 ```
