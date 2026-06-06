@@ -1,13 +1,16 @@
 # Hybrid artifact handoff strategy
 
-This document is the Phase 8 design artifact for issue #63. It defines the
-manifest-first contract used to hand off generated artifacts between ML jobs,
-Airflow, the future job runner, MLflow, optional MinIO object storage, and the
-FastAPI prediction service.
+This document is the canonical Phase 8 artifact handoff reference. It defines
+how generated artifacts are described, promoted, and consumed through explicit
+manifests instead of implicit latest-file discovery.
 
-The goal is design only. This document does not implement Python manifest models,
-manifest writers, MinIO upload helpers, API serving changes, or ML job changes.
-Those changes are intentionally split into later Phase 8 stories.
+Implementation details are intentionally split into smaller documents:
+
+| Document | Responsibility |
+| -------- | -------------- |
+| [`artifact-manifest-models.md`](artifact-manifest-models.md) | Implemented Pydantic manifest contract from issue #64. |
+| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented checksum, manifest store, and `current.json` promotion helpers from issue #65. |
+| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Runner and Airflow execution target for the remaining Phase 8 stories. |
 
 ## Decision summary
 
@@ -26,16 +29,15 @@ This hybrid decision keeps Phase 8 incremental. The project can validate the
 production-like runtime with local bind-mounted artifacts first, while keeping a
 stable contract that can later point to MinIO without changing every consumer.
 
-## Scope and inputs
+## Source documents
 
-| Source | Use in this design |
-| ------ | ------------------ |
-| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Dev/prod runtime split and `docker/prod/runtime` ownership. |
+| Source | Use in this strategy |
+| ------ | -------------------- |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage and `docker/prod/runtime` ownership. |
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | Repository path ownership and DVC boundary. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Local host exposure and internal-only MinIO policy. |
 | [`../current-runtime-and-operations/dependency-strategy.md`](../current-runtime-and-operations/dependency-strategy.md) | MLflow, MinIO, and runtime dependency compatibility. |
 | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Target runner and worker-pool execution model. |
-| Phase 7 issue #57 | Production-like Compose runtime foundation. |
 
 ## Why manifest-first
 
@@ -72,6 +74,7 @@ validating `docker/prod`.
 | `docker/prod/runtime/data` | Local production-like runtime | Generated runtime data and predictions. | Local promoted artifacts. |
 | `docker/prod/runtime/models` | Local production-like runtime | Generated runtime model files. | Local promoted model references. |
 | `docker/prod/runtime/logs` | Local production-like runtime | Runtime logs. | Audit evidence only. |
+| `docker/prod/runtime/artifacts` | Local production-like runtime | Manifest-first handoff root. | Promoted manifest and payload root. |
 | MinIO object storage | MLflow or artifact backend | Optional S3-compatible storage. | Optional object reference. |
 
 ## Artifact lifecycle
@@ -94,14 +97,17 @@ operational observation, not a replacement for `promoted`.
 A manifest is created by the component that has the best evidence about the
 artifact:
 
-- ML prediction jobs know the output path, counter, dataset, model, metrics, and checksum evidence.
-- A runner or promotion helper can validate the manifest and update the stable promoted pointer.
-- Airflow orchestrates job order and records the manifest reference, but should not fabricate artifact metadata that belongs to ML code.
-- The API reads the promoted manifest and must not guess file paths when the manifest is available.
+- ML prediction jobs know the output path, counter, dataset, model, metrics, and
+  checksum evidence.
+- The artifact store validates manifests and updates the stable promoted pointer.
+- A runner can validate job outputs and call promotion helpers.
+- Airflow orchestrates job order and records manifest references, but should not
+  fabricate artifact metadata that belongs to ML code.
+- The API reads the promoted manifest and must not guess file paths when the
+  manifest is available.
 
-The first implementation should write a real `current.json` file instead of a
-symlink. This is more portable across Windows, WSL, Docker bind mounts, and CI
-runners.
+The first implementation writes a real `current.json` file instead of a symlink.
+This is more portable across Windows, WSL, Docker bind mounts, and CI runners.
 
 ## Local backend conventions
 
@@ -128,6 +134,9 @@ docker/prod/runtime/artifacts/
 ```
 
 Local paths stored in manifests should be repository-relative when possible.
+The implemented store helper writes run-scoped manifests under
+`<manifest_root>/runs/<run_id>/<artifact_type>-manifest.json` and replaces
+`<manifest_root>/current.json` during promotion.
 
 ## Optional MinIO object URI conventions
 
@@ -159,8 +168,8 @@ idempotency rule returns the same job.
 
 ## Manifest shape
 
-The initial manifest shape should remain JSON-compatible and map cleanly to
-future Pydantic models.
+The canonical JSON shape is implemented by the Pydantic models documented in
+[`artifact-manifest-models.md`](artifact-manifest-models.md).
 
 ```json
 {
@@ -201,15 +210,14 @@ Expected storage rules:
 A candidate artifact becomes current only when promotion updates the stable
 manifest pointer.
 
-Initial promotion rule:
+Implemented promotion sequence:
 
 ```text
-write candidate manifest -> validate -> write or replace current.json
+validate manifest -> verify local payload -> write run manifest -> replace current.json
 ```
 
-Promotion must be atomic enough that consumers never observe a partially written
-`current.json`. The implementation story can choose a portable write strategy,
-for example writing to a temporary file and replacing the target file.
+Promotion uses a temporary file plus atomic replacement so consumers do not read
+partially written `current.json` files.
 
 Promotion must not happen when:
 
@@ -218,6 +226,9 @@ Promotion must not happen when:
 - the checksum does not match;
 - the artifact status is not eligible for serving;
 - required producer, source, or storage metadata is missing.
+
+The implemented details and explicit exceptions are documented in
+[`artifact-manifest-store.md`](artifact-manifest-store.md).
 
 ## Component interactions
 
@@ -234,41 +245,29 @@ Promotion must not happen when:
 The contract deliberately keeps Airflow out of low-level filesystem discovery and
 keeps the API out of training job internals.
 
-## Migration path
+## Phase 8 implementation status and remaining plan
 
-Phase 8 should move in small validated steps:
+| Step | Story | Status | Owner document |
+| ---- | ----- | ------ | -------------- |
+| Define artifact handoff vocabulary. | #63 | Done | This document. |
+| Add strict Pydantic manifest models. | #64 | Done | [`artifact-manifest-models.md`](artifact-manifest-models.md) |
+| Add checksum, write, read, and promotion helpers. | #65 | Done | [`artifact-manifest-store.md`](artifact-manifest-store.md) |
+| Make ML prediction jobs emit local-only manifests. | #66 | Remaining | Issue body and future implementation note. |
+| Add typed job contracts and runner execution model. | #67/#68/#69 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Add production-like Airflow DAG using the runner. | #70 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Make the API load the promoted local manifest. | #71 | Remaining | Future API implementation note. |
+| Add production-like smoke validation. | #72 | Remaining | Future smoke validation note. |
+| Harden runtime configuration and secrets validation. | #73 | Remaining | Future runtime hardening note. |
+| Add optional MinIO upload/download helpers. | Later | Remaining | Future object-storage implementation note. |
+| Switch `primary_backend` to object storage. | Later | Deferred | Requires API and runner support first. |
 
-1. Document the contract and vocabulary in this file.
-2. Add strict Pydantic manifest models.
-3. Add manifest write, checksum, and promotion helpers.
-4. Make ML prediction jobs emit local-only manifests.
-5. Add typed job contracts and runner execution around manifest references.
-6. Make the API load the promoted local manifest instead of scanning folders.
-7. Add smoke validation proving runner, Airflow, API, and monitoring integration.
-8. Add optional MinIO upload/download helpers when the local contract is stable.
-9. Switch `primary_backend` from `local` to object storage only after API and
-   runner consumers support it.
+## Out of scope for the current implementation wave
 
-## Later stories consuming this contract
+The #64/#65 wave does not implement:
 
-Known Phase 8 consumers are:
-
-- #64: implement artifact manifest models and validation;
-- #65: implement artifact writer and promotion helpers;
-- #66: adapt the ML pipeline to emit artifact manifests;
-- #67: introduce typed pipeline job contracts;
-- #68: implement the internal job-runner API skeleton;
-- #69: execute typed ML jobs through the runner;
-- #70: add the production-like Airflow DAG using the runner API;
-- #71: make the API artifact-aware;
-- #72: add production-like smoke validation;
-- #73: harden runtime configuration and secrets validation.
-
-## Out of scope for this design
-
-- Python Pydantic schemas.
-- Manifest store implementation.
-- ML job manifest emission.
-- API serving changes.
-- MinIO upload/download helpers.
-- Production secret management.
+- ML job manifest emission;
+- runner API or worker execution;
+- Airflow DAG rewrites;
+- API serving from `current.json`;
+- MinIO upload/download helpers;
+- production secret management.

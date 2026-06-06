@@ -6,9 +6,14 @@ It mirrors the `docker/prod` folder structure so contributors can compare the
 development and local production-like runtimes without reading unrelated project
 setup targets.
 
-The root `docker-compose.yaml` is kept as a compatibility entrypoint for manual
-Compose commands from the repository root. New operational targets should prefer
-`docker/dev/docker-compose.yaml` through `docker/dev/Makefile`.
+Use the runtime through Make targets or an explicit Compose file:
+
+```bash
+make dev-compose-config
+make dev-start
+
+docker compose --env-file .env -f docker/dev/docker-compose.yaml config
+```
 
 ## Validate
 
@@ -44,5 +49,5 @@ make dev-down
 - Keep comments, sections, and property ordering close to `docker/prod` so diffs
   remain easy to review.
 
-See `docs/local-prod-runtime.md` for the production-like counterpart and the
-expected divergence points.
+See `docs/current-runtime-and-operations/local-prod-runtime.md` for the
+production-like counterpart and the expected divergence points.

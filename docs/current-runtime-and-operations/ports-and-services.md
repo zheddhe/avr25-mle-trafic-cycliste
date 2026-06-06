@@ -25,7 +25,6 @@ than the local production-like runtime.
 | Runtime | Compose file | Exposure model |
 | ------- | ------------ | -------------- |
 | Development | `docker/dev/docker-compose.yaml` | Broad local UI and debug exposure. |
-| Compatibility dev entrypoint | `docker-compose.yaml` | Same development exposure from the repository root. |
 | Local production-like | `docker/prod/docker-compose.yaml` | Reduced host exposure for operator-facing services only. |
 
 ## Development host-exposed services
@@ -106,9 +105,11 @@ because no documented local workflow requires direct host access to the broker.
 
 ## Validation
 
-The expected configuration validation commands are:
+The expected configuration and image build validation commands are:
 
 ```bash
 make dev-compose-config
 make prod-compose-config
+make dev-build
+make prod-build
 ```

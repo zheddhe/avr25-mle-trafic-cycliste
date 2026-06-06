@@ -1,7 +1,8 @@
 # Runtime communication matrix
 
-This document describes local Docker Compose communication after Phases 6 and 7.
-It is a runtime architecture reference, not a production security model.
+This document describes local Docker Compose communication after Phases 6 and 7,
+with Phase 8 artifact contracts now partially implemented. It is a runtime
+architecture reference, not a production security model.
 
 The current runtime has two Compose views:
 
@@ -44,7 +45,7 @@ The production-like runtime uses functional networks implemented in
 | `tracking_backend_net` | MLflow server, MLflow PostgreSQL, MinIO, MC init | Private tracking metadata and artifact backend. |
 | `observability_net` | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics | Scrapes, dashboards, and local alerts. |
 | `dev_support_net` | MailHog, Alertmanager, Airflow email clients | Local support services. |
-| Runtime mounts | `docker/prod/runtime/data`, `docker/prod/runtime/models`, `docker/prod/runtime/logs` | Production-like generated data, models, and logs. |
+| Runtime mounts | `docker/prod/runtime/data`, `docker/prod/runtime/models`, `docker/prod/runtime/logs`, `docker/prod/runtime/artifacts` | Production-like generated data, models, logs, and artifact manifests. |
 
 ## Current service-to-service paths
 
@@ -95,21 +96,26 @@ for exact ports and URLs.
 | `docker/prod/runtime/data` | Prod-like | Generated production-like data. | Referenced by artifact manifests. |
 | `docker/prod/runtime/models` | Prod-like | Generated production-like model artifacts. | Referenced by artifact manifests. |
 | `docker/prod/runtime/logs` | Prod-like | Production-like service and job logs. | Correlate with runner `job_id` and `run_id`. |
+| `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root. | Owns promoted `current.json` and run-scoped manifests. |
 | Root raw CSV | Prod-like | Read-only business source input. | Remains the only required root/DVC input. |
 
-## Phase 8 expected additions
+## Phase 8 additions and status
 
 Phase 8 introduces explicit contracts instead of adding broad communication paths.
+The remaining plan is tracked centrally in
+[`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
 
-| Addition | Expected communication | Reference |
-| -------- | ---------------------- | --------- |
-| Artifact manifests | ML jobs write manifests; API and runner read promoted manifests. | [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) |
-| Job contracts | Airflow and runner exchange typed job payloads. | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) |
-| `job-runner-api` | Airflow submits jobs through `pipeline_runtime_net`; service is internal-only. | #68 |
-| Runner execution | Runner executes typed jobs and returns manifest references. | #69 |
-| Prod Airflow DAG | Airflow observes runner job states instead of creating containers. | #70 |
-| Artifact-aware API | API serves the promoted artifact described by `current.json`. | #71 |
-| Smoke validation | Automated checks verify runner, Airflow, artifact, API, and monitoring connectivity. | #72 |
+| Addition | Status | Expected communication | Reference |
+| -------- | ------ | ---------------------- | --------- |
+| Artifact manifest schemas | Implemented | Shared Python contract used by later ML, runner, and API integrations. | [`../next-phase-design/artifact-manifest-models.md`](../next-phase-design/artifact-manifest-models.md) |
+| Artifact manifest store | Implemented | Local helpers write run manifests and replace `current.json`; runtime services do not call them yet. | [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) |
+| ML manifest emission | Remaining | ML model jobs emit validated prediction manifests. | #66 |
+| Job contracts | Remaining | Airflow and runner exchange typed job payloads. | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) |
+| `job-runner-api` | Remaining | Airflow submits jobs through `pipeline_runtime_net`; service is internal-only. | #68 |
+| Runner execution | Remaining | Runner executes typed jobs and returns manifest references. | #69 |
+| Prod Airflow DAG | Remaining | Airflow observes runner job states instead of creating containers. | #70 |
+| Artifact-aware API | Remaining | API serves the promoted artifact described by `current.json`. | #71 |
+| Smoke validation | Remaining | Automated checks verify runner, Airflow, artifact, API, and monitoring connectivity. | #72 |
 
 ## Rules for future changes
 

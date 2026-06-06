@@ -1,7 +1,8 @@
 # Local Compose runtimes
 
 This document describes the current local Docker Compose runtime model on `main`
-after Phases 6 and 7.
+after Phases 6 and 7, with the Phase 8 artifact contract now partially
+implemented in reusable Python helpers.
 
 The development runtime optimizes for debugging, host visibility, live-mounted
 runtime assets, and direct inspection of local service UIs. The production-like
@@ -17,15 +18,17 @@ exceptions with runner-based execution and manifest-based artifact handoff.
 | Runtime | Entry point | Primary use |
 | ------- | ----------- | ----------- |
 | Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
-| Compatibility dev entrypoint | `docker-compose.yaml` | Existing habits and raw `docker compose` commands from the repository root. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, least-privilege rehearsal, monitoring smoke tests, future runner integration. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, least-privilege rehearsal, monitoring smoke tests, and Phase 8 runner integration (#67-#70). |
 
 Use `docker/dev` when iterating on DAGs, ML CLI containers, root-level DVC data,
 logs, or model outputs.
 
 Use `docker/prod` when validating service boundaries, reduced host exposure,
-non-root application containers, isolated runtime workspaces, and the future
+non-root application containers, isolated runtime workspaces, and the Phase 8
 runner migration path.
+
+Do not use a root-level Compose file. Runtime commands must go through the
+runtime-specific Make targets or an explicit `docker compose -f` command.
 
 ## Related documentation
 
@@ -38,7 +41,8 @@ Start from [`../README.md`](../README.md) for the full documentation map.
 | [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Current service traffic and Phase 8 additions. |
 | [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and security boundaries. |
 | [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented production-like network topology. |
-| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Phase 8 hybrid manifest-first artifact handoff contract. |
+| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Phase 8 hybrid manifest-first artifact handoff contract and remaining plan. |
+| [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) | Implemented manifest store helpers available to future runtime consumers. |
 | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Phase 8 runner-based Airflow execution target. |
 
 ## Operational commands
@@ -93,9 +97,10 @@ data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
 This keeps DVC ownership local to the root workspace while allowing `docker/prod`
 to run without writing into root `data`, `models`, or `logs`.
 
-Phase 8 adds a manifest-first handoff contract. The manifest becomes the
-promotion authority and may reference local runtime paths or optional MinIO object
-URIs. See [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
+Phase 8 now provides reusable manifest models and store helpers. Runtime services
+still need later stories to emit, promote, and consume those manifests.
+The remaining artifact plan is tracked in
+[`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
 
 ## Network topology
 
@@ -127,15 +132,7 @@ Current behavior:
 - Production-like Airflow config points to `pipeline_runtime_net`, not `mlops_net`.
 - DockerOperator-based ML DAG execution remains available in `docker/dev` only.
 
-Remaining Phase 8 work:
-
-1. Add typed job submission schemas and a runner client under `src/`.
-2. Add an internal `job-runner-api` and typed ML worker services.
-3. Update the production-like DAG variant to submit runner jobs instead of
-   creating containers.
-4. Validate init and daily DAGs through the runner.
-
-The target design is documented in
+Remaining runner work is tracked in
 [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md).
 
 ## Host exposure
