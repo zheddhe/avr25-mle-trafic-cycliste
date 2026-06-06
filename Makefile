@@ -6,9 +6,8 @@ SHELL := /bin/bash
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup
 .PHONY: repo-setup
 .PHONY: env-compose env-local env-dagshub
-.PHONY: sync lock-check lint tests ci compose-config
-.PHONY: build ops start stop logs
-.PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
+.PHONY: sync lock-check lint tests ci
+.PHONY: dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
 .PHONY: sim_api_loop sim_api_down sim_api_req
 .PHONY: clean clean_env clean_full
@@ -133,7 +132,7 @@ env-dagshub: ## Print shell exports for DagsHub MLflow mode
 	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
 	printf 'unset AWS_DEFAULT_REGION\n'
 
-setup: env sync compose-config ## Prepare the local project after cloning
+setup: env sync dev-compose-config ## Prepare the local project after cloning
 
 git-setup: env ## Configure local Git identity from .env
 	@$(call log_test,git-setup)
