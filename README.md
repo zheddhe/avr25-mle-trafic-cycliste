@@ -135,7 +135,7 @@ credentials to `.dvc/config.local`, which is ignored by `.dvc/.gitignore`.
 Use this convenience target when both steps are needed:
 
 ```bash
-make repo_setup
+make repo-setup
 ```
 
 The versioned DVC remote is defined in `.dvc/config`:
@@ -181,9 +181,9 @@ make test
 make ci
 ```
 
-`make ci` chains the lock check, Ruff linting, and unit tests while excluding
-integration tests. This mirrors the local validation path used by CI without
-requiring Docker services.
+`make test` is a compatibility alias for the current `tests` target, which runs
+the integration test scope. `make ci` chains the lock check, Ruff linting, and
+this test target.
 
 Useful maintenance targets:
 
@@ -225,30 +225,21 @@ The project now has two explicit Compose runtime entrypoints:
 
 | Runtime | Compose file | Make targets | Goal |
 | ------- | ------------ | ------------ | ---- |
-| Development | `docker/dev/docker-compose.yaml` | `dev-*` plus legacy aliases | Debug visibility, root `data/logs/models`, current Airflow DockerOperator jobs. |
+| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debug visibility, root `data/logs/models`, current Airflow DockerOperator jobs. |
 | Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, isolated runtime workspace. |
 
 The root `docker-compose.yaml` remains a compatibility entrypoint for existing
-manual commands, but new operational checks should prefer the explicit runtime
-targets.
+manual `docker compose` commands from the repository root, but operational checks
+should prefer the explicit runtime targets.
 
 Development commands:
 
 ```bash
 make dev-compose-config
 make dev-build
-make dev-ops
+make dev-start
 make dev-ps
 make dev-logs SERVICE=api-dev
-```
-
-The existing aliases still target the development runtime:
-
-```bash
-make compose-config
-make build
-make ops
-make logs SERVICE=api-dev
 ```
 
 Local production-like commands:
@@ -256,7 +247,7 @@ Local production-like commands:
 ```bash
 make prod-compose-config
 make prod-build
-make prod-ops
+make prod-start
 make prod-ps
 make prod-logs SERVICE=api-dev
 ```
@@ -284,15 +275,6 @@ make dev-mlops-models
 make dev-mlops-pipeline
 ```
 
-Legacy aliases remain available:
-
-```bash
-make mlops-ingest
-make mlops-features
-make mlops-models
-make mlops-pipeline
-```
-
 ### 3. 📈 Experience tracker
 
 We use **MLflow** to record **metrics**, **params**, and training/prediction
@@ -317,12 +299,12 @@ eval "$(make --no-print-directory env-local)"
 eval "$(make --no-print-directory env-dagshub)"
 ```
 
-The MLOps container targets automatically use the Compose preset. Local debug
-targets automatically use the local backend preset.
+Compose runtime services read their values from `.env`. Host-side debug targets
+use explicit Makefile presets where needed.
 
 ```bash
-make ops
-make mlops-pipeline
+make dev-start
+make dev-mlops-pipeline
 make local-pipeline
 make mlflow-local
 ```
