@@ -6,7 +6,7 @@ SHELL := /bin/bash
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup
 .PHONY: repo-setup
 .PHONY: env-compose env-local env-dagshub
-.PHONY: sync lock-check lint test tests ci compose-config
+.PHONY: sync lock-check lint tests ci compose-config
 .PHONY: build ops start stop logs
 .PHONY: mlops-ingest mlops-features mlops-models mlops-pipeline dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
@@ -182,8 +182,6 @@ lock-check: ## Check that uv.lock is consistent with pyproject.toml
 lint: ## Run Ruff checks
 	@$(call log_test,lint)
 	$(UV) run --locked --group test ruff check .
-
-test: tests ## Backward-compatible alias for tests
 
 tests: ## Run integration tests scope
 	@$(call log_test,integration-test)
