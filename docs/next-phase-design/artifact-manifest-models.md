@@ -70,14 +70,11 @@ They cover the acceptance cases from issue #64:
 - invalid backend;
 - invalid URI cases.
 
-## Remaining Phase 8 work
+## Phase 8 follow-up work
 
-This story only implements the manifest contract. The following topics remain
-for later Phase 8 stories:
+Issue #65 now implements checksum, manifest write, read, and promotion helpers.
+The following topics remain for later Phase 8 stories:
 
-- writing manifests to disk;
-- checksum verification against real payloads;
-- promotion helpers and `current.json` replacement;
 - ML job emission of manifests;
 - API serving from promoted manifests;
 - MinIO upload/download helpers.
