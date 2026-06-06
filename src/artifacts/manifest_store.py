@@ -82,7 +82,8 @@ def promote_manifest(
     Raises:
         ArtifactManifestValidationError: if the manifest is invalid or not
             eligible for promotion.
-        ArtifactPayloadNotFoundError: if the referenced local payload is missing.
+        ArtifactPayloadNotFoundError: propagated from the checksum helper when
+            the referenced local payload is missing.
         ArtifactChecksumMismatchError: if checksum metadata does not match.
     """
 
@@ -141,7 +142,8 @@ def verify_local_payload(
         The computed checksum when a local payload exists, otherwise ``None``.
 
     Raises:
-        ArtifactPayloadNotFoundError: if the local artifact is missing.
+        ArtifactPayloadNotFoundError: propagated from the checksum helper when
+            the referenced local payload is missing.
         ArtifactChecksumMismatchError: if checksum metadata does not match.
     """
 
