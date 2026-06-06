@@ -1,10 +1,9 @@
 # ========================
 # LOCAL PRODUCTION-LIKE RUNTIME
 # ========================
-# This Compose entrypoint is intentionally separate from the root development
-# runtime. It follows the functional network topology from docs/local-prod-
-# network-topology.md and keeps temporary exceptions documented in
-# docs/local-prod-runtime.md.
+# This runtime is intentionally separate from the root development runtime.
+# It follows docs/local-prod-network-topology.md and keeps the current runner
+# gap explicit in docs/local-prod-runtime.md.
 
 volumes:
   prod-mlflow-postgres-db:
@@ -75,8 +74,8 @@ x-airflow-common: &airflow-common
     airflow-postgres:
       condition: service_healthy
   volumes:
-    - ../../logs:/opt/airflow/logs
-    - ../../data:/opt/airflow/data
+    - ./runtime/logs/airflow:/opt/airflow/logs
+    - ./runtime/data:/opt/airflow/data
     - ../dev/airflow/dags:/opt/airflow/dags:ro
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
@@ -116,8 +115,9 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ./runtime/data:/app/data
+      - ../../data/raw/${RAW_FILE_NAME}:/app/data/raw/${RAW_FILE_NAME}:ro
+      - ./runtime/logs/ml:/app/logs
     networks:
       - pipeline_runtime_net
     profiles: ["ml", "all"]
@@ -142,8 +142,8 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/logs/ml:/app/logs
     networks:
       - pipeline_runtime_net
     profiles: ["ml", "all"]
@@ -185,9 +185,9 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ../../data:/app/data
-      - ../../models:/app/models
-      - ../../logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/models:/app/models
+      - ./runtime/logs/ml:/app/logs
     networks:
       - pipeline_runtime_net
       - tracking_client_net
@@ -203,10 +203,10 @@ services:
       - "${API_HOST_PORT:-10000}:10000"
     restart: unless-stopped
     environment:
-      DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
+      DATA_FINAL_ROOT: /app/data/final
     volumes:
-      - ../../data/final:/app/data/final:ro
-      - ../../logs:/app/logs
+      - ./runtime/data/final:/app/data/final:ro
+      - ./runtime/logs/api:/app/logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -225,28 +225,29 @@ services:
   # ========================
   mlflow-postgres:
     image: ${MLFLOW_POSTGRES_IMAGE:?required}
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${MLFLOW_POSTGRES_USER:?required}
       POSTGRES_PASSWORD: ${MLFLOW_POSTGRES_PASSWORD:?required}
       POSTGRES_DB: ${MLFLOW_POSTGRES_DB:?required}
+    volumes:
+      - prod-mlflow-postgres-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${MLFLOW_POSTGRES_USER:?required}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    volumes:
-      - prod-mlflow-postgres-db:/var/lib/postgresql/data
-    restart: unless-stopped
     networks:
       - tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-minio:
     image: ${MLFLOW_MINIO_IMAGE:?required}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?required}
       MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?required}
-    command: server /data --console-address ":9001"
     volumes:
       - prod-mlflow-minio-data:/data
     healthcheck:
@@ -255,7 +256,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     networks:
       - tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
@@ -278,6 +278,7 @@ services:
 
   mlflow-server:
     image: ${MLFLOW_IMAGE:?required}
+    restart: unless-stopped
     depends_on:
       mlflow-postgres:
         condition: service_healthy
@@ -285,6 +286,15 @@ services:
         condition: service_healthy
       mlflow-mc-init:
         condition: service_completed_successfully
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --allowed-hosts
+      - ${MLFLOW_SERVER_ALLOWED_HOSTS:?required}
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql://${MLFLOW_POSTGRES_USER:?required}:${MLFLOW_POSTGRES_PASSWORD:?required}@mlflow-postgres:5432/${MLFLOW_POSTGRES_DB:?required}
       MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://mlflow/
@@ -303,16 +313,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    command:
-      - mlflow
-      - server
-      - --host
-      - 0.0.0.0
-      - --port
-      - "5000"
-      - --allowed-hosts
-      - ${MLFLOW_SERVER_ALLOWED_HOSTS:?required}
-    restart: unless-stopped
     networks:
       - tracking_client_net
       - tracking_backend_net
@@ -324,6 +324,7 @@ services:
   # ========================
   airflow-postgres:
     image: ${AIRFLOW_POSTGRES_IMAGE:?required}
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${AIRFLOW_POSTGRES_USER:?required}
       POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:?required}
@@ -335,32 +336,31 @@ services:
       interval: 10s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     networks:
       - orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
     image: ${AIRFLOW_REDIS_IMAGE:?required}
+    restart: unless-stopped
+    volumes:
+      - prod-airflow-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    volumes:
-      - prod-airflow-redis-data:/data
-    restart: unless-stopped
     networks:
       - orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
     <<: *airflow-common
+    restart: "no"
     environment:
       <<: *airflow-common-env
     command: ["bash", "/opt/airflow/scripts/airflow-init.sh"]
-    restart: "no"
     volumes:
       - ./airflow/config/:/opt/airflow/config/:ro
       - ./airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
@@ -368,6 +368,7 @@ services:
 
   airflow-api-server:
     <<: *airflow-common
+    restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -381,11 +382,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     profiles: ["all", "airflow", "ptf"]
 
   airflow-scheduler:
     <<: *airflow-common
+    restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -397,11 +398,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     profiles: ["all", "airflow", "ptf"]
 
   airflow-dag-processor:
     <<: *airflow-common
+    restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -413,25 +414,24 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     profiles: ["all", "airflow", "ptf"]
 
   airflow-worker:
     <<: *airflow-common
+    restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    command: ["celery", "worker"]
     environment:
       <<: *airflow-common-env
-    command: ["celery", "worker"]
     healthcheck:
       test: ["CMD-SHELL", "celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME} || celery --app airflow.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     networks:
       - orchestration_net
       - pipeline_runtime_net
@@ -440,6 +440,7 @@ services:
 
   airflow-triggerer:
     <<: *airflow-common
+    restart: unless-stopped
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -451,7 +452,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
     profiles: ["all", "airflow", "ptf"]
 
   # ========================
@@ -479,12 +479,14 @@ services:
   monitoring-grafana:
     image: ${GRAFANA_IMAGE:?required}
     restart: unless-stopped
-    ports:
-      - "${GRAFANA_HOST_PORT:-14300}:3000"
+    depends_on:
+      - monitoring-prometheus
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "${GRAFANA_HOST_PORT:-14300}:3000"
     volumes:
       - prod-grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -495,8 +497,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    depends_on:
-      - monitoring-prometheus
     networks:
       - observability_net
     profiles: ["monitoring", "all", "ptf"]
@@ -536,10 +536,10 @@ services:
 
   monitoring-alertmanager:
     image: ${ALERTMANAGER_IMAGE:?required}
+    restart: unless-stopped
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - prod-alertmanager-data:/alertmanager
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/ready"]
       interval: 10s
