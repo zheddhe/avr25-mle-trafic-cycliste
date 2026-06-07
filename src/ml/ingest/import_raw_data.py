@@ -1,7 +1,6 @@
-# src/ml/ingest/import_raw_data.py
+# Ingest raw counter data.
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -12,34 +11,22 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.artifacts.schemas import ArtifactType
 from src.metrics.pipeline_metrics import track_pipeline_step
-from src.ml.ingest.ingest_utils import (
-    apply_percent_range_selection,
-)
-
-
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
-def write_manifest(path: str, payload: dict) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+from src.ml.artifact_manifest_emission import emit_dataset_artifact_manifest
+from src.ml.ingest.ingest_utils import apply_percent_range_selection
 
 
 def slugify_ascii(text: str) -> str:
-    """ASCII-safe slug (keep [A-Za-z0-9_-], collapse underscores, max 64 chars)."""
-    norm = unicodedata.normalize("NFKD", text)
-    text_ascii = norm.encode("ascii", "ignore").decode("ascii")
+    """Build an ASCII-safe slug from a counter label."""
+
+    normalized = unicodedata.normalize("NFKD", text)
+    text_ascii = normalized.encode("ascii", "ignore").decode("ascii")
     text_ascii = re.sub(r"[^A-Za-z0-9\-_]+", "_", text_ascii)
     text_ascii = re.sub(r"_+", "_", text_ascii).strip("_")
     return text_ascii[:64] or "counter"
 
 
-# -------------------------------------------------------------------
-# Logs management
-# -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
 log_path = os.path.join(log_dir, "import_raw_data.log")
@@ -52,9 +39,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# -------------------------------------------------------------------
-# Main script
-# -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--raw-path",
@@ -72,7 +56,7 @@ logger = logging.getLogger(__name__)
     "--orientation",
     type=str,
     required=True,
-    help="Exact value of column 'orientation_compteur' (e.g. 'N-S').",
+    help="Exact value of column 'orientation_compteur'.",
 )
 @click.option(
     "--range-start",
@@ -93,20 +77,42 @@ logger = logging.getLogger(__name__)
     type=str,
     default="date_et_heure_de_comptage",
     show_default=True,
-    help="Timestamp column in raw CSV (ISO8601, with or without timezone).",
+    help="Timestamp column in raw CSV.",
 )
 @click.option(
     "--sub-dir",
     type=click.Path(file_okay=False),
     default=None,
-    help="Target subdir under data/interim (ASCII). Defaults to '<site>_<orientation>'.",
+    help="Target subdir under data/interim.",
 )
 @click.option(
     "--interim-name",
     type=str,
     default="initial.csv",
     show_default=True,
-    help="Output CSV filename inside data/interim/<sub-dir>/",
+    help="Output CSV filename inside data/interim/<sub-dir>/.",
+)
+@click.option(
+    "--artifact-manifest-root",
+    type=click.Path(file_okay=False),
+    default=None,
+    envvar="ARTIFACT_MANIFEST_ROOT",
+    help="Optional directory used to write interim dataset manifests.",
+)
+@click.option(
+    "--artifact-repository-root",
+    type=click.Path(file_okay=False),
+    default=".",
+    envvar="ARTIFACT_REPOSITORY_ROOT",
+    show_default=True,
+    help="Repository root used to resolve manifest local artifact paths.",
+)
+@click.option(
+    "--artifact-object-uri",
+    type=str,
+    default=None,
+    envvar="ARTIFACT_OBJECT_URI",
+    help="Optional s3:// URI for the interim dataset artifact.",
 )
 def main(
     raw_path: str,
@@ -117,12 +123,12 @@ def main(
     timestamp_col: str,
     sub_dir: str | None,
     interim_name: str,
+    artifact_manifest_root: str | None,
+    artifact_repository_root: str,
+    artifact_object_uri: str | None,
 ) -> None:
-    """
-    Extract a single counter from the raw dataset and save an interim slice.
-    Batch metrics (duration/status/records) are pushed via track_pipeline_step().
-    """
-    # Labels for Prometheus/Pushgateway
+    """Extract a single counter and write an interim dataset slice."""
+
     labels = {
         "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.ingest"),
@@ -132,58 +138,58 @@ def main(
         "orientation": os.getenv("ORIENTATION", "NA"),
     }
 
-    with track_pipeline_step("ingest", labels) as m:
-        # Validate range
+    with track_pipeline_step("ingest", labels) as metrics_payload:
         if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
             raise click.BadParameter(
-                f"range-start/range-end must be within [0, 100]. Got ({range_start}, {range_end})."
+                "range-start/range-end must be within [0, 100]. "
+                f"Got ({range_start}, {range_end}).",
             )
         if range_start > range_end:
             raise click.BadParameter(
-                f"range-start must be <= range-end. Got ({range_start}, {range_end})."
+                "range-start must be <= range-end. "
+                f"Got ({range_start}, {range_end}).",
             )
 
-        # Load CSV
         try:
             logger.info(f"Loading raw CSV [{raw_path}] ...")
             df = pd.read_csv(raw_path, index_col=0)
         except Exception as exc:
             logger.exception("Failed to load raw CSV")
-            raise click.ClickException(f"Failed to load raw CSV: {exc}")
+            raise click.ClickException(f"Failed to load raw CSV: {exc}") from exc
 
-        # Required columns
         key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
-        missing = [c for c in key_cols + [timestamp_col] if c not in df.columns]
+        missing = [col for col in key_cols + [timestamp_col] if col not in df.columns]
         if missing:
             raise click.ClickException(f"Missing required columns: {missing}")
 
-        # Filter selected counter
-        grp = df.groupby(key_cols, dropna=False)
+        grouped = df.groupby(key_cols, dropna=False)
         key = (site, orientation)
-        if key not in grp.groups:
+        if key not in grouped.groups:
             raise click.ClickException(f"Counter not found: {key}")
 
-        df_counter = grp.get_group(key).copy()
+        df_counter = grouped.get_group(key).copy()
         logger.info(f"Counter [{site} | {orientation}] rows: {len(df_counter)}")
 
-        # Chronological sort
         try:
-            # Try strict ISO with tz first
             df_counter[timestamp_col] = pd.to_datetime(
-                df_counter[timestamp_col], format="%Y-%m-%dT%H:%M:%S%z", utc=True
+                df_counter[timestamp_col],
+                format="%Y-%m-%dT%H:%M:%S%z",
+                utc=True,
             )
         except Exception:
-            # Fallback: let pandas parse (with/without tz)
-            df_counter[timestamp_col] = pd.to_datetime(df_counter[timestamp_col], utc=True)
+            df_counter[timestamp_col] = pd.to_datetime(
+                df_counter[timestamp_col],
+                utc=True,
+            )
 
         df_counter = df_counter.sort_values(timestamp_col).reset_index(drop=True)
-
-        # Percent slice
-        df_counter = apply_percent_range_selection(df_counter, (range_start, range_end))
+        df_counter = apply_percent_range_selection(
+            df_counter,
+            (range_start, range_end),
+        )
         if df_counter.empty:
             raise click.ClickException("Slice produced an empty DataFrame.")
 
-        # Output path
         if sub_dir is None:
             sub_dir = slugify_ascii(f"{site}_{orientation}")
         out_dir = os.path.join("data", "interim", sub_dir)
@@ -193,30 +199,28 @@ def main(
         df_counter.to_csv(out_path, index=True)
         logger.info(f"Saved interim slice -> [{out_path}] ({len(df_counter)} rows)")
 
-        # Optional manifest
-        man = os.getenv("MANIFEST_INGEST")
-        if man:
-            try:
-                write_manifest(
-                    man,
-                    {
-                        "inputs": {
-                            "raw_path": str(Path(raw_path).resolve()),
-                            "site": site,
-                            "orientation": orientation,
-                            "range": [range_start, range_end],
-                            "timestamp_col": timestamp_col,
-                        },
-                        "outputs": {"interim_path": str(out_path)},
-                        "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": sub_dir},
-                    },
-                )
-                logger.info(f"Wrote ingest manifest to [{man}]")
-            except Exception as exc:
-                logger.warning(f"Failed to write manifest [{man}]: {exc}")
+        emitted_manifest = emit_dataset_artifact_manifest(
+            manifest_root=artifact_manifest_root,
+            artifact_type=ArtifactType.INTERIM_DATASET,
+            payload_path=out_path,
+            source_file_name=Path(raw_path).name,
+            sub_dir=sub_dir,
+            repository_root=artifact_repository_root,
+            run_id=os.getenv("RUN_ID") or os.getenv("AIRFLOW_CTX_DAG_RUN_ID"),
+            counter_id=os.getenv("COUNTER_ID") or sub_dir,
+            producer_service=os.getenv("ARTIFACT_PRODUCER_SERVICE", "ml-ingest"),
+            producer_image=os.getenv("ARTIFACT_PRODUCER_IMAGE"),
+            producer_version=os.getenv("ARTIFACT_PRODUCER_VERSION"),
+            object_uri=artifact_object_uri,
+            promote=True,
+        )
+        if emitted_manifest is not None:
+            logger.info(
+                "Interim dataset artifact manifest emitted for "
+                f"run_id=[{emitted_manifest.run_id}].",
+            )
 
-        # Business counter (volume) for metrics
-        m["records"] = int(len(df_counter))
+        metrics_payload["records"] = int(len(df_counter))
 
     logger.info("Data ingestion ended successfully.")
     sys.exit(0)
@@ -225,6 +229,6 @@ def main(
 if __name__ == "__main__":
     try:
         main()
-    except click.ClickException as e:
-        logger.error(str(e))
+    except click.ClickException as error:
+        logger.error(str(error))
         sys.exit(1)
