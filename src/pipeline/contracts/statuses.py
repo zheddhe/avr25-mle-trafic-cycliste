@@ -137,7 +137,9 @@ class JobResult(StrictPipelineContract):
     def validate_finished_after_started(self) -> JobResult:
         """Ensure result timestamps are chronological when both are present."""
 
-        if self.started_at and self.finished_at and self.finished_at < self.started_at:
+        has_started = self.started_at is not None
+        has_finished = self.finished_at is not None
+        if has_started and has_finished and self.finished_at < self.started_at:
             raise ValueError("finished_at must be greater than or equal to started_at")
 
         return self
