@@ -7,16 +7,19 @@ from pathlib import Path
 
 import pytest
 
+from src.artifacts.manifest_emission import build_artifact_manifest, emit_artifact_manifest
 from src.artifacts.schemas import ArtifactType
-from src.ml.artifact_manifest_emission import (
-    build_dataset_artifact_manifest,
-    emit_dataset_artifact_manifest,
+from src.ml.features.artifact_manifest_emission import (
+    build_feature_dataset_artifact_manifest,
+)
+from src.ml.ingest.artifact_manifest_emission import (
+    build_interim_dataset_artifact_manifest,
 )
 from src.ml.models.artifact_manifest_emission import build_prediction_artifact_manifest
 
 
-class TestBuildDatasetArtifactManifest:
-    """Unit tests for build_dataset_artifact_manifest."""
+class TestBuildArtifactManifest:
+    """Unit tests for build_artifact_manifest."""
 
     def test_builds_valid_interim_dataset_manifest(self, tmp_path: Path):
         raw_path = tmp_path / "data/raw/bike-counts.csv"
@@ -26,15 +29,15 @@ class TestBuildDatasetArtifactManifest:
         interim_path.parent.mkdir(parents=True)
         interim_path.write_text("timestamp,value\n2026-06-07,1\n", encoding="utf-8")
 
-        manifest = build_dataset_artifact_manifest(
+        manifest = build_artifact_manifest(
             artifact_type=ArtifactType.INTERIM_DATASET,
             payload_path=interim_path,
             source_file_name=raw_path,
             sub_dir="counter-1",
+            default_producer_service="ml-ingest-test",
             repository_root=tmp_path,
             run_id="run-001",
             counter_id="counter-1",
-            producer_service="ml-ingest-test",
             producer_image="ml-ingest:test",
         )
 
@@ -53,16 +56,16 @@ class TestBuildDatasetArtifactManifest:
         processed_path.parent.mkdir(parents=True)
         processed_path.write_text("timestamp,value,hour\n2026-06-07,1,12\n", encoding="utf-8")
 
-        manifest = build_dataset_artifact_manifest(
+        manifest = build_artifact_manifest(
             artifact_type=ArtifactType.FEATURE_DATASET,
             payload_path=processed_path,
             source_file_name=interim_path,
             sub_dir="counter-1",
+            default_producer_service="ml-features-test",
             repository_root=tmp_path,
             run_id="run-001",
             counter_id="counter-1",
             dataset_version="interim-run-001",
-            producer_service="ml-features-test",
         )
 
         assert manifest.artifact_type == ArtifactType.FEATURE_DATASET
@@ -82,7 +85,7 @@ class TestBuildDatasetArtifactManifest:
         repository_root.mkdir()
 
         with pytest.raises(ValueError, match="inside repository_root"):
-            build_dataset_artifact_manifest(
+            build_artifact_manifest(
                 artifact_type=ArtifactType.INTERIM_DATASET,
                 payload_path=outside_path,
                 source_file_name="raw.csv",
@@ -92,15 +95,15 @@ class TestBuildDatasetArtifactManifest:
             )
 
 
-class TestEmitDatasetArtifactManifest:
-    """Unit tests for emit_dataset_artifact_manifest."""
+class TestEmitArtifactManifest:
+    """Unit tests for emit_artifact_manifest."""
 
     def test_returns_none_when_manifest_root_is_missing(self, tmp_path: Path):
         payload_path = tmp_path / "data/interim/counter-1/initial.csv"
         payload_path.parent.mkdir(parents=True)
         payload_path.write_text("value\n1\n", encoding="utf-8")
 
-        manifest = emit_dataset_artifact_manifest(
+        manifest = emit_artifact_manifest(
             manifest_root=None,
             artifact_type=ArtifactType.INTERIM_DATASET,
             payload_path=payload_path,
@@ -117,7 +120,7 @@ class TestEmitDatasetArtifactManifest:
         payload_path.write_text("value\n1\n", encoding="utf-8")
         manifest_root = tmp_path / "artifacts/manifests"
 
-        manifest = emit_dataset_artifact_manifest(
+        manifest = emit_artifact_manifest(
             manifest_root=manifest_root,
             artifact_type=ArtifactType.INTERIM_DATASET,
             payload_path=payload_path,
@@ -166,15 +169,13 @@ class TestMlPipelineArtifactManifestCoherence:
             "run_id": "run-001",
             "counter_id": "counter-1",
         }
-        ingest_manifest = build_dataset_artifact_manifest(
-            artifact_type=ArtifactType.INTERIM_DATASET,
+        ingest_manifest = build_interim_dataset_artifact_manifest(
             payload_path=interim_path,
             source_file_name=raw_path,
             producer_service="ml-ingest-test",
             **common,
         )
-        feature_manifest = build_dataset_artifact_manifest(
-            artifact_type=ArtifactType.FEATURE_DATASET,
+        feature_manifest = build_feature_dataset_artifact_manifest(
             payload_path=processed_path,
             source_file_name=interim_path,
             dataset_version=ingest_manifest.run_id,
