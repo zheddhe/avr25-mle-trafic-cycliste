@@ -18,6 +18,12 @@ from src.artifacts.schemas import (
     ArtifactType,
     StorageBackend,
 )
+from src.ml.artifact_manifest_emission import (
+    clean_optional_value,
+    resolve_counter_id,
+    resolve_run_id,
+    to_repository_relative_path,
+)
 
 DEFAULT_PRODUCER_SERVICE = "ml-models"
 
@@ -89,97 +95,52 @@ def build_prediction_artifact_manifest(
     """Create a validated local prediction artifact manifest."""
 
     prediction_file = Path(prediction_path)
-    local_path = _to_repository_relative_path(
+    local_path = to_repository_relative_path(
         path=prediction_file,
         repository_root=repository_root,
+        path_label="prediction_path",
     )
 
     return ArtifactManifest(
         schema_version=SCHEMA_VERSION,
         artifact_type=ArtifactType.PREDICTIONS,
         status=ArtifactStatus.VALIDATED,
-        run_id=_resolve_run_id(run_id),
-        counter_id=_resolve_counter_id(counter_id, sub_dir),
+        run_id=resolve_run_id(run_id),
+        counter_id=resolve_counter_id(counter_id, sub_dir),
         created_at=datetime.now(UTC),
         producer=ArtifactProducer(
             service=(
-                _clean_optional_value(producer_service)
-                or _clean_optional_value(os.getenv("ARTIFACT_PRODUCER_SERVICE"))
+                clean_optional_value(producer_service)
+                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_SERVICE"))
                 or DEFAULT_PRODUCER_SERVICE
             ),
             image=(
-                _clean_optional_value(producer_image)
-                or _clean_optional_value(os.getenv("ARTIFACT_PRODUCER_IMAGE"))
+                clean_optional_value(producer_image)
+                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_IMAGE"))
             ),
             version=(
-                _clean_optional_value(producer_version)
-                or _clean_optional_value(os.getenv("ARTIFACT_PRODUCER_VERSION"))
+                clean_optional_value(producer_version)
+                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_VERSION"))
             ),
         ),
         source=ArtifactSource(
             raw_file_name=Path(processed_path).name,
             dataset_version=(
-                _clean_optional_value(dataset_version)
-                or _clean_optional_value(os.getenv("DATASET_VERSION"))
+                clean_optional_value(dataset_version)
+                or clean_optional_value(os.getenv("DATASET_VERSION"))
             ),
             model_version=(
-                _clean_optional_value(model_version)
-                or _clean_optional_value(os.getenv("MODEL_VERSION"))
+                clean_optional_value(model_version)
+                or clean_optional_value(os.getenv("MODEL_VERSION"))
             ),
         ),
         storage=ArtifactStorage(
             primary_backend=StorageBackend.LOCAL,
             local_path=local_path,
             object_uri=(
-                _clean_optional_value(object_uri)
-                or _clean_optional_value(os.getenv("ARTIFACT_OBJECT_URI"))
+                clean_optional_value(object_uri)
+                or clean_optional_value(os.getenv("ARTIFACT_OBJECT_URI"))
             ),
             checksum_sha256=compute_sha256(prediction_file),
         ),
     )
-
-
-def _resolve_run_id(run_id: str | None) -> str:
-    candidate = (
-        _clean_optional_value(run_id)
-        or _clean_optional_value(os.getenv("RUN_ID"))
-        or _clean_optional_value(os.getenv("AIRFLOW_CTX_DAG_RUN_ID"))
-    )
-    if candidate:
-        return candidate
-
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-
-
-def _resolve_counter_id(counter_id: str | None, sub_dir: str) -> str:
-    return (
-        _clean_optional_value(counter_id)
-        or _clean_optional_value(os.getenv("COUNTER_ID"))
-        or sub_dir
-    )
-
-
-def _to_repository_relative_path(
-    *,
-    path: Path,
-    repository_root: str | Path,
-) -> str:
-    if not path.is_absolute():
-        return path.as_posix()
-
-    root = Path(repository_root).resolve()
-    try:
-        return path.resolve().relative_to(root).as_posix()
-    except ValueError as error:
-        raise ValueError(
-            "prediction_path must be inside repository_root "
-            "when it is provided as an absolute path",
-        ) from error
-
-
-def _clean_optional_value(value: str | None) -> str | None:
-    if value is None:
-        return None
-
-    cleaned = value.strip()
-    return cleaned or None
