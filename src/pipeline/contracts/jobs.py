@@ -95,7 +95,7 @@ class ArtifactManifestReference(StrictPipelineContract):
         return value
 
 
-class PipelineJobRequest(StrictPipelineContract):
+class BasePipelineJobRequest(StrictPipelineContract):
     """Base request fields shared by every typed pipeline job."""
 
     job_type: PipelineJobType = Field(
@@ -150,7 +150,7 @@ class PipelineJobRequest(StrictPipelineContract):
         return validate_filesystem_path(value)
 
 
-class IngestJobRequest(PipelineJobRequest):
+class IngestJobRequest(BasePipelineJobRequest):
     """Typed request for the ingestion pipeline step."""
 
     job_type: Literal[PipelineJobType.INGEST] = PipelineJobType.INGEST
@@ -214,7 +214,7 @@ class IngestJobRequest(PipelineJobRequest):
         return self
 
 
-class FeatureJobRequest(PipelineJobRequest):
+class FeatureJobRequest(BasePipelineJobRequest):
     """Typed request for the feature engineering pipeline step."""
 
     job_type: Literal[PipelineJobType.FEATURES] = PipelineJobType.FEATURES
@@ -249,7 +249,7 @@ class FeatureJobRequest(PipelineJobRequest):
         return validate_filesystem_path(value) or value
 
 
-class ModelJobRequest(PipelineJobRequest):
+class ModelJobRequest(BasePipelineJobRequest):
     """Typed request for the model training and prediction pipeline step."""
 
     job_type: Literal[PipelineJobType.MODELS] = PipelineJobType.MODELS
@@ -347,7 +347,7 @@ class ModelJobRequest(PipelineJobRequest):
         return value
 
 
-class FullPipelineJobRequest(PipelineJobRequest):
+class PipelineJobRequest(BasePipelineJobRequest):
     """Typed request that chains ingest, features, and model jobs coherently."""
 
     job_type: Literal[PipelineJobType.PIPELINE] = PipelineJobType.PIPELINE
@@ -362,10 +362,10 @@ class FullPipelineJobRequest(PipelineJobRequest):
     )
 
     @model_validator(mode="after")
-    def validate_step_coherence(self) -> FullPipelineJobRequest:
+    def validate_step_coherence(self) -> PipelineJobRequest:
         """Validate shared context and artifact handoff between pipeline steps."""
 
-        steps: tuple[PipelineJobRequest, ...] = (
+        steps: tuple[BasePipelineJobRequest, ...] = (
             self.ingest,
             self.features,
             self.models,
