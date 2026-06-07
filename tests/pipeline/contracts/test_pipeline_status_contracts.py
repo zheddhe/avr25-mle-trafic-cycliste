@@ -7,14 +7,14 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from src.pipeline.contracts import (
+from src.pipeline.contracts.jobs import PipelineJobType
+from src.pipeline.contracts.statuses import (
     TERMINAL_JOB_STATES,
     JobError,
     JobResult,
     JobState,
     JobStatus,
     MetricsEvidence,
-    PipelineJobType,
 )
 
 
