@@ -1,7 +1,6 @@
-# src/ml/features/build_features.py
+# Build feature datasets.
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
@@ -10,25 +9,12 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.artifacts.schemas import ArtifactType
 from src.metrics.pipeline_metrics import track_pipeline_step
-from src.ml.features.features_utils import (
-    DatetimePeriodicsTransformer,
-)
+from src.ml.artifact_manifest_emission import emit_dataset_artifact_manifest
+from src.ml.features.features_utils import DatetimePeriodicsTransformer
 
 
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
-def write_manifest(path: str, payload: dict) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-
-
-# -------------------------------------------------------------------
-# Logs Management
-# -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
 log_path = os.path.join(log_dir, "build_features.log")
@@ -52,7 +38,6 @@ COLUMNS_TO_DROP = [
     "longitude",
     "arrondissement",
     "elevation",
-    # Optionally redundant engineered columns (keep if you want)
     "date_et_heure_de_comptage_hour",
     "date_et_heure_de_comptage_day",
     "date_et_heure_de_comptage_day_of_year",
@@ -67,9 +52,6 @@ COLUMNS_TO_DROP = [
 ]
 
 
-# -------------------------------------------------------------------
-# Main script
-# -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--interim-path",
@@ -81,15 +63,14 @@ COLUMNS_TO_DROP = [
     "--sub-dir",
     type=click.Path(file_okay=False),
     default=None,
-    help=("ASCII Target <sub-dir> under data/processed. If not set, will write to "
-          "data/processed/<sub-dir-from-interim-path>"),
+    help="Target subdir under data/processed.",
 )
 @click.option(
     "--processed-name",
     type=str,
     default="initial_with_feats.csv",
     show_default=True,
-    help="processed CSV filename inside data/processed/<sub-dir>.",
+    help="Processed CSV filename inside data/processed/<sub-dir>.",
 )
 @click.option(
     "--timestamp-col",
@@ -103,7 +84,29 @@ COLUMNS_TO_DROP = [
     "extra_drop",
     type=str,
     multiple=True,
-    help="Additional columns to drop (can be used multiple times).",
+    help="Additional columns to drop. Can be used multiple times.",
+)
+@click.option(
+    "--artifact-manifest-root",
+    type=click.Path(file_okay=False),
+    default=None,
+    envvar="ARTIFACT_MANIFEST_ROOT",
+    help="Optional directory used to write feature dataset manifests.",
+)
+@click.option(
+    "--artifact-repository-root",
+    type=click.Path(file_okay=False),
+    default=".",
+    envvar="ARTIFACT_REPOSITORY_ROOT",
+    show_default=True,
+    help="Repository root used to resolve manifest local artifact paths.",
+)
+@click.option(
+    "--artifact-object-uri",
+    type=str,
+    default=None,
+    envvar="ARTIFACT_OBJECT_URI",
+    help="Optional s3:// URI for the feature dataset artifact.",
 )
 def main(
     interim_path: str,
@@ -111,11 +114,12 @@ def main(
     processed_name: str,
     timestamp_col: str,
     extra_drop: list[str],
+    artifact_manifest_root: str | None,
+    artifact_repository_root: str,
+    artifact_object_uri: str | None,
 ) -> None:
-    """
-    Build periodic datetime features and save a processed CSV.
-    Push batch metrics (duration, volume) to pushgateway.
-    """
+    """Build periodic datetime features and write a processed dataset."""
+
     labels = {
         "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.features"),
@@ -125,71 +129,66 @@ def main(
         "orientation": os.getenv("ORIENTATION", "NA"),
     }
 
-    with track_pipeline_step("features", labels) as m:
-        # Lecture
+    with track_pipeline_step("features", labels) as metrics_payload:
         try:
             logger.info(f"Loading interim CSV [{interim_path}] ...")
             df = pd.read_csv(interim_path, index_col=0)
         except Exception as exc:
             logger.exception(f"Failed to load interim CSV: {exc}")
-            raise click.ClickException(f"Failed to load interim CSV: {exc}")
+            raise click.ClickException(f"Failed to load interim CSV: {exc}") from exc
 
         if timestamp_col not in df.columns:
             raise click.ClickException(
                 f"Timestamp column [{timestamp_col}] not found in interim dataset."
             )
 
-        # Enrichissement des features temporelles
-        tr_date = DatetimePeriodicsTransformer(timestamp_col=timestamp_col)
-        df = tr_date.transform(df)
+        transformer = DatetimePeriodicsTransformer(timestamp_col=timestamp_col)
+        df = transformer.transform(df)
 
-        # Filtrage des colonnes inutiles
-        to_drop = [c for c in list(COLUMNS_TO_DROP) + list(extra_drop) if c in df.columns]
+        to_drop = [
+            column
+            for column in list(COLUMNS_TO_DROP) + list(extra_drop)
+            if column in df.columns
+        ]
         if to_drop:
             logger.info(f"Dropping {len(to_drop)} column(s): {to_drop}")
             df = df.drop(columns=to_drop)
 
-        # Résolution du chemin de sortie
         if sub_dir is None:
             sub_dir = os.path.basename(os.path.dirname(interim_path))
         out_dir = os.path.join("data", "processed", sub_dir)
         os.makedirs(out_dir, exist_ok=True)
         processed_path = os.path.join(out_dir, processed_name)
 
-        # Ecriture
         df.to_csv(processed_path, index=True)
         logger.info(
             f"Saved processed CSV to [{processed_path}]"
             f" ({len(df)} rows, {df.shape[1]} cols)."
         )
 
-        # Manifest optionnel
-        man = os.getenv("MANIFEST_FEATS")
-        if man:
-            try:
-                write_manifest(
-                    man,
-                    {
-                        "inputs": {
-                            "interim_path": str(interim_path),
-                            "timestamp_col": timestamp_col,
-                            "extra_drop": list(extra_drop) if extra_drop else [],
-                        },
-                        "outputs": {
-                            "processed_path": str(processed_path)
-                        },
-                        "run": {
-                            "run_id": os.getenv("RUN_ID"),
-                            "sub_dir": sub_dir
-                        }
-                    }
-                )
-                logger.info(f"Features manifest written to [{man}].")
-            except Exception as exc:
-                logger.warning(f"Failed to write manifest [{man}]: {exc}")
+        emitted_manifest = emit_dataset_artifact_manifest(
+            manifest_root=artifact_manifest_root,
+            artifact_type=ArtifactType.FEATURE_DATASET,
+            payload_path=processed_path,
+            source_file_name=Path(interim_path).name,
+            sub_dir=sub_dir,
+            repository_root=artifact_repository_root,
+            run_id=os.getenv("RUN_ID") or os.getenv("AIRFLOW_CTX_DAG_RUN_ID"),
+            counter_id=os.getenv("COUNTER_ID") or sub_dir,
+            dataset_version=os.getenv("DATASET_VERSION"),
+            producer_service=os.getenv("ARTIFACT_PRODUCER_SERVICE", "ml-features"),
+            producer_image=os.getenv("ARTIFACT_PRODUCER_IMAGE"),
+            producer_version=os.getenv("ARTIFACT_PRODUCER_VERSION"),
+            object_uri=artifact_object_uri,
+            promote=True,
+        )
+        if emitted_manifest is not None:
+            logger.info(
+                "Feature dataset artifact manifest emitted for "
+                f"run_id=[{emitted_manifest.run_id}].",
+            )
 
-        # Volume traité pour la métrique
-        m["records"] = int(len(df))
+        metrics_payload["records"] = int(len(df))
 
     logger.info("Feature engineering ended successfully.")
     sys.exit(0)
@@ -198,6 +197,6 @@ def main(
 if __name__ == "__main__":
     try:
         main()
-    except click.ClickException as e:
-        logger.error(str(e))
+    except click.ClickException as error:
+        logger.error(str(error))
         sys.exit(1)
