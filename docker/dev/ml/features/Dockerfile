@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 RUN mkdir -p /app/src/artifacts /app/src/metrics /app/src/ml/features
 COPY src/artifacts /app/src/artifacts
 COPY src/metrics /app/src/metrics
-COPY src/ml/artifact_manifest_emission.py /app/src/ml/artifact_manifest_emission.py
+COPY src/ml/features/artifact_manifest_emission.py \
+     /app/src/ml/features/artifact_manifest_emission.py
 COPY src/ml/features/features_utils.py \
      /app/src/ml/features/features_utils.py
 COPY src/ml/features/build_features.py \
