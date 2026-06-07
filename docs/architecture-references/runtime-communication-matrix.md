@@ -1,8 +1,11 @@
 # Runtime communication matrix
 
-This document describes local Docker Compose communication after Phases 6 and 7,
-with Phase 8 artifact contracts now partially implemented. It is a runtime
-architecture reference, not a production security model.
+This document describes the implemented local Docker Compose communication model.
+It is a current-state runtime architecture reference, not a Phase 8 backlog or a
+production security model.
+
+Planned runtime changes, remaining Phase 8 work, and validation debt are tracked
+under [`../next-phase-design/`](../next-phase-design/).
 
 The current runtime has two Compose views:
 
@@ -13,8 +16,22 @@ The current runtime has two Compose views:
 
 Host port ranges and local URLs are documented in
 [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
-Runtime ownership and remaining exceptions are documented in
+Runtime ownership and current exceptions are documented in
 [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md).
+
+## Documentation boundary
+
+Use this document for implemented runtime communication only:
+
+- current services;
+- current networks;
+- current mounts;
+- current host exposure;
+- current service-to-service paths.
+
+Use [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md)
+and [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md)
+for target architecture, remaining Phase 8 work, and known validation debt.
 
 ## Development communication model
 
@@ -40,7 +57,7 @@ The production-like runtime uses functional networks implemented in
 | Boundary | Main services | Purpose |
 | -------- | ------------- | ------- |
 | `orchestration_net` | Airflow API, scheduler, DAG processor, triggerer, worker, Airflow PostgreSQL, Redis | Airflow control plane and metadata. |
-| `pipeline_runtime_net` | Airflow worker, API, ML jobs, Pushgateway, future runner API | Runtime handoff between orchestration, business jobs, refresh, and batch metrics. |
+| `pipeline_runtime_net` | Airflow worker, API, ML jobs, Pushgateway | Runtime handoff between orchestration, business jobs, refresh, and batch metrics. |
 | `tracking_client_net` | ML jobs, MLflow server | MLflow client calls. |
 | `tracking_backend_net` | MLflow server, MLflow PostgreSQL, MinIO, MC init | Private tracking metadata and artifact backend. |
 | `observability_net` | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics | Scrapes, dashboards, and local alerts. |
@@ -62,7 +79,7 @@ The production-like runtime uses functional networks implemented in
 | Prometheus | API, Pushgateway, cAdvisor | Dev and prod-like | HTTP scrape | Metrics collection. |
 | Grafana | Prometheus | Dev and prod-like | HTTP | Provisioned datasource. |
 | Alertmanager | MailHog | Dev and prod-like | SMTP | Local alert capture. |
-| API | Prediction artifacts | Dev and prod-like | Filesystem | Current prediction serving input. Phase 8 moves this to manifest-aware serving. |
+| API | Prediction artifacts | Dev and prod-like | Filesystem | Current prediction serving input. |
 
 ## Host exposure summary
 
@@ -86,38 +103,32 @@ publishes only operator-facing services by default.
 See [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md)
 for exact ports and URLs.
 
-## Shared mount coupling
+## Shared mount ownership
 
-| Mount | Runtime | Current role | Phase 8 direction |
-| ----- | ------- | ------------ | ----------------- |
-| Root `data` | Dev | Raw, interim, processed, final data for DVC/local workflows. | Remains dev/DVC-owned. |
-| Root `models` | Dev | Development model artifacts. | Remains dev/DVC-owned. |
-| Root `logs` | Dev | Development logs. | Remains dev-owned. |
-| `docker/prod/runtime/data` | Prod-like | Generated production-like data. | Referenced by artifact manifests. |
-| `docker/prod/runtime/models` | Prod-like | Generated production-like model artifacts. | Referenced by artifact manifests. |
-| `docker/prod/runtime/logs` | Prod-like | Production-like service and job logs. | Correlate with runner `job_id` and `run_id`. |
-| `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root. | Owns promoted `current.json` and run-scoped manifests. |
-| Root raw CSV | Prod-like | Read-only business source input. | Remains the only required root/DVC input. |
+| Mount | Runtime | Current role |
+| ----- | ------- | ------------ |
+| Root `data` | Dev | Raw, interim, processed, final data for DVC/local workflows. |
+| Root `models` | Dev | Development model artifacts. |
+| Root `logs` | Dev | Development logs. |
+| `docker/prod/runtime/data` | Prod-like | Generated production-like data. |
+| `docker/prod/runtime/models` | Prod-like | Generated production-like model artifacts. |
+| `docker/prod/runtime/logs` | Prod-like | Production-like service and job logs. |
+| `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root with run-scoped manifests and promoted `current.json` files. |
+| Root raw CSV | Prod-like | Read-only business source input. |
 
-## Phase 8 additions and status
+## Current Phase 8 state in this architecture
 
-Phase 8 introduces explicit contracts instead of adding broad communication paths.
-The remaining plan is tracked centrally in
-[`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
+The implemented runtime already includes the artifact workspace, ML manifest
+emission wiring, and typed contract packages needed by the future runner path.
+It does not currently include a `job-runner-api` service, runner execution path,
+production-like Airflow DAG that calls the runner, or API serving from promoted
+manifests.
 
-| Addition | Status | Expected communication | Reference |
-| -------- | ------ | ---------------------- | --------- |
-| Artifact manifest schemas | Implemented | Shared Python contract used by later ML, runner, and API integrations. | [`../next-phase-design/artifact-manifest-models.md`](../next-phase-design/artifact-manifest-models.md) |
-| Artifact manifest store | Implemented | Local helpers write run manifests and replace `current.json`; runtime services do not call them yet. | [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) |
-| ML manifest emission | Remaining | ML model jobs emit validated prediction manifests. | #66 |
-| Job contracts | Remaining | Airflow and runner exchange typed job payloads. | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) |
-| `job-runner-api` | Remaining | Airflow submits jobs through `pipeline_runtime_net`; service is internal-only. | #68 |
-| Runner execution | Remaining | Runner executes typed jobs and returns manifest references. | #69 |
-| Prod Airflow DAG | Remaining | Airflow observes runner job states instead of creating containers. | #70 |
-| Artifact-aware API | Remaining | API serves the promoted artifact described by `current.json`. | #71 |
-| Smoke validation | Remaining | Automated checks verify runner, Airflow, artifact, API, and monitoring connectivity. | #72 |
+Those target changes are tracked under
+[`../next-phase-design/`](../next-phase-design/), not in this current-state
+matrix.
 
-## Rules for future changes
+## Operational guardrails
 
 - Do not add Docker socket mounts to production-like Airflow services.
 - Do not copy the broad `mlops_net` development model into `docker/prod`.
@@ -125,5 +136,3 @@ The remaining plan is tracked centrally in
   state or privileged control surfaces require isolation.
 - Keep host exposure in `../current-runtime-and-operations/ports-and-services.md`
   synchronized with Compose.
-- Keep artifact handoff changes aligned with
-  [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
