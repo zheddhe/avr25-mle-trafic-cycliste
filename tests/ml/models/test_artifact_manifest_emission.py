@@ -53,6 +53,7 @@ class TestBuildPredictionArtifactManifest:
         assert manifest.storage.local_path == (
             "data/final/Sebastopol_N-S/y_full.csv"
         )
+        assert manifest.storage.checksum_sha256 is not None
         assert len(manifest.storage.checksum_sha256) == 64
 
     def test_raises_when_absolute_prediction_path_is_outside_repository(
@@ -115,14 +116,14 @@ class TestEmitPredictionArtifactManifest:
         assert manifest is not None
         run_manifest_path = (
             manifest_root
-            / "predictions"
-            / "counter-1"
+            / "runs"
             / "manual-run"
-            / "manifest.json"
+            / "predictions-manifest.json"
         )
-        current_path = manifest_root / "predictions" / "counter-1" / "current.json"
+        current_path = manifest_root / "current.json"
         assert run_manifest_path.exists()
         assert current_path.exists()
+        assert manifest.counter_id == "counter-1"
         assert json.loads(current_path.read_text(encoding="utf-8"))["run_id"] == (
             "manual-run"
         )
