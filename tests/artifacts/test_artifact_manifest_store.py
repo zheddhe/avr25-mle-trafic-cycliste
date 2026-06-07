@@ -6,21 +6,21 @@ from copy import deepcopy
 
 import pytest
 
-from artifacts.checksums import compute_sha256
-from artifacts.exceptions import (
+from src.artifacts.checksums import compute_sha256
+from src.artifacts.exceptions import (
     ArtifactChecksumMismatchError,
     ArtifactManifestNotFoundError,
     ArtifactManifestValidationError,
     ArtifactPayloadNotFoundError,
 )
-from artifacts.manifest_store import (
+from src.artifacts.manifest_store import (
     promote_manifest,
     read_current_manifest,
     read_manifest,
     verify_local_payload,
     write_manifest,
 )
-from artifacts.schemas import ArtifactManifest, ArtifactStatus
+from src.artifacts.schemas import ArtifactManifest, ArtifactStatus
 
 
 class TestArtifactChecksums:

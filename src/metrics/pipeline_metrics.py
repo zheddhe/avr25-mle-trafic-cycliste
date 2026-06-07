@@ -108,10 +108,8 @@ def push_step_metrics(
     records_counter.labels(step, site, orientation).inc(max(int(records), 0))
 
     logger.info(
-        "Pushing metrics to [%s] with grouping_key=[%s %s]",
-        pushgateway_addr,
-        site,
-        orientation,
+        f"Pushing metrics to [{pushgateway_addr}] "
+        f"with grouping_key=[{site} {orientation}]"
     )
     pushadd_to_gateway(
         pushgateway_addr,

@@ -258,7 +258,7 @@ def recursive_forecast_model(
                 recent_y.tolist(),
             )
         except Exception as exc:
-            logger.warning("[STEP %s] Failed to create AR features: %s", step_idx, exc)
+            logger.warning(f"[STEP {step_idx}] Failed to create AR features: {exc}")
             break
 
         x_next_prepped = pipe.named_steps["prep"].transform(x_next)
@@ -326,9 +326,9 @@ def train_timeseries_model(
     )
 
     numeric_cols = x_train.select_dtypes(include="number").columns.tolist()
-    logger.info("List of numerical columns: %s", numeric_cols)
+    logger.info(f"List of numerical columns: {numeric_cols}")
     categorical_cols = x_train.select_dtypes(include="object").columns.tolist()
-    logger.info("List of categorical columns: %s", categorical_cols)
+    logger.info(f"List of categorical columns: {categorical_cols}")
 
     preprocessing = ColumnTransformer(
         [
@@ -365,7 +365,7 @@ def train_timeseries_model(
             ("reg", final_model),
         ],
     )
-    logger.debug("Pipeline model specs used: %s", pipe_model)
+    logger.debug(f"Pipeline model specs used: {pipe_model}")
 
     pipe_model.fit(x_train, y_train)
     logger.info("Model training achieved")
@@ -373,12 +373,12 @@ def train_timeseries_model(
     fitted_model = pipe_model.named_steps["reg"]
     if iter_grid_search > 0:
         best_params = fitted_model.best_params_
-        logger.info("Bayesian grid search best params [%s]", best_params)
+        logger.info(f"Bayesian grid search best params [{best_params}]")
         fitted_model_params = fitted_model.best_estimator_.get_params()
     else:
         best_params = "Not Applicable (no grid search)"
         fitted_model_params = fitted_model.get_params()
-    logger.info("Fitted model params [%s]", fitted_model_params)
+    logger.info(f"Fitted model params [{fitted_model_params}]")
 
     params = {
         "best_params": best_params,
@@ -395,7 +395,7 @@ def train_timeseries_model(
     )
     last_window_df = x_full.copy()
     last_window_df[target_col] = y_full
-    logger.info("Recursive predict on an horizon of %s hour(s)", len(y_test))
+    logger.info(f"Recursive predict on an horizon of {len(y_test)} hour(s)")
     y_test_pred = recursive_forecast_model(
         pipe_model,
         ar_transformer,

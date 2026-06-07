@@ -195,10 +195,10 @@ def main(
             sub_dir = os.path.basename(os.path.dirname(processed_path))
 
         try:
-            logger.info("Loading processed CSV [%s] ...", processed_path)
+            logger.info(f"Loading processed CSV [{processed_path}] ...")
             df = pd.read_csv(processed_path, index_col=0)
         except Exception as exc:
-            logger.exception("Failed to load processed CSV: %s", exc)
+            logger.exception(f"Failed to load processed CSV: {exc}")
             raise click.ClickException(
                 f"Failed to load processed CSV: {exc}",
             ) from exc
@@ -348,7 +348,7 @@ def _promote_latest_model_alias(site_short: str) -> None:
         client = MlflowClient()
         versions = client.search_model_versions(f"name='{model_name}'")
         if not versions:
-            logger.warning("No version found for model [%s].", model_name)
+            logger.warning(f"No version found for model [{model_name}].")
             return
 
         latest = max(versions, key=lambda version: int(version.version))
@@ -359,7 +359,7 @@ def _promote_latest_model_alias(site_short: str) -> None:
                 latest.version,
             )
         except Exception as exc:
-            logger.warning("Alias 'prod' undefined: %s", exc)
+            logger.warning(f"Alias 'prod' undefined: {exc}")
 
         logger.info(
             "Model [%s] version %s promoted to production.",
@@ -367,7 +367,7 @@ def _promote_latest_model_alias(site_short: str) -> None:
             latest.version,
         )
     except Exception as exc:
-        logger.warning("Model promotion failed: %s", exc)
+        logger.warning(f"Model promotion failed: {exc}")
 
 
 def _push_business_metrics(
@@ -428,7 +428,7 @@ def _push_business_metrics(
             day_offset,
         )
     except Exception as exc:
-        logger.warning("Failed to push business metrics: %s", exc)
+        logger.warning(f"Failed to push business metrics: {exc}")
 
 
 if __name__ == "__main__":
