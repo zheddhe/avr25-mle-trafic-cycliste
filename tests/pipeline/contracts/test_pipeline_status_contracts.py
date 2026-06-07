@@ -8,13 +8,13 @@ import pytest
 from pydantic import ValidationError
 
 from src.pipeline.contracts import (
+    TERMINAL_JOB_STATES,
     JobError,
     JobResult,
     JobState,
     JobStatus,
     MetricsEvidence,
     PipelineJobType,
-    TERMINAL_JOB_STATES,
 )
 
 
