@@ -97,9 +97,6 @@ exclude = [
     "build",
     "dist",
     ".venv",
-    ".nox",
-    "notebooks",
-    "avr25_mle_trafic_cycliste.egg-info",
 ]
 
 [tool.ruff.lint]

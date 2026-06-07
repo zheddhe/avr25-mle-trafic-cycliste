@@ -6,9 +6,9 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from artifacts.checksums import compute_sha256
-from artifacts.manifest_store import promote_manifest, write_manifest
-from artifacts.schemas import (
+from src.artifacts.checksums import compute_sha256
+from src.artifacts.manifest_store import promote_manifest, write_manifest
+from src.artifacts.schemas import (
     SCHEMA_VERSION,
     ArtifactManifest,
     ArtifactProducer,
@@ -102,9 +102,11 @@ def build_prediction_artifact_manifest(
         counter_id=_resolve_counter_id(counter_id, sub_dir),
         created_at=datetime.now(UTC),
         producer=ArtifactProducer(
-            service=_clean_optional_value(producer_service)
-            or os.getenv("ARTIFACT_PRODUCER_SERVICE")
-            or DEFAULT_PRODUCER_SERVICE,
+            service=(
+                _clean_optional_value(producer_service)
+                or _clean_optional_value(os.getenv("ARTIFACT_PRODUCER_SERVICE"))
+                or DEFAULT_PRODUCER_SERVICE
+            ),
             image=(
                 _clean_optional_value(producer_image)
                 or _clean_optional_value(os.getenv("ARTIFACT_PRODUCER_IMAGE"))
@@ -171,7 +173,7 @@ def _to_repository_relative_path(
     except ValueError as error:
         raise ValueError(
             "prediction_path must be inside repository_root "
-            "when it is provided as an absolute path"
+            "when it is provided as an absolute path",
         ) from error
 
 

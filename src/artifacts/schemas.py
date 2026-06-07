@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from artifacts.exceptions import ArtifactManifestValidationError
+from src.artifacts.exceptions import ArtifactManifestValidationError
 
 SCHEMA_VERSION = "1.0"
 _SHA256_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")

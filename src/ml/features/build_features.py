@@ -10,9 +10,9 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.features.features_utils import (
     DatetimePeriodicsTransformer,
-    track_pipeline_step,
 )
 
 

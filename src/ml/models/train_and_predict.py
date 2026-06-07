@@ -1,11 +1,9 @@
 # src/ml/models/train_and_predict.py
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys
-from pathlib import Path
 
 import click
 import numpy as np
@@ -13,6 +11,10 @@ import pandas as pd
 import pytz
 from mlflow.tracking import MlflowClient
 
+from src.metrics.pipeline_metrics import track_pipeline_step
+from src.ml.models.artifact_manifest_emission import (
+    emit_prediction_artifact_manifest,
+)
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
     log_local_artifacts,
@@ -23,41 +25,21 @@ from src.ml.models.mlflow_tracking import (
 from src.ml.models.models_utils import (
     push_business_metrics,
     save_artefacts,
-    track_pipeline_step,
     train_timeseries_model,
 )
 
 
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
-def write_manifest(path: str, payload: dict) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-
-
 def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
     """
-    Déduit (site, orientation) à partir d'un nom de sous-dossier.
-    On ne garde que les deux premiers segments séparés par '_',
-    tout le reste est ignoré.
-
-    Exemples :
-        'Sebastopol_N-S_mlops' -> ('Sebastopol', 'N-S')
-        'Sebastopol_N-S_extra_suffix' -> ('Sebastopol', 'N-S')
-        'Sebastopol' -> ('Sebastopol', 'NA')
+    Extract site and orientation from a pipeline sub-directory name.
     """
+
     parts = sub_dir.split("_")
     if len(parts) >= 2:
         return parts[0], parts[1]
     return parts[0], "NA"
 
 
-# -------------------------------------------------------------------
-# Logs management
-# -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
 log_path = os.path.join(log_dir, "train_and_predict.log")
@@ -70,9 +52,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# -------------------------------------------------------------------
-# Main script
-# -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--processed-path",
@@ -85,8 +64,8 @@ logger = logging.getLogger(__name__)
     type=str,
     default=None,
     help=(
-        "ASCII Target <sub-dir> under data/processed. If not set, will write to "
-        "data/final/<sub-dir-from-processed-path>"
+        "ASCII target <sub-dir> under data/processed. If not set, write to "
+        "data/final/<sub-dir-from-processed-path>."
     ),
 )
 @click.option(
@@ -129,27 +108,49 @@ logger = logging.getLogger(__name__)
     type=int,
     default=24,
     show_default=True,
-    help="Base window (hours) for moving averages.",
+    help="Base window in hours for moving averages.",
 )
 @click.option(
     "--test-ratio",
     type=float,
     default=0.25,
     show_default=True,
-    help="Fraction used for test split (chronological).",
+    help="Fraction used for chronological test split.",
 )
 @click.option(
     "--grid-iter",
     type=int,
     default=0,
     show_default=True,
-    help="Bayesian search iterations (0 disables search).",
+    help="Bayesian search iterations. Zero disables search.",
 )
 @click.option(
     "--mlflow-uri",
     type=str,
     default=None,
-    help=("Optional MLflow tracking URI (overrides env " "MLFLOW_TRACKING_URI)."),
+    help="Optional MLflow tracking URI. Overrides MLFLOW_TRACKING_URI.",
+)
+@click.option(
+    "--artifact-manifest-root",
+    type=click.Path(file_okay=False),
+    default=None,
+    envvar="ARTIFACT_MANIFEST_ROOT",
+    help="Optional directory used to write prediction artifact manifests.",
+)
+@click.option(
+    "--artifact-repository-root",
+    type=click.Path(file_okay=False),
+    default=".",
+    envvar="ARTIFACT_REPOSITORY_ROOT",
+    show_default=True,
+    help="Repository root used to resolve manifest local artifact paths.",
+)
+@click.option(
+    "--artifact-object-uri",
+    type=str,
+    default=None,
+    envvar="ARTIFACT_OBJECT_URI",
+    help="Optional s3:// URI for the prediction artifact.",
 )
 def main(
     processed_path: str,
@@ -163,12 +164,14 @@ def main(
     test_ratio: float,
     grid_iter: int,
     mlflow_uri: str | None,
+    artifact_manifest_root: str | None,
+    artifact_repository_root: str,
+    artifact_object_uri: str | None,
 ) -> None:
     """
-    Entraîne un modèle, journalise dans MLflow, puis pousse des métriques métier
-    (RMSE, MAPE, fraîcheur, dernière obs/pred) vers Pushgateway.
+    Train a time-series model, persist predictions, and emit optional manifests.
     """
-    # Labels Prometheus (grouping_key)
+
     labels = {
         "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
         "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.models"),
@@ -178,48 +181,53 @@ def main(
         "orientation": os.getenv("ORIENTATION", "NA"),
     }
 
-    with track_pipeline_step("models", labels) as m:
+    with track_pipeline_step("models", labels) as metrics_payload:
         if not (0.0 < test_ratio < 0.95):
-            raise click.BadParameter(f"test-ratio must be in (0, 0.95). Got {test_ratio}.")
+            raise click.BadParameter(
+                f"test-ratio must be in (0, 0.95). Got {test_ratio}.",
+            )
         if grid_iter < 0:
             raise click.BadParameter(f"grid-iter must be >= 0. Got {grid_iter}.")
 
-        # Configure MLflow (mlflow_uri CLI > env)
         configure_mlflow_from_env(explicit_uri=mlflow_uri)
 
         if sub_dir is None:
             sub_dir = os.path.basename(os.path.dirname(processed_path))
 
-        # Données
         try:
-            logger.info(f"Loading processed CSV [{processed_path}] ...")
+            logger.info("Loading processed CSV [%s] ...", processed_path)
             df = pd.read_csv(processed_path, index_col=0)
         except Exception as exc:
-            logger.exception(f"Failed to load processed CSV: {exc}")
-            raise click.ClickException(f"Failed to load processed CSV: {exc}")
+            logger.exception("Failed to load processed CSV: %s", exc)
+            raise click.ClickException(
+                f"Failed to load processed CSV: {exc}",
+            ) from exc
 
         for col in [ts_col_utc, ts_col_local]:
             if col not in df.columns:
                 raise click.ClickException(f"Missing required column: {col}")
 
-        # Datetimes tz-aware
         try:
             df[ts_col_utc] = pd.to_datetime(
-                df[ts_col_utc], format="%Y-%m-%d %H:%M:%S%z", utc=True
+                df[ts_col_utc],
+                format="%Y-%m-%d %H:%M:%S%z",
+                utc=True,
             )
         except Exception:
             df[ts_col_utc] = pd.to_datetime(df[ts_col_utc], utc=True)
 
         try:
             df[ts_col_local] = pd.to_datetime(
-                df[ts_col_local], format="%Y-%m-%d %H:%M:%S%z", utc=True
+                df[ts_col_local],
+                format="%Y-%m-%d %H:%M:%S%z",
+                utc=True,
             ).dt.tz_convert(pytz.timezone("Europe/Paris"))
         except Exception:
-            df[ts_col_local] = pd.to_datetime(df[ts_col_local], utc=True).dt.tz_convert(
-                pytz.timezone("Europe/Paris")
-            )
+            df[ts_col_local] = pd.to_datetime(
+                df[ts_col_local],
+                utc=True,
+            ).dt.tz_convert(pytz.timezone("Europe/Paris"))
 
-        # Entraînement + forecast récursif
         ts_cols = [ts_col_local, ts_col_utc]
         report = train_timeseries_model(
             df,
@@ -230,28 +238,32 @@ def main(
             iter_grid_search=grid_iter,
         )
 
-        # MLflow
         site_short = os.getenv("SITE_SHORT")
         if not site_short:
             site_short = sub_dir
             logger.warning(
-                f"SITE_SHORT not set, fallback to sub_dir=[{sub_dir}] "
-                "to construct registration model name")
+                "SITE_SHORT not set, fallback to sub_dir=[%s] to construct "
+                "registered model name.",
+                sub_dir,
+            )
 
         tags = {
             "counter.subdir": sub_dir,
             "site.short": site_short,
             "model.family": "XGBRegressor",
         }
+        model_version = os.getenv("MODEL_VERSION")
         with start_run(
             experiment_name=site_short,
             run_name=os.path.basename(processed_path),
             tags=tags,
-        ):
+        ) as mlflow_run:
+            if mlflow_run is not None:
+                model_version = mlflow_run.info.run_id
+
             log_report_content(report, target_col=target_col)
             y_full_path = save_artefacts(report, sub_dir)
 
-            # Log du modèle + signature
             x_sample = report["X_train"].head(1)
             log_model_with_signature(
                 pipe_model=report["pipe_model"],
@@ -261,112 +273,167 @@ def main(
             )
             log_local_artifacts(sub_dir)
 
-        # Automatic Model Registry Promotion
-        try:
-            model_name = f"{site_short}-model"
-            client = MlflowClient()
+        _emit_manifest_or_raise(
+            artifact_manifest_root=artifact_manifest_root,
+            artifact_repository_root=artifact_repository_root,
+            artifact_object_uri=artifact_object_uri,
+            prediction_path=y_full_path,
+            processed_path=processed_path,
+            sub_dir=sub_dir,
+            labels=labels,
+            model_version=model_version,
+        )
 
-            # Retrieve versions
-            versions = client.search_model_versions(f"name='{model_name}'")
-            if not versions:
-                logger.warning(f"No version found for model [{model_name}].")
-            else:
-                latest = max(versions, key=lambda v: int(v.version))
-                try:
-                    client.set_registered_model_alias(
-                        model_name, "prod", latest.version
-                    )
-                except Exception as exc:
-                    logger.warning(f"Alias 'prod' undefined: {exc}")
-                logger.info(
-                    f"Model [{model_name}] version {latest.version} "
-                    f"promoted to production."
-                )
-        except Exception as exc:
-            logger.warning(f"Model promotion failed: {exc}")
+        _promote_latest_model_alias(site_short)
+        _push_business_metrics(
+            report=report,
+            df=df,
+            ts_col_utc=ts_col_utc,
+            sub_dir=sub_dir,
+        )
 
-        # Métriques métier → Pushgateway
-        try:
-            y_train_pred = np.asarray(report["y_train_pred"]).reshape(-1)
-            y_test = np.asarray(report["y_test"]).reshape(-1)
-            y_test_pred = np.asarray(report["y_test_pred"]).reshape(-1)
-
-            rmse = float(np.sqrt(np.mean((y_test_pred - y_test) ** 2)))
-            mape = float(
-                np.mean(np.abs((y_test - y_test_pred) / np.clip(np.abs(y_test), 1e-6, None))) * 100
-            )
-            r2 = float(report["metrics"]["test"].get("R2", np.nan))
-
-            # le nombre d'observation connues (train) et inconnue (test) prédites
-            n_true = int(y_train_pred.size)
-            n_pred = int(y_test_pred.size)
-            day_offset = int(os.getenv("DAY_OFFSET", "0"))
-
-            # Dernier timestamp connu côté données
-            last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
-
-            site_env = os.getenv("SITE_SHORT")
-            ori_env = os.getenv("ORIENTATION")
-            if site_env and ori_env:
-                site, orientation = site_env, ori_env
-            else:
-                site, orientation = _extract_site_orientation(sub_dir)
-
-            push_business_metrics(
-                site=site,
-                orientation=orientation,
-                rmse=rmse,
-                mape=mape,
-                r2=r2,
-                n_obs_true=n_true,
-                n_obs_pred=n_pred,
-                last_ts=last_ts,           # fraîcheur “réelle”
-                day_offset=day_offset,     # fraîcheur “simulée” (dayX)
-            )
-            logger.info(
-                f"Pushed business metrics to Pushgateway: site={site}, ori={orientation}, "
-                f"RMSE={rmse:.3f}, MAPE={mape:.2f}, R²={r2}, "
-                f"last_ts={last_ts}, day_offset={day_offset}"
-            )
-        except Exception as exc:
-            logger.warning(f"Failed to push business metrics: {exc}")
-
-        # Manifest optionnel
-        man = os.getenv("MANIFEST_MODELS")
-        if man:
-            try:
-                write_manifest(
-                    man,
-                    {
-                        "inputs": {
-                            "processed_path": processed_path,
-                            "target_col": target_col,
-                            "ts_col_utc": ts_col_utc,
-                            "ts_col_local": ts_col_local,
-                            "ar": ar,
-                            "mm": mm,
-                            "roll": roll,
-                            "test_ratio": test_ratio,
-                            "grid_iter": grid_iter,
-                        },
-                        "outputs": {"table": str(y_full_path)},
-                        "run": {"run_id": os.getenv("RUN_ID"), "sub_dir": sub_dir},
-                    },
-                )
-                logger.info(f"Models manifest written to [{man}]")
-            except Exception as exc:
-                logger.warning(f"Failed to write models manifest [{man}]: {exc}")
-
-        # Volume traité pour la métrique: lignes de df
-        m["records"] = int(len(df))
+        metrics_payload["records"] = int(len(df))
 
     logger.info("Training and forecasting ended successfully.")
     sys.exit(0)
 
 
+def _emit_manifest_or_raise(
+    *,
+    artifact_manifest_root: str | None,
+    artifact_repository_root: str,
+    artifact_object_uri: str | None,
+    prediction_path: str,
+    processed_path: str,
+    sub_dir: str,
+    labels: dict[str, str],
+    model_version: str | None,
+) -> None:
+    try:
+        emitted_manifest = emit_prediction_artifact_manifest(
+            manifest_root=artifact_manifest_root,
+            prediction_path=prediction_path,
+            processed_path=processed_path,
+            sub_dir=sub_dir,
+            repository_root=artifact_repository_root,
+            run_id=os.getenv("RUN_ID") or labels["run_id"],
+            counter_id=os.getenv("COUNTER_ID") or sub_dir,
+            dataset_version=os.getenv("DATASET_VERSION"),
+            model_version=model_version,
+            producer_service=os.getenv(
+                "ARTIFACT_PRODUCER_SERVICE",
+                "ml-models",
+            ),
+            producer_image=os.getenv("ARTIFACT_PRODUCER_IMAGE"),
+            producer_version=os.getenv("ARTIFACT_PRODUCER_VERSION"),
+            object_uri=artifact_object_uri,
+            promote=True,
+        )
+    except Exception as exc:
+        logger.exception("Failed to emit prediction artifact manifest")
+        raise click.ClickException(
+            f"Failed to emit prediction artifact manifest: {exc}",
+        ) from exc
+
+    if emitted_manifest is not None:
+        logger.info(
+            "Prediction artifact manifest emitted for run_id=[%s].",
+            emitted_manifest.run_id,
+        )
+
+
+def _promote_latest_model_alias(site_short: str) -> None:
+    try:
+        model_name = f"{site_short}-model"
+        client = MlflowClient()
+        versions = client.search_model_versions(f"name='{model_name}'")
+        if not versions:
+            logger.warning("No version found for model [%s].", model_name)
+            return
+
+        latest = max(versions, key=lambda version: int(version.version))
+        try:
+            client.set_registered_model_alias(
+                model_name,
+                "prod",
+                latest.version,
+            )
+        except Exception as exc:
+            logger.warning("Alias 'prod' undefined: %s", exc)
+
+        logger.info(
+            "Model [%s] version %s promoted to production.",
+            model_name,
+            latest.version,
+        )
+    except Exception as exc:
+        logger.warning("Model promotion failed: %s", exc)
+
+
+def _push_business_metrics(
+    *,
+    report: dict,
+    df: pd.DataFrame,
+    ts_col_utc: str,
+    sub_dir: str,
+) -> None:
+    try:
+        y_train_pred = np.asarray(report["y_train_pred"]).reshape(-1)
+        y_test = np.asarray(report["y_test"]).reshape(-1)
+        y_test_pred = np.asarray(report["y_test_pred"]).reshape(-1)
+
+        rmse = float(np.sqrt(np.mean((y_test_pred - y_test) ** 2)))
+        mape = float(
+            np.mean(
+                np.abs(
+                    (y_test - y_test_pred)
+                    / np.clip(np.abs(y_test), 1e-6, None),
+                ),
+            )
+            * 100,
+        )
+        r2 = float(report["metrics"]["test"].get("R2", np.nan))
+        n_true = int(y_train_pred.size)
+        n_pred = int(y_test_pred.size)
+        day_offset = int(os.getenv("DAY_OFFSET", "0"))
+        last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
+
+        site_env = os.getenv("SITE_SHORT")
+        orientation_env = os.getenv("ORIENTATION")
+        if site_env and orientation_env:
+            site, orientation = site_env, orientation_env
+        else:
+            site, orientation = _extract_site_orientation(sub_dir)
+
+        push_business_metrics(
+            site=site,
+            orientation=orientation,
+            rmse=rmse,
+            mape=mape,
+            r2=r2,
+            n_obs_true=n_true,
+            n_obs_pred=n_pred,
+            last_ts=last_ts,
+            day_offset=day_offset,
+        )
+        logger.info(
+            "Pushed business metrics to Pushgateway: site=%s, ori=%s, "
+            "RMSE=%.3f, MAPE=%.2f, R²=%s, last_ts=%s, day_offset=%s",
+            site,
+            orientation,
+            rmse,
+            mape,
+            r2,
+            last_ts,
+            day_offset,
+        )
+    except Exception as exc:
+        logger.warning("Failed to push business metrics: %s", exc)
+
+
 if __name__ == "__main__":
     try:
         main()
-    except click.ClickException as e:
-        logger.error(str(e))
+    except click.ClickException as error:
+        logger.error(str(error))
         sys.exit(1)

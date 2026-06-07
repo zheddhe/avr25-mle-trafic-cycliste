@@ -5,12 +5,6 @@ import logging
 
 import pandas as pd
 
-from src.metrics.pipeline_metrics import (
-    canonical_site,
-    push_step_metrics,
-    track_pipeline_step,
-)
-
 logger = logging.getLogger(__name__)
 
 

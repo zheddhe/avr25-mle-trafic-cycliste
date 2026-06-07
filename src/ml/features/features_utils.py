@@ -8,12 +8,6 @@ import pandas as pd
 import pytz
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from src.metrics.pipeline_metrics import (
-    canonical_site,
-    push_step_metrics,
-    track_pipeline_step,
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -99,9 +93,7 @@ def extract_datetime_periodic_features(
 
 
 class DatetimePeriodicsTransformer(BaseEstimator, TransformerMixin):
-    """
-    Extract datetime components and periodic features from a timestamp column.
-    """
+    """Extract datetime components and periodic features from a timestamp column."""
 
     def __init__(self, timestamp_col: str):
         self.timestamp_col = timestamp_col

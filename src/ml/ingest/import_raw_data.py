@@ -12,9 +12,9 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.ingest.ingest_utils import (
     apply_percent_range_selection,
-    track_pipeline_step,  # <- pushes duration/status + your custom counters to Pushgateway
 )
 
 

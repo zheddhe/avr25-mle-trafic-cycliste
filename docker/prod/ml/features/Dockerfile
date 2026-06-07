@@ -5,7 +5,7 @@ ARG APP_UID=1000
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app:/app/src
 
 WORKDIR /app
 
@@ -19,9 +19,10 @@ RUN groupadd --gid "${APP_GID}" app && \
         --home-dir /app \
         --shell /usr/sbin/nologin \
         app && \
-    mkdir -p /app/src/ml/features /app/data /app/logs && \
+    mkdir -p /app/src/metrics /app/src/ml/features /app/data /app/logs && \
     chown -R app:app /app
 
+COPY src/metrics /app/src/metrics
 COPY src/ml/features/features_utils.py /app/src/ml/features/features_utils.py
 COPY src/ml/features/build_features.py /app/src/ml/features/build_features.py
 

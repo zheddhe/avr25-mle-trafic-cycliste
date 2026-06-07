@@ -35,13 +35,42 @@ The manifest includes:
 - source metadata for the processed dataset and model version;
 - local storage metadata and a SHA-256 checksum for `y_full.csv`.
 
-The first implementation promotes the manifest through the existing store helper.
-That writes both the run-scoped manifest and `current.json` under the configured
+The implementation promotes the manifest through the existing store helper. That
+writes both the run-scoped manifest and `current.json` under the configured
 manifest root.
 
-## Production-like Compose wiring
+## Shared technical metrics helpers
 
-`docker/prod` mounts `docker/prod/runtime/artifacts` into the model container as
+The duplicated technical metrics helpers previously present in ingest, features,
+and models utilities are now centralized in:
+
+```text
+src/metrics/pipeline_metrics.py
+```
+
+The shared module owns:
+
+- `canonical_site`;
+- `push_step_metrics`;
+- `track_pipeline_step`;
+- the slug helper used to derive stable fallback labels.
+
+The model-specific `push_business_metrics` function remains in
+`src/ml/models/models_utils.py` because it owns model KPI names and semantics.
+
+## Docker runtime impact
+
+The ML Docker images now copy the shared metrics package. The model images also
+copy `src/artifacts` and `artifact_manifest_emission.py`, and expose both
+`/app` and `/app/src` in `PYTHONPATH`.
+
+`docker/prod/Makefile` applies an artifacts overlay:
+
+```text
+docker/prod/docker-compose.artifacts.yaml
+```
+
+The overlay mounts `docker/prod/runtime/artifacts` into the model container as
 `/app/artifacts` and configures:
 
 ```text
@@ -72,6 +101,3 @@ the production-like runtime workspace boundary.
 This implementation does not add runner integration, API serving from manifests,
 or mandatory MinIO upload. `object_uri` remains optional and is populated only
 when an `s3://` URI is provided.
-
-The duplicate technical metrics helpers noted in the issue comments remain a
-separate follow-up to avoid expanding the acceptance scope of this story.

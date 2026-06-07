@@ -149,7 +149,3 @@ def track_pipeline_step(step: str, labels: dict[str, Any]) -> Iterator[dict[str,
             status=status,
             labels=labels,
         )
-
-
-# Backward-compatible private alias for existing imports and tests.
-_slug = slug_label_value

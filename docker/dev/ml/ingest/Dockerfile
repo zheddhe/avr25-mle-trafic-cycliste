@@ -10,8 +10,7 @@ COPY docker/dev/ml/ingest/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 RUN mkdir -p /app/src/metrics /app/src/ml/ingest
-COPY src/metrics/pipeline_metrics.py \
-     /app/src/metrics/pipeline_metrics.py
+COPY src/metrics /app/src/metrics
 COPY src/ml/ingest/ingest_utils.py /app/src/ml/ingest/ingest_utils.py
 COPY src/ml/ingest/import_raw_data.py /app/src/ml/ingest/import_raw_data.py
 

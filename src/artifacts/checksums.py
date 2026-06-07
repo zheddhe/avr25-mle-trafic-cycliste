@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from artifacts.exceptions import ArtifactPayloadNotFoundError
+from src.artifacts.exceptions import ArtifactPayloadNotFoundError
 
 _CHUNK_SIZE_BYTES = 1024 * 1024
 
