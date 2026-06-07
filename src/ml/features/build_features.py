@@ -15,7 +15,6 @@ from src.ml.features.artifact_manifest_emission import (
 )
 from src.ml.features.features_utils import DatetimePeriodicsTransformer
 
-
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
 log_path = os.path.join(log_dir, "build_features.log")
