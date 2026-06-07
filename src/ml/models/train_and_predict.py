@@ -29,6 +29,9 @@ from src.ml.models.models_utils import (
 )
 
 
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
 def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
     """
     Extract site and orientation from a pipeline sub-directory name.
@@ -40,6 +43,9 @@ def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
     return parts[0], "NA"
 
 
+# -------------------------------------------------------------------
+# Logs management
+# -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
 log_path = os.path.join(log_dir, "train_and_predict.log")
@@ -52,6 +58,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# -------------------------------------------------------------------
+# Main script
+# -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--processed-path",
@@ -242,9 +251,8 @@ def main(
         if not site_short:
             site_short = sub_dir
             logger.warning(
-                "SITE_SHORT not set, fallback to sub_dir=[%s] to construct "
-                "registered model name.",
-                sub_dir,
+                f"SITE_SHORT not set, fallback to sub_dir=[{sub_dir}] "
+                "to construct registration model name"
             )
 
         tags = {
@@ -337,8 +345,7 @@ def _emit_manifest_or_raise(
 
     if emitted_manifest is not None:
         logger.info(
-            "Prediction artifact manifest emitted for run_id=[%s].",
-            emitted_manifest.run_id,
+            f"Prediction artifact manifest emitted for run_id=[{emitted_manifest.run_id}]."
         )
 
 
@@ -362,9 +369,8 @@ def _promote_latest_model_alias(site_short: str) -> None:
             logger.warning(f"Alias 'prod' undefined: {exc}")
 
         logger.info(
-            "Model [%s] version %s promoted to production.",
-            model_name,
-            latest.version,
+            f"Model [{model_name}] version {latest.version} "
+            f"promoted to production."
         )
     except Exception as exc:
         logger.warning(f"Model promotion failed: {exc}")
@@ -417,15 +423,9 @@ def _push_business_metrics(
             day_offset=day_offset,
         )
         logger.info(
-            "Pushed business metrics to Pushgateway: site=%s, ori=%s, "
-            "RMSE=%.3f, MAPE=%.2f, R²=%s, last_ts=%s, day_offset=%s",
-            site,
-            orientation,
-            rmse,
-            mape,
-            r2,
-            last_ts,
-            day_offset,
+            f"Pushed business metrics to Pushgateway: site={site}, ori={orientation}, "
+            f"RMSE={rmse:.3f}, MAPE={mape:.2f}, R²={r2}, "
+            f"last_ts={last_ts}, day_offset={day_offset}"
         )
     except Exception as exc:
         logger.warning(f"Failed to push business metrics: {exc}")
