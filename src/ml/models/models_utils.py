@@ -117,14 +117,14 @@ def train_test_split_time_aware(
     target = df[target_col]
 
     n_test = int(len(df) * test_size)
-    x_train = features[:-n_test]
-    x_train_dates = features_dates[:-n_test]
-    x_test = features[-n_test:]
-    x_test_dates = features_dates[-n_test:]
+    X_train = features[:-n_test]
+    X_train_dates = features_dates[:-n_test]
+    X_test = features[-n_test:]
+    X_test_dates = features_dates[-n_test:]
     y_train = target[:-n_test]
     y_test = target[-n_test:]
 
-    return x_train, x_train_dates, x_test, x_test_dates, y_train, y_test
+    return X_train, X_train_dates, X_test, X_test_dates, y_train, y_test
 
 
 class AutoregressiveFeaturesTransformer:
@@ -170,12 +170,12 @@ class AutoregressiveFeaturesTransformer:
                 )
 
         valid_idx = df.dropna().index
-        x_transformed = df.loc[valid_idx].reset_index(drop=True)
+        X_transformed = df.loc[valid_idx].reset_index(drop=True)
         y_transformed = y.loc[valid_idx].reset_index(drop=True)
         dates_transformed = X_dates.loc[valid_idx].reset_index(drop=True)
 
         self.fitted_ = True
-        return x_transformed, dates_transformed, y_transformed
+        return X_transformed, dates_transformed, y_transformed
 
     def transform_recursive_step(
         self,
@@ -253,7 +253,7 @@ def recursive_forecast_model(
         exog_row = exog_features.iloc[[step_idx]].copy()
 
         try:
-            x_next = ar_transformer.transform_recursive_step(
+            X_next = ar_transformer.transform_recursive_step(
                 exog_row,
                 recent_y.tolist(),
             )
@@ -261,8 +261,8 @@ def recursive_forecast_model(
             logger.warning(f"[STEP {step_idx}] Failed to create AR features: {exc}")
             break
 
-        x_next_prepped = pipe.named_steps["prep"].transform(x_next)
-        y_pred = pipe.named_steps["reg"].predict(x_next_prepped)[0]
+        X_next_prepped = pipe.named_steps["prep"].transform(X_next)
+        y_pred = pipe.named_steps["reg"].predict(X_next_prepped)[0]
 
         future_preds.append(y_pred)
         recent_y = np.append(recent_y, y_pred)
@@ -285,20 +285,18 @@ def train_timeseries_model(
     timestamp_cols = timestamp_cols or ["date_et_heure_de_comptage_local"]
     temp_feats = temp_feats or [0, 0, 1]
     logger.info(
-        "Train and predict timeseries with [df_len=%s | temp_feats=%s | "
-        "test_ratio=%s | iter_grid_search=%s]",
-        len(df_counter),
-        temp_feats,
-        test_ratio,
-        iter_grid_search,
+        f"Train and predict timeseries with [df_len={len(df_counter)}"
+        f" | temp_feats={temp_feats}"
+        f" | test_ratio={test_ratio}"
+        f" | iter_grid_search={iter_grid_search}]"
     )
 
     df = df_counter.copy()
     (
-        x_train,
-        x_train_dates,
-        x_test,
-        x_test_dates,
+        X_train,
+        X_train_dates,
+        X_test,
+        X_test_dates,
         y_train,
         y_test,
     ) = train_test_split_time_aware(
@@ -313,21 +311,19 @@ def train_timeseries_model(
         nb_mm=temp_feats[1],
         roll_wind=temp_feats[2],
     )
-    x_train, x_train_dates, y_train = ar_transformer.fit_transform(
-        x_train,
-        x_train_dates,
+    X_train, X_train_dates, y_train = ar_transformer.fit_transform(
+        X_train,
+        X_train_dates,
         y_train,
     )
     logger.info(
-        "AR(%s) and MM(%s[%sh]) features are applied on train data",
-        temp_feats[0],
-        temp_feats[1],
-        temp_feats[2],
+        f"AR({temp_feats[0]}) et MM({temp_feats[1]}[{temp_feats[2]}h])"
+        " features are applied on train data"
     )
 
-    numeric_cols = x_train.select_dtypes(include="number").columns.tolist()
+    numeric_cols = X_train.select_dtypes(include="number").columns.tolist()
     logger.info(f"List of numerical columns: {numeric_cols}")
-    categorical_cols = x_train.select_dtypes(include="object").columns.tolist()
+    categorical_cols = X_train.select_dtypes(include="object").columns.tolist()
     logger.info(f"List of categorical columns: {categorical_cols}")
 
     preprocessing = ColumnTransformer(
@@ -367,7 +363,7 @@ def train_timeseries_model(
     )
     logger.debug(f"Pipeline model specs used: {pipe_model}")
 
-    pipe_model.fit(x_train, y_train)
+    pipe_model.fit(X_train, y_train)
     logger.info("Model training achieved")
 
     fitted_model = pipe_model.named_steps["reg"]
@@ -385,15 +381,15 @@ def train_timeseries_model(
         **_extract_param_ranges(search_spaces),
         **fitted_model_params,
     }
-    y_train_pred = pipe_model.predict(x_train)
+    y_train_pred = pipe_model.predict(X_train)
     logger.info("Predictions on train data achieved")
 
-    x_full = pd.concat([x_train, x_test], ignore_index=True)
+    X_full = pd.concat([X_train, X_test], ignore_index=True)
     y_full = pd.concat(
         [y_train, pd.Series([np.nan] * len(y_test))],
         ignore_index=True,
     )
-    last_window_df = x_full.copy()
+    last_window_df = X_full.copy()
     last_window_df[target_col] = y_full
     logger.info(f"Recursive predict on an horizon of {len(y_test)} hour(s)")
     y_test_pred = recursive_forecast_model(
@@ -413,7 +409,7 @@ def train_timeseries_model(
         },
     )
     train_df = pd.concat(
-        [x_train_dates.reset_index(drop=True), train_df],
+        [X_train_dates.reset_index(drop=True), train_df],
         axis=1,
     )
     test_df = pd.DataFrame(
@@ -424,10 +420,10 @@ def train_timeseries_model(
         },
     )
     test_df = pd.concat(
-        [x_test_dates.reset_index(drop=True), test_df],
+        [X_test_dates.reset_index(drop=True), test_df],
         axis=1,
     )
-    full_predictions = pd.concat([train_df, test_df], axis=0, ignore_index=True)
+    y_full = pd.concat([train_df, test_df], axis=0, ignore_index=True)
 
     metrics = {
         "train": compute_metrics(pd.Series(y_train_pred), y_train),
@@ -438,15 +434,15 @@ def train_timeseries_model(
         "ar_transformer": ar_transformer,
         "pipe_model": pipe_model,
         "params": params,
-        "X_train": x_train,
-        "X_train_dates": x_train_dates,
-        "X_test": x_test,
-        "X_test_dates": x_test_dates,
+        "X_train": X_train,
+        "X_train_dates": X_train_dates,
+        "X_test": X_test,
+        "X_test_dates": X_test_dates,
         "y_train": y_train,
         "y_train_pred": y_train_pred,
         "y_test": y_test,
         "y_test_pred": y_test_pred,
-        "y_full": full_predictions,
+        "y_full": y_full,
         "metrics": metrics,
     }
 
@@ -456,31 +452,32 @@ def save_artefacts(report: dict, save_dir):
 
     save_data_path = os.path.join("data", "final", save_dir)
     os.makedirs(save_data_path, exist_ok=True)
-    x_train_path = os.path.join(save_data_path, "X_train.csv")
-    x_test_path = os.path.join(save_data_path, "X_test.csv")
-    x_train_dates_path = os.path.join(save_data_path, "X_train_dates.csv")
-    x_test_dates_path = os.path.join(save_data_path, "X_test_dates.csv")
+    X_train_path = os.path.join(save_data_path, "X_train.csv")
+    X_test_path = os.path.join(save_data_path, "X_test.csv")
+    X_train_dates_path = os.path.join(save_data_path, "X_train_dates.csv")
+    X_test_dates_path = os.path.join(save_data_path, "X_test_dates.csv")
     y_train_path = os.path.join(save_data_path, "y_train.csv")
     y_test_path = os.path.join(save_data_path, "y_test.csv")
     y_train_pred_path = os.path.join(save_data_path, "y_train_pred.csv")
     y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
     y_full_path = os.path.join(save_data_path, "y_full.csv")
     logging.info(
-        "Final refined data CSV files saved in %s:\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
-        save_data_path,
-        x_train_path,
-        x_test_path,
-        x_train_dates_path,
-        x_test_dates_path,
-        y_train_path,
-        y_test_path,
-        y_full_path,
+        f"Final refined data CSV files saved in {save_data_path}:\n"
+        f"{X_train_path}\n"
+        f"{X_test_path}\n"
+        f"{X_train_dates_path}\n"
+        f"{X_test_dates_path}\n"
+        f"{y_train_path}\n"
+        f"{y_test_path}\n"
+        f"{y_train_pred_path}\n"
+        f"{y_test_pred_path}\n"
+        f"{y_full_path}"
     )
 
-    report["X_test_dates"].to_csv(x_test_dates_path, index=True)
-    report["X_train"].to_csv(x_train_path, index=True)
-    report["X_test"].to_csv(x_test_path, index=True)
-    report["X_train_dates"].to_csv(x_train_dates_path, index=True)
+    report["X_test_dates"].to_csv(X_test_dates_path, index=True)
+    report["X_train"].to_csv(X_train_path, index=True)
+    report["X_test"].to_csv(X_test_path, index=True)
+    report["X_train_dates"].to_csv(X_train_dates_path, index=True)
     report["y_train"].to_csv(y_train_path, index=True)
     report["y_test"].to_csv(y_test_path, index=True)
     pd.DataFrame(
@@ -500,12 +497,11 @@ def save_artefacts(report: dict, save_dir):
     params_path = os.path.join(save_model_path, "hyperparams.json")
     metrics_path = os.path.join(save_model_path, "metrics.json")
     logging.info(
-        "Pipeline, params, metrics and AR transformer are saved in %s:\n%s\n%s\n%s\n%s",
-        save_model_path,
-        pipe_model_path,
-        params_path,
-        ar_transformer_path,
-        metrics_path,
+        f"Pipeline, Params, Metrics and AR transformer are saved in {save_model_path}:\n"
+        f"{pipe_model_path}\n"
+        f"{params_path}\n"
+        f"{ar_transformer_path}\n"
+        f"{metrics_path}"
     )
     joblib.dump(report["pipe_model"], pipe_model_path)
     joblib.dump(report["ar_transformer"], ar_transformer_path)

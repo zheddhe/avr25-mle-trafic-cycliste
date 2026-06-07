@@ -1,5 +1,3 @@
-"""Shared technical metrics helpers for ML pipeline steps."""
-
 from __future__ import annotations
 
 import logging
