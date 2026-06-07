@@ -9,9 +9,10 @@ from pathlib import Path
 import click
 import pandas as pd
 
-from src.artifacts.schemas import ArtifactType
 from src.metrics.pipeline_metrics import track_pipeline_step
-from src.ml.artifact_manifest_emission import emit_dataset_artifact_manifest
+from src.ml.features.artifact_manifest_emission import (
+    emit_feature_dataset_artifact_manifest,
+)
 from src.ml.features.features_utils import DatetimePeriodicsTransformer
 
 
@@ -166,9 +167,8 @@ def main(
             f" ({len(df)} rows, {df.shape[1]} cols)."
         )
 
-        emitted_manifest = emit_dataset_artifact_manifest(
+        emitted_manifest = emit_feature_dataset_artifact_manifest(
             manifest_root=artifact_manifest_root,
-            artifact_type=ArtifactType.FEATURE_DATASET,
             payload_path=processed_path,
             source_file_name=Path(interim_path).name,
             sub_dir=sub_dir,
