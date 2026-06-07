@@ -2,16 +2,16 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app:/app/src
 
 WORKDIR /app
 
-# Déps pour transformations légères
 COPY docker/dev/ml/features/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Code strictement nécessaire (pas de tests)
-RUN mkdir -p /app/src/ml/features
+RUN mkdir -p /app/src/metrics /app/src/ml/features
+COPY src/metrics/pipeline_metrics.py \
+     /app/src/metrics/pipeline_metrics.py
 COPY src/ml/features/features_utils.py \
      /app/src/ml/features/features_utils.py
 COPY src/ml/features/build_features.py \
