@@ -2,28 +2,10 @@
 
 from __future__ import annotations
 
-import os
-from datetime import UTC, datetime
 from pathlib import Path
 
-from src.artifacts.checksums import compute_sha256
-from src.artifacts.manifest_store import promote_manifest, write_manifest
-from src.artifacts.schemas import (
-    SCHEMA_VERSION,
-    ArtifactManifest,
-    ArtifactProducer,
-    ArtifactSource,
-    ArtifactStatus,
-    ArtifactStorage,
-    ArtifactType,
-    StorageBackend,
-)
-from src.ml.artifact_manifest_emission import (
-    clean_optional_value,
-    resolve_counter_id,
-    resolve_run_id,
-    to_repository_relative_path,
-)
+from src.artifacts.manifest_emission import build_artifact_manifest, emit_artifact_manifest
+from src.artifacts.schemas import ArtifactManifest, ArtifactType
 
 DEFAULT_PRODUCER_SERVICE = "ml-models"
 
@@ -47,13 +29,13 @@ def emit_prediction_artifact_manifest(
 ) -> ArtifactManifest | None:
     """Build and persist a prediction artifact manifest when configured."""
 
-    if not manifest_root:
-        return None
-
-    manifest = build_prediction_artifact_manifest(
-        prediction_path=prediction_path,
-        processed_path=processed_path,
+    return emit_artifact_manifest(
+        manifest_root=manifest_root,
+        artifact_type=ArtifactType.PREDICTIONS,
+        payload_path=prediction_path,
+        source_file_name=processed_path,
         sub_dir=sub_dir,
+        default_producer_service=DEFAULT_PRODUCER_SERVICE,
         repository_root=repository_root,
         run_id=run_id,
         counter_id=counter_id,
@@ -63,18 +45,8 @@ def emit_prediction_artifact_manifest(
         producer_image=producer_image,
         producer_version=producer_version,
         object_uri=object_uri,
+        promote=promote,
     )
-
-    if promote:
-        promote_manifest(
-            manifest,
-            manifest_root=manifest_root,
-            repository_root=repository_root,
-        )
-    else:
-        write_manifest(manifest, manifest_root=manifest_root)
-
-    return manifest
 
 
 def build_prediction_artifact_manifest(
@@ -92,55 +64,21 @@ def build_prediction_artifact_manifest(
     producer_version: str | None = None,
     object_uri: str | None = None,
 ) -> ArtifactManifest:
-    """Create a validated local prediction artifact manifest."""
+    """Create a validated prediction artifact manifest."""
 
-    prediction_file = Path(prediction_path)
-    local_path = to_repository_relative_path(
-        path=prediction_file,
-        repository_root=repository_root,
-        path_label="prediction_path",
-    )
-
-    return ArtifactManifest(
-        schema_version=SCHEMA_VERSION,
+    return build_artifact_manifest(
         artifact_type=ArtifactType.PREDICTIONS,
-        status=ArtifactStatus.VALIDATED,
-        run_id=resolve_run_id(run_id),
-        counter_id=resolve_counter_id(counter_id, sub_dir),
-        created_at=datetime.now(UTC),
-        producer=ArtifactProducer(
-            service=(
-                clean_optional_value(producer_service)
-                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_SERVICE"))
-                or DEFAULT_PRODUCER_SERVICE
-            ),
-            image=(
-                clean_optional_value(producer_image)
-                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_IMAGE"))
-            ),
-            version=(
-                clean_optional_value(producer_version)
-                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_VERSION"))
-            ),
-        ),
-        source=ArtifactSource(
-            raw_file_name=Path(processed_path).name,
-            dataset_version=(
-                clean_optional_value(dataset_version)
-                or clean_optional_value(os.getenv("DATASET_VERSION"))
-            ),
-            model_version=(
-                clean_optional_value(model_version)
-                or clean_optional_value(os.getenv("MODEL_VERSION"))
-            ),
-        ),
-        storage=ArtifactStorage(
-            primary_backend=StorageBackend.LOCAL,
-            local_path=local_path,
-            object_uri=(
-                clean_optional_value(object_uri)
-                or clean_optional_value(os.getenv("ARTIFACT_OBJECT_URI"))
-            ),
-            checksum_sha256=compute_sha256(prediction_file),
-        ),
+        payload_path=prediction_path,
+        source_file_name=processed_path,
+        sub_dir=sub_dir,
+        default_producer_service=DEFAULT_PRODUCER_SERVICE,
+        repository_root=repository_root,
+        run_id=run_id,
+        counter_id=counter_id,
+        dataset_version=dataset_version,
+        model_version=model_version,
+        producer_service=producer_service,
+        producer_image=producer_image,
+        producer_version=producer_version,
+        object_uri=object_uri,
     )
