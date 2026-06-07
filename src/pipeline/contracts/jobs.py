@@ -1,10 +1,4 @@
-"""Typed pipeline job request contracts.
-
-These Pydantic models are the framework-neutral payloads exchanged between
-Airflow, the future job-runner API, and typed ML workers. They describe business
-inputs and artifact handoff locations without importing Airflow, FastAPI, Docker,
-or concrete ML execution modules.
-"""
+"""Typed pipeline job request contracts."""
 
 from __future__ import annotations
 
@@ -98,9 +92,6 @@ class ArtifactManifestReference(StrictPipelineContract):
 class BasePipelineJobRequest(StrictPipelineContract):
     """Base request fields shared by every typed pipeline job."""
 
-    job_type: PipelineJobType = Field(
-        description="Requested pipeline job type.",
-    )
     job_id: str | None = Field(
         default=None,
         description="Optional caller-provided or runner-assigned job id.",
