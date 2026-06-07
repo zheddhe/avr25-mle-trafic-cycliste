@@ -1,8 +1,8 @@
 # Runtime communication matrix
 
 This document describes local Docker Compose communication after Phases 6 and 7,
-with Phase 8 artifact contracts now partially implemented. It is a runtime
-architecture reference, not a production security model.
+with Phase 8 artifact and job contracts now partially implemented. It is a
+runtime architecture reference, not a production security model.
 
 The current runtime has two Compose views:
 
@@ -99,7 +99,7 @@ for exact ports and URLs.
 | `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root. | Owns promoted `current.json` and run-scoped manifests. |
 | Root raw CSV | Prod-like | Read-only business source input. | Remains the only required root/DVC input. |
 
-## Phase 8 additions and status
+## Phase 8 coverage and status
 
 Phase 8 introduces explicit contracts instead of adding broad communication paths.
 The remaining plan is tracked centrally in
@@ -107,15 +107,34 @@ The remaining plan is tracked centrally in
 
 | Addition | Status | Expected communication | Reference |
 | -------- | ------ | ---------------------- | --------- |
-| Artifact manifest schemas | Implemented | Shared Python contract used by later ML, runner, and API integrations. | [`../next-phase-design/artifact-manifest-models.md`](../next-phase-design/artifact-manifest-models.md) |
-| Artifact manifest store | Implemented | Local helpers write run manifests and replace `current.json`; runtime services do not call them yet. | [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) |
-| ML manifest emission | Remaining | ML model jobs emit validated prediction manifests. | #66 |
-| Job contracts | Remaining | Airflow and runner exchange typed job payloads. | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) |
+| Artifact manifest schemas | Implemented | Shared Python contract used by ML, runner, and API integrations. | [`../next-phase-design/artifact-manifest-models.md`](../next-phase-design/artifact-manifest-models.md) |
+| Artifact manifest store | Implemented | Local helpers write run manifests and replace `current.json`. | [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) |
+| ML manifest emission | Implemented for local manifests | Ingest, features, and model jobs can emit promoted local manifests under `docker/prod/runtime/artifacts`. | #66 |
+| Job contracts | Implemented | Airflow, runner, and typed workers exchange Pydantic job payloads and statuses. | [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) |
 | `job-runner-api` | Remaining | Airflow submits jobs through `pipeline_runtime_net`; service is internal-only. | #68 |
 | Runner execution | Remaining | Runner executes typed jobs and returns manifest references. | #69 |
 | Prod Airflow DAG | Remaining | Airflow observes runner job states instead of creating containers. | #70 |
 | Artifact-aware API | Remaining | API serves the promoted artifact described by `current.json`. | #71 |
 | Smoke validation | Remaining | Automated checks verify runner, Airflow, artifact, API, and monitoring connectivity. | #72 |
+
+The current implementation therefore covers the artifact and contract foundation,
+but not yet the end-to-end production-like execution path. `docker/prod` is
+safer because Airflow has no Docker socket mount, but the replacement runner path
+still has to be implemented before it is fully executable through Airflow.
+
+## Known Phase 8 validation debt
+
+Phase 8 still needs a dedicated validation story for realistic, production-like
+coverage. The minimum debt to track is:
+
+- broader unit coverage for manifest errors, runner states, API artifact loading,
+  and configuration failures;
+- integration fixtures derived from the real raw-data schema instead of only
+  synthetic minimal examples;
+- at least one smoke-sized dataset that exercises ingest, features, model,
+  manifest promotion, API load, and monitoring checks;
+- explicit documentation of which fixture size is safe for CI and which one is
+  intended for local production-like validation.
 
 ## Rules for future changes
 
