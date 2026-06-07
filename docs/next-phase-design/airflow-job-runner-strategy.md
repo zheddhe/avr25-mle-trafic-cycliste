@@ -42,11 +42,15 @@ Implemented after Phase 7 and the first artifact stories:
 - Custom prod-like API and ML images run as non-root users.
 - Root `data`, `models`, and `logs` remain development/DVC workspaces.
 - Production-like generated outputs use `docker/prod/runtime`.
-- Artifact manifest models and store helpers are implemented under `src/artifacts`.
+- Artifact manifest models, emission helpers, and store helpers are implemented
+  under `src/artifacts`.
+- Ingest, features, and model ML steps can emit coherent local artifact
+  manifests through service-specific wrappers.
+- Typed pipeline job request and status contracts are implemented under
+  `src/pipeline/contracts`.
 
 Remaining runner work:
 
-- typed pipeline job contracts;
 - internal `job-runner-api`;
 - runner execution path;
 - production-like Airflow DAG variant using the runner;
@@ -123,8 +127,8 @@ The runner must cover the existing ML pipeline shape:
 
 | Job type | Current dev image or action | Main outputs | External dependencies |
 | -------- | --------------------------- | ------------ | --------------------- |
-| `ingest` | `ml-ingest-dev` | interim data and ingest metrics | raw data, runtime data workspace, logs, Pushgateway |
-| `features` | `ml-features-dev` | processed features and feature metrics | interim data, runtime data workspace, logs, Pushgateway |
+| `ingest` | `ml-ingest-dev` | interim data, manifest, and ingest metrics | raw data, runtime data workspace, logs, Pushgateway |
+| `features` | `ml-features-dev` | processed features, manifest, and feature metrics | interim data, runtime data workspace, logs, Pushgateway |
 | `models` | `ml-models-dev` | forecasts, model artifacts, MLflow runs, prediction manifest | processed data, runtime data/model workspace, logs, MLflow, Pushgateway |
 | `api_refresh` | `api-dev` HTTP admin call | refreshed serving cache | FastAPI service and API credentials |
 
@@ -159,6 +163,40 @@ flowchart LR
 
 The diagram is a target design. It should be implemented through the remaining
 Phase 8 stories, not treated as current `docker/prod` behavior.
+
+## Typed job contracts
+
+The initial framework-neutral contracts are implemented under:
+
+```text
+src/pipeline/contracts/
+├── __init__.py
+├── jobs.py
+└── statuses.py
+```
+
+They are Pydantic models used to describe the payloads that Airflow, the future
+runner API, and typed ML workers exchange. They deliberately do not import
+Airflow, Docker SDK, FastAPI application instances, or runner implementation
+code.
+
+Implemented request contracts include:
+
+- `IngestJobRequest`;
+- `FeatureJobRequest`;
+- `ModelJobRequest`;
+- `PipelineJobRequest`.
+
+Implemented status and result contracts include:
+
+- `JobStatus`;
+- `JobResult`;
+- `JobError`;
+- `MetricsEvidence`.
+
+`PipelineJobRequest` validates that related ingest, features, and model steps
+share `run_id`, `counter_id`, and `manifest_root`, and that their handoff paths
+match in order: ingest interim output, features input/output, and model input.
 
 ## Runner API
 
@@ -273,8 +311,8 @@ job runner to execute an allowed job type.
 | ----- | ---- | ------ |
 | #64 | Implement artifact manifest models used by job results. | Implemented. |
 | #65 | Implement manifest writer and promotion helpers. | Implemented. |
-| #66 | Make ML jobs emit artifact manifests. | Remaining. |
-| #67 | Implement typed pipeline job contracts. | Remaining. |
+| #66 | Make ML jobs emit artifact manifests. | Implemented for local manifests. |
+| #67 | Implement typed pipeline job contracts. | Implemented. |
 | #68 | Add the internal `job-runner-api` skeleton. | Remaining. |
 | #69 | Execute typed ML jobs through the runner. | Remaining. |
 | #70 | Add the production-like Airflow DAG using the runner API. | Remaining. |
@@ -292,7 +330,11 @@ A complete Phase 8 validation should eventually prove that:
 
 - `docker/prod` Airflow has no Docker socket mount;
 - Airflow can submit a typed job to `job-runner-api`;
-- the runner can execute the pipeline or a representative pipeline subset;
-- successful execution publishes a valid manifest;
-- the API can report the promoted artifact;
-- monitoring can scrape relevant API and runner metrics.
+- the runner can execute the pipeline or a single step without exposing the
+  Docker socket to Airflow;
+- each ML step emits coherent artifact manifests;
+- the API serves predictions by reading the promoted manifest;
+- Prometheus/Grafana can observe job status and artifact freshness.
+
+Until the runner API exists, validate this story with unit tests covering the
+Pydantic contracts and manifest coherence across ML steps.
