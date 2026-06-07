@@ -29,6 +29,34 @@ This hybrid decision keeps Phase 8 incremental. The project can validate the
 production-like runtime with local bind-mounted artifacts first, while keeping a
 stable contract that can later point to MinIO without changing every consumer.
 
+## Current coverage summary
+
+The Phase 8 foundation is now implemented, but the production-like execution path
+is not complete yet.
+
+Implemented:
+
+- strict artifact manifest models under `src/artifacts`;
+- local manifest store helpers with checksum verification and atomic
+  `current.json` replacement;
+- local manifest emission wrappers for ingest, features, and model jobs;
+- typed pipeline request and status contracts under `src/pipeline/contracts`;
+- production-like runtime mounts for generated data and artifact manifests;
+- production-like Airflow services without `/var/run/docker.sock`.
+
+Remaining before the Phase 8 goal is operational end-to-end:
+
+- internal `job-runner-api` skeleton;
+- runner execution of typed ML jobs;
+- production-like Airflow DAG path calling the runner;
+- API serving from promoted prediction manifests;
+- production-like smoke validation using realistic test fixtures;
+- configuration and placeholder hardening.
+
+The MinIO part is contract-compatible today through optional `s3://` object URIs.
+It is not yet a functional upload, download, verification, or primary serving
+backend.
+
 ## Source documents
 
 | Source | Use in this strategy |
@@ -141,6 +169,10 @@ s3://<bucket>/artifacts/<artifact_type>/<counter_id>/<run_id>/<file_name>
 Credentials, endpoint URLs, and access keys must remain runtime configuration and
 must not be embedded in manifests.
 
+Current limitation: object URIs are metadata only. Phase 8 does not yet implement
+artifact upload, download, checksum verification against object storage, or
+object-storage-first API serving.
+
 ## Identifier conventions
 
 | Field | Convention | Example |
@@ -248,15 +280,32 @@ keeps the API out of training job internals.
 | Make the API load the promoted local manifest. | #71 | Remaining | Future API implementation note. |
 | Add production-like smoke validation. | #72 | Remaining | Future smoke validation note. |
 | Harden runtime configuration and secrets validation. | #73 | Remaining | Future runtime hardening note. |
+| Strengthen realistic Phase 8 test coverage. | Follow-up technical debt | Remaining | Future test-fixture issue. |
 | Add optional MinIO upload/download helpers. | Later | Remaining | Future object-storage implementation note. |
 | Switch `primary_backend` to object storage. | Later | Deferred | Requires API and runner support first. |
+
+## Known technical and functional debt
+
+The remaining stories should not aim for a perfect production platform. They
+should leave explicit debt where Phase 8 deliberately stays incremental:
+
+- realistic integration fixtures derived from the real raw-data schema are still
+  needed;
+- unit coverage should be expanded for invalid manifests, runner state errors,
+  API manifest loading failures, and runtime configuration failures;
+- `current.json` discovery should stay explicit and counter-scoped so the API
+  does not reintroduce implicit latest-file scanning;
+- runner execution should stay typed and allow-listed, not a generic shell
+  command runner;
+- MinIO is not yet a functional artifact backend despite the optional
+  `object_uri` contract.
 
 ## Out of scope for the current implementation wave
 
 The current Phase 8 implementation wave does not implement:
 
-- runner API or worker execution;
-- Airflow DAG rewrites;
-- API serving from `current.json`;
-- MinIO upload/download helpers;
-- production secret management.
+- object-storage-first serving;
+- production secret management;
+- distributed runner queues;
+- remote deployment validation;
+- full performance or load testing.
