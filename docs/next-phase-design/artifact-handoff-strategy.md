@@ -97,8 +97,8 @@ operational observation, not a replacement for `promoted`.
 A manifest is created by the component that has the best evidence about the
 artifact:
 
-- ML prediction jobs know the output path, counter, dataset, model, metrics, and
-  checksum evidence.
+- ML jobs know the output path, counter, dataset, model, metrics, and checksum
+  evidence.
 - The artifact store validates manifests and updates the stable promoted pointer.
 - A runner can validate job outputs and call promotion helpers.
 - Airflow orchestrates job order and records manifest references, but should not
@@ -113,30 +113,18 @@ This is more portable across Windows, WSL, Docker bind mounts, and CI runners.
 
 Local production-like artifacts should stay under `docker/prod/runtime`.
 
-Recommended paths:
+The implemented manifest store writes counter-scoped manifests as:
 
 ```text
-docker/prod/runtime/artifacts/
-├── manifests/
-│   ├── current.json
-│   └── runs/
-│       └── <run_id>/
-│           └── <artifact_type>-manifest.json
-├── data/
-│   └── final/
-│       └── <counter_id>/
-│           └── <run_id>/
-│               └── predictions.parquet
-└── models/
-    └── <counter_id>/
-        └── <model_version>/
-            └── model.joblib
+<manifest_root>/<artifact_type>/<counter_id>/<run_id>/manifest.json
+<manifest_root>/<artifact_type>/<counter_id>/current.json
 ```
 
+With the production-like Compose configuration, `manifest_root` is
+`/app/artifacts/manifests` inside ML containers and maps to
+`docker/prod/runtime/artifacts/manifests` on the host.
+
 Local paths stored in manifests should be repository-relative when possible.
-The implemented store helper writes run-scoped manifests under
-`<manifest_root>/runs/<run_id>/<artifact_type>-manifest.json` and replaces
-`<manifest_root>/current.json` during promotion.
 
 ## Optional MinIO object URI conventions
 
@@ -184,14 +172,14 @@ The canonical JSON shape is implemented by the Pydantic models documented in
     "image": "ml-models:prod"
   },
   "source": {
-    "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
+    "raw_file_name": "initial_with_feats.csv",
     "dataset_version": "local-dev-dvc",
     "model_version": "mlflow-run-20260606"
   },
   "storage": {
     "primary_backend": "local",
-    "local_path": "docker/prod/runtime/artifacts/data/final/Sebastopol_N-S_airflow/2026-06-06T140000Z-sebastopol-ns/predictions.parquet",
-    "object_uri": "s3://mlflow/artifacts/predictions/Sebastopol_N-S_airflow/2026-06-06T140000Z-sebastopol-ns/predictions.parquet",
+    "local_path": "docker/prod/runtime/data/final/Sebastopol_N-S_airflow/y_full.csv",
+    "object_uri": "s3://mlflow/artifacts/predictions/Sebastopol_N-S_airflow/2026-06-06T140000Z-sebastopol-ns/y_full.csv",
     "checksum_sha256": "..."
   }
 }
@@ -252,8 +240,10 @@ keeps the API out of training job internals.
 | Define artifact handoff vocabulary. | #63 | Done | This document. |
 | Add strict Pydantic manifest models. | #64 | Done | [`artifact-manifest-models.md`](artifact-manifest-models.md) |
 | Add checksum, write, read, and promotion helpers. | #65 | Done | [`artifact-manifest-store.md`](artifact-manifest-store.md) |
-| Make ML prediction jobs emit local-only manifests. | #66 | Remaining | Issue body and future implementation note. |
-| Add typed job contracts and runner execution model. | #67/#68/#69 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Make ML jobs emit local manifests. | #66 | Done | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Add typed job contracts. | #67 | Done | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Add the internal `job-runner-api` skeleton. | #68 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Execute typed ML jobs through the runner. | #69 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
 | Add production-like Airflow DAG using the runner. | #70 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
 | Make the API load the promoted local manifest. | #71 | Remaining | Future API implementation note. |
 | Add production-like smoke validation. | #72 | Remaining | Future smoke validation note. |
@@ -263,9 +253,8 @@ keeps the API out of training job internals.
 
 ## Out of scope for the current implementation wave
 
-The #64/#65 wave does not implement:
+The current Phase 8 implementation wave does not implement:
 
-- ML job manifest emission;
 - runner API or worker execution;
 - Airflow DAG rewrites;
 - API serving from `current.json`;

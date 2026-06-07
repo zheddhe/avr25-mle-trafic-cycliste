@@ -1,4 +1,4 @@
-"""Prediction artifact manifest emission helpers."""
+"""Feature artifact manifest emission helpers."""
 
 from __future__ import annotations
 
@@ -7,40 +7,38 @@ from pathlib import Path
 from src.artifacts.manifest_emission import build_artifact_manifest, emit_artifact_manifest
 from src.artifacts.schemas import ArtifactManifest, ArtifactType
 
-DEFAULT_PRODUCER_SERVICE = "ml-models"
+DEFAULT_PRODUCER_SERVICE = "ml-features"
 
 
-def emit_prediction_artifact_manifest(
+def emit_feature_dataset_artifact_manifest(
     *,
     manifest_root: str | Path | None,
-    prediction_path: str | Path,
-    processed_path: str | Path,
+    payload_path: str | Path,
+    source_file_name: str | Path,
     sub_dir: str,
     repository_root: str | Path = ".",
     run_id: str | None = None,
     counter_id: str | None = None,
     dataset_version: str | None = None,
-    model_version: str | None = None,
     producer_service: str | None = None,
     producer_image: str | None = None,
     producer_version: str | None = None,
     object_uri: str | None = None,
     promote: bool = True,
 ) -> ArtifactManifest | None:
-    """Build and persist a prediction artifact manifest when configured."""
+    """Build and persist a feature dataset manifest when configured."""
 
     return emit_artifact_manifest(
         manifest_root=manifest_root,
-        artifact_type=ArtifactType.PREDICTIONS,
-        payload_path=prediction_path,
-        source_file_name=processed_path,
+        artifact_type=ArtifactType.FEATURE_DATASET,
+        payload_path=payload_path,
+        source_file_name=source_file_name,
         sub_dir=sub_dir,
         default_producer_service=DEFAULT_PRODUCER_SERVICE,
         repository_root=repository_root,
         run_id=run_id,
         counter_id=counter_id,
         dataset_version=dataset_version,
-        model_version=model_version,
         producer_service=producer_service,
         producer_image=producer_image,
         producer_version=producer_version,
@@ -49,34 +47,32 @@ def emit_prediction_artifact_manifest(
     )
 
 
-def build_prediction_artifact_manifest(
+def build_feature_dataset_artifact_manifest(
     *,
-    prediction_path: str | Path,
-    processed_path: str | Path,
+    payload_path: str | Path,
+    source_file_name: str | Path,
     sub_dir: str,
     repository_root: str | Path = ".",
     run_id: str | None = None,
     counter_id: str | None = None,
     dataset_version: str | None = None,
-    model_version: str | None = None,
     producer_service: str | None = None,
     producer_image: str | None = None,
     producer_version: str | None = None,
     object_uri: str | None = None,
 ) -> ArtifactManifest:
-    """Create a validated prediction artifact manifest."""
+    """Create a validated feature dataset artifact manifest."""
 
     return build_artifact_manifest(
-        artifact_type=ArtifactType.PREDICTIONS,
-        payload_path=prediction_path,
-        source_file_name=processed_path,
+        artifact_type=ArtifactType.FEATURE_DATASET,
+        payload_path=payload_path,
+        source_file_name=source_file_name,
         sub_dir=sub_dir,
         default_producer_service=DEFAULT_PRODUCER_SERVICE,
         repository_root=repository_root,
         run_id=run_id,
         counter_id=counter_id,
         dataset_version=dataset_version,
-        model_version=model_version,
         producer_service=producer_service,
         producer_image=producer_image,
         producer_version=producer_version,
