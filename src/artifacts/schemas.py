@@ -1,8 +1,4 @@
-"""Pydantic schemas for artifact handoff manifests.
-
-The manifest is the shared contract between ML jobs, Airflow, future runners,
-and the prediction API. It stays independent from runtime framework internals.
-"""
+"""Pydantic schemas for artifact handoff manifests."""
 
 from __future__ import annotations
 
@@ -28,6 +24,8 @@ class ArtifactType(StrEnum):
     PREDICTIONS = "predictions"
     MODEL = "model"
     DATASET = "dataset"
+    INTERIM_DATASET = "interim_dataset"
+    FEATURE_DATASET = "feature_dataset"
     METRICS = "metrics"
 
 
