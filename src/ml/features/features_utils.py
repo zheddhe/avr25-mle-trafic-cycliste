@@ -85,9 +85,7 @@ def extract_datetime_periodic_features(
 
     except Exception as exc:
         logger.error(
-            "Error in datetime feature extraction for '%s': %s",
-            timestamp_col,
-            exc,
+            f"Error in datetime feature extraction for '{timestamp_col}': {exc}",
         )
         raise
 
