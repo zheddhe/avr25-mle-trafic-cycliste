@@ -1,10 +1,4 @@
-"""Typed pipeline job status and result contracts.
-
-The future job-runner API can persist and expose these models while Airflow polls
-job state. The models intentionally carry status, result, manifest, and metrics
-evidence only; they do not execute jobs and do not import Prometheus, Airflow,
-FastAPI application instances, or Docker APIs.
-"""
+"""Typed pipeline job status and result contracts."""
 
 from __future__ import annotations
 
@@ -137,10 +131,13 @@ class JobResult(StrictPipelineContract):
     def validate_finished_after_started(self) -> JobResult:
         """Ensure result timestamps are chronological when both are present."""
 
-        has_started = self.started_at is not None
-        has_finished = self.finished_at is not None
-        if has_started and has_finished and self.finished_at < self.started_at:
-            raise ValueError("finished_at must be greater than or equal to started_at")
+        started_at = self.started_at
+        finished_at = self.finished_at
+        if started_at is not None and finished_at is not None:
+            if finished_at < started_at:
+                raise ValueError(
+                    "finished_at must be greater than or equal to started_at"
+                )
 
         return self
 
