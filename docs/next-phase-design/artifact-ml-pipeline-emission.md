@@ -1,6 +1,6 @@
 # ML pipeline artifact manifest emission
 
-This document records the implementation intent for Phase 8 issue #66. The
+This document records the implementation outcome for Phase 8 issue #66. The
 hybrid artifact handoff design remains documented in
 [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md).
 
@@ -13,9 +13,9 @@ helper:
 src/ml/models/artifact_manifest_emission.py
 ```
 
-The helper builds a validated `ArtifactManifest` for the prediction output written
-by `src/ml/models/train_and_predict.py`. It stays independent from Airflow,
-FastAPI, Docker SDK, and MLflow internals.
+The helper builds a validated `ArtifactManifest` for the prediction output
+written by `src/ml/models/train_and_predict.py`. It stays independent from
+Airflow, FastAPI, Docker SDK, and MLflow internals.
 
 ## Runtime behavior
 
@@ -25,8 +25,10 @@ FastAPI, Docker SDK, and MLflow internals.
 - model files are still written under `models/<sub_dir>`;
 - no manifest is emitted unless an artifact manifest root is configured.
 
-When `--artifact-manifest-root` or `ARTIFACT_MANIFEST_ROOT` is provided, the model
-step emits a local-only prediction manifest after successful artifact generation.
+When `--artifact-manifest-root` or `ARTIFACT_MANIFEST_ROOT` is provided, the
+model step emits a local prediction manifest after successful artifact
+generation.
+
 The manifest includes:
 
 - `run_id` from CLI/runtime context or a UTC fallback;
@@ -35,9 +37,18 @@ The manifest includes:
 - source metadata for the processed dataset and model version;
 - local storage metadata and a SHA-256 checksum for `y_full.csv`.
 
-The implementation promotes the manifest through the existing store helper. That
-writes both the run-scoped manifest and `current.json` under the configured
-manifest root.
+## Manifest store layout
+
+The manifest store writes one run-scoped file and one stable pointer:
+
+```text
+<manifest_root>/runs/<run_id>/<artifact_type>-manifest.json
+<manifest_root>/current.json
+```
+
+Promotion validates the local payload checksum before replacing `current.json`.
+The current implementation stores the latest promoted prediction manifest for the
+configured manifest root.
 
 ## Shared technical metrics helpers
 
@@ -60,18 +71,16 @@ The model-specific `push_business_metrics` function remains in
 
 ## Docker runtime impact
 
-The ML Docker images now copy the shared metrics package. The model images also
-copy `src/artifacts` and `artifact_manifest_emission.py`, and expose both
-`/app` and `/app/src` in `PYTHONPATH`.
+The ML Docker images copy the shared metrics package. The model images also copy
+`src/artifacts` and `src/ml/models/artifact_manifest_emission.py`.
 
-`docker/prod/Makefile` applies an artifacts overlay:
+All internal imports use the repository-root namespace, for example
+`src.ml.models.train_and_predict`. Docker images therefore keep `/app` as the
+runtime import root and run entrypoints with `python -m src...`.
 
-```text
-docker/prod/docker-compose.artifacts.yaml
-```
-
-The overlay mounts `docker/prod/runtime/artifacts` into the model container as
-`/app/artifacts` and configures:
+`docker/prod/docker-compose.yaml` directly mounts
+`docker/prod/runtime/artifacts` into the model container as `/app/artifacts` and
+configures:
 
 ```text
 ARTIFACT_MANIFEST_ROOT=/app/artifacts/manifests
@@ -81,7 +90,7 @@ ARTIFACT_PRODUCER_IMAGE=ml-models:prod
 ```
 
 The payload file remains written through the existing runtime data mount. Inside
-the container the manifest `local_path` is relative to `/app`, for example:
+the container, the manifest `local_path` is relative to `/app`, for example:
 
 ```text
 data/final/Sebastopol_N-S/y_full.csv
