@@ -114,10 +114,15 @@ services:
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
+      ARTIFACT_PRODUCER_SERVICE: ml-ingest-prod
+      ARTIFACT_PRODUCER_IMAGE: ml-ingest:prod
     volumes:
       - ./runtime/data:/app/data
       - ../../data/raw/${RAW_FILE_NAME}:/app/data/raw/${RAW_FILE_NAME}:ro
       - ./runtime/logs/ml:/app/logs
+      - ./runtime/artifacts:/app/artifacts
     networks:
       - pipeline_runtime_net
     profiles: ["ml", "all"]
@@ -141,9 +146,14 @@ services:
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
+      ARTIFACT_PRODUCER_SERVICE: ml-features-prod
+      ARTIFACT_PRODUCER_IMAGE: ml-features:prod
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/logs/ml:/app/logs
+      - ./runtime/artifacts:/app/artifacts
     networks:
       - pipeline_runtime_net
     profiles: ["ml", "all"]
