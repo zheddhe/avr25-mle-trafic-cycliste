@@ -28,6 +28,18 @@ def configure_mlflow_from_env(
         logger.info("MLflow tracking URI not set (using default/local).")
 
 
+def is_model_registry_enabled(explicit_uri: str | None = None) -> bool:
+    """
+    Return whether model registry operations should be attempted.
+
+    Local file-based MLflow runs remain artifact-only by default. Registry
+    registration and alias promotion are enabled only when a tracking URI is
+    explicitly provided through CLI or environment configuration.
+    """
+
+    return bool(explicit_uri or os.getenv("MLFLOW_TRACKING_URI"))
+
+
 def start_run(
     experiment_name: str,
     run_name: str | None = None,
@@ -96,15 +108,15 @@ def log_report_content(
 def log_model_with_signature(
     pipe_model,
     sample_input_df,
-    artifact_path: str = "model",
+    model_artifact_name: str = "model",
     registered_name: str | None = None,
+    registry_enabled: bool | None = None,
 ) -> None:
     """
-    Log the sklearn Pipeline with signature inferred from a sample row.
+    Log the sklearn Pipeline with a signature inferred from a sample row.
 
-    If the current MLflow tracking backend does not support a Model Registry
-    (e.g. file:// tracking URI), we gracefully fall back to logging without
-    `registered_model_name`.
+    MLflow 3.x uses ``name`` for model artifact logging. Registry registration
+    remains explicit and is disabled for local artifact-only runs by default.
     """
     df = sample_input_df.copy()
     try:
@@ -112,30 +124,31 @@ def log_model_with_signature(
             df[col] = df[col].astype("float64")
         signature = infer_signature(df, pipe_model.predict(df))
     except Exception as exc:  # pragma: no cover (safety)
-        logger.warning("Signature inference failed: %s", exc)
+        logger.warning(f"Signature inference failed: {exc}")
         signature = None
 
-    # Heuristic: only try to register if a tracking URI is configured
-    reg_enabled = bool(os.getenv("MLFLOW_TRACKING_URI"))
-    reg_name = registered_name if reg_enabled else None
+    effective_registry_enabled = (
+        is_model_registry_enabled()
+        if registry_enabled is None
+        else registry_enabled
+    )
+    reg_name = registered_name if effective_registry_enabled else None
 
     try:
         mlflow.sklearn.log_model(
             sk_model=pipe_model,
-            artifact_path=artifact_path,
-            signature=signature,  # type: ignore
+            name=model_artifact_name,
+            signature=signature,  # type: ignore[arg-type]
             registered_model_name=reg_name,
         )
     except MlflowException as exc:
-        # FileStore or registry not available → retry without registration
         logger.warning(
-            "Model registry not available, fallback to artifact-only: %s",
-            exc,
+            f"Model registry not available, fallback to artifact-only: {exc}"
         )
         mlflow.sklearn.log_model(
             sk_model=pipe_model,
-            artifact_path=artifact_path,
-            signature=signature,  # type: ignore
+            name=model_artifact_name,
+            signature=signature,  # type: ignore[arg-type]
             registered_model_name=None,
         )
 

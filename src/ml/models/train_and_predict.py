@@ -17,6 +17,7 @@ from src.ml.models.artifact_manifest_emission import (
 )
 from src.ml.models.mlflow_tracking import (
     configure_mlflow_from_env,
+    is_model_registry_enabled,
     log_local_artifacts,
     log_model_with_signature,
     log_report_content,
@@ -199,6 +200,7 @@ def main(
             raise click.BadParameter(f"grid-iter must be >= 0. Got {grid_iter}.")
 
         configure_mlflow_from_env(explicit_uri=mlflow_uri)
+        registry_enabled = is_model_registry_enabled(explicit_uri=mlflow_uri)
 
         if sub_dir is None:
             sub_dir = os.path.basename(os.path.dirname(processed_path))
@@ -250,10 +252,14 @@ def main(
         site_short = os.getenv("SITE_SHORT")
         if not site_short:
             site_short = sub_dir
-            logger.warning(
+            log_message = (
                 f"SITE_SHORT not set, fallback to sub_dir=[{sub_dir}] "
                 "to construct registration model name"
             )
+            if registry_enabled:
+                logger.warning(log_message)
+            else:
+                logger.info(log_message)
 
         tags = {
             "counter.subdir": sub_dir,
@@ -273,11 +279,15 @@ def main(
             y_full_path = save_artefacts(report, sub_dir)
 
             x_sample = report["X_train"].head(1)
+            registered_model_name = (
+                f"{site_short}-model" if registry_enabled else None
+            )
             log_model_with_signature(
                 pipe_model=report["pipe_model"],
                 sample_input_df=x_sample,
-                artifact_path="model_pipeline",
-                registered_name=f"{site_short}-model",
+                model_artifact_name="model_pipeline",
+                registered_name=registered_model_name,
+                registry_enabled=registry_enabled,
             )
             log_local_artifacts(sub_dir)
 
@@ -292,7 +302,10 @@ def main(
             model_version=model_version,
         )
 
-        _promote_latest_model_alias(site_short)
+        _promote_latest_model_alias(
+            site_short=site_short,
+            registry_enabled=registry_enabled,
+        )
         _push_business_metrics(
             report=report,
             df=df,
@@ -345,11 +358,23 @@ def _emit_manifest_or_raise(
 
     if emitted_manifest is not None:
         logger.info(
-            f"Prediction artifact manifest emitted for run_id=[{emitted_manifest.run_id}]."
+            f"Prediction artifact manifest emitted for "
+            f"run_id=[{emitted_manifest.run_id}]."
         )
 
 
-def _promote_latest_model_alias(site_short: str) -> None:
+def _promote_latest_model_alias(
+    *,
+    site_short: str,
+    registry_enabled: bool,
+) -> None:
+    if not registry_enabled:
+        logger.info(
+            "Model registry promotion skipped because no MLflow tracking URI "
+            "is configured."
+        )
+        return
+
     try:
         model_name = f"{site_short}-model"
         client = MlflowClient()
@@ -411,6 +436,16 @@ def _push_business_metrics(
         else:
             site, orientation = _extract_site_orientation(sub_dir)
 
+        summary = (
+            f"site={site}, ori={orientation}, RMSE={rmse:.3f}, "
+            f"MAPE={mape:.2f}, R²={r2}, last_ts={last_ts}, "
+            f"n_obs_true={n_true}, n_obs_pred={n_pred}, "
+            f"day_offset={day_offset}"
+        )
+        if os.getenv("DISABLE_METRICS_PUSH", "1") == "1":
+            logger.info(f"Business metrics push skipped: {summary}")
+            return
+
         push_business_metrics(
             site=site,
             orientation=orientation,
@@ -422,11 +457,7 @@ def _push_business_metrics(
             last_ts=last_ts,
             day_offset=day_offset,
         )
-        logger.info(
-            f"Pushed business metrics to Pushgateway: site={site}, ori={orientation}, "
-            f"RMSE={rmse:.3f}, MAPE={mape:.2f}, R²={r2}, "
-            f"last_ts={last_ts}, day_offset={day_offset}"
-        )
+        logger.info(f"Pushed business metrics to Pushgateway: {summary}")
     except Exception as exc:
         logger.warning(f"Failed to push business metrics: {exc}")
 
