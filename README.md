@@ -22,6 +22,7 @@ The implementation currently provides:
 - DVC-oriented development data and model workspaces;
 - FastAPI prediction serving;
 - ML pipeline containers for ingestion, features, and modelling;
+- optional prediction artifact manifests for model outputs;
 - Airflow orchestration for multi-counter workflows;
 - MLflow tracking with PostgreSQL and MinIO;
 - Prometheus, Grafana, Pushgateway, Alertmanager, cAdvisor, and MailHog;
@@ -66,6 +67,7 @@ Key entrypoints:
 - [`docs/current-runtime-and-operations/repository-structure.md`](docs/current-runtime-and-operations/repository-structure.md)
 - [`docs/architecture-references/runtime-communication-matrix.md`](docs/architecture-references/runtime-communication-matrix.md)
 - [`docs/next-phase-design/artifact-handoff-strategy.md`](docs/next-phase-design/artifact-handoff-strategy.md)
+- [`docs/next-phase-design/artifact-ml-pipeline-emission.md`](docs/next-phase-design/artifact-ml-pipeline-emission.md)
 - [`docs/next-phase-design/airflow-job-runner-strategy.md`](docs/next-phase-design/airflow-job-runner-strategy.md)
 
 ## First setup
@@ -185,6 +187,11 @@ Local host-side execution:
 make local-pipeline
 make mlflow-local
 ```
+
+The model step can emit prediction artifact manifests when
+`ARTIFACT_MANIFEST_ROOT` or `--artifact-manifest-root` is configured. This keeps
+local/DVC runs unchanged by default while allowing production-like runtimes to
+publish validated artifact metadata and checksums.
 
 MLflow environment presets:
 

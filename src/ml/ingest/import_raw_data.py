@@ -12,9 +12,9 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.ingest.ingest_utils import (
     apply_percent_range_selection,
-    track_pipeline_step,  # <- pushes duration/status + your custom counters to Pushgateway
 )
 
 
@@ -38,7 +38,7 @@ def slugify_ascii(text: str) -> str:
 
 
 # -------------------------------------------------------------------
-# Logs
+# Logs management
 # -------------------------------------------------------------------
 log_dir = os.path.join("logs", "ml")
 os.makedirs(log_dir, exist_ok=True)
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------
-# CLI
+# Main script
 # -------------------------------------------------------------------
 @click.command()
 @click.option(

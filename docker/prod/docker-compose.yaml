@@ -184,10 +184,15 @@ services:
       GIT_PYTHON_REFRESH: quiet
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
+      ARTIFACT_PRODUCER_SERVICE: ml-models-prod
+      ARTIFACT_PRODUCER_IMAGE: ml-models:prod
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/models:/app/models
       - ./runtime/logs/ml:/app/logs
+      - ./runtime/artifacts:/app/artifacts
     networks:
       - pipeline_runtime_net
       - tracking_client_net

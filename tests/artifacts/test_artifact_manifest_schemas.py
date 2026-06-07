@@ -7,7 +7,7 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from artifacts.schemas import ArtifactManifest, StorageBackend
+from src.artifacts.schemas import ArtifactManifest, StorageBackend
 
 VALID_CHECKSUM = "a" * 64
 
@@ -48,6 +48,7 @@ class TestArtifactManifest:
         manifest = ArtifactManifest.model_validate(valid_local_manifest)
 
         assert manifest.storage.primary_backend == StorageBackend.LOCAL
+        assert manifest.storage.local_path is not None
         assert manifest.storage.local_path.endswith("predictions.parquet")
         assert manifest.storage.object_uri is None
 
@@ -62,6 +63,7 @@ class TestArtifactManifest:
         manifest = ArtifactManifest.model_validate(payload)
 
         assert manifest.storage.primary_backend == StorageBackend.LOCAL
+        assert manifest.storage.object_uri is not None
         assert manifest.storage.object_uri.startswith("s3://mlflow/")
 
     def test_missing_required_field_raises_validation_error(

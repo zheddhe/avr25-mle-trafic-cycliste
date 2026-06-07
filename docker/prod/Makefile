@@ -31,6 +31,7 @@ prod-help: ## Display local production-like runtime targets
 prod-prepare-runtime: ## Create ignored local production-like runtime folders
 	@$(call prod_log_target,prod-prepare-runtime)
 	mkdir -p \
+		docker/prod/runtime/artifacts/manifests \
 		docker/prod/runtime/data/raw \
 		docker/prod/runtime/data/interim \
 		docker/prod/runtime/data/processed \
@@ -40,7 +41,7 @@ prod-prepare-runtime: ## Create ignored local production-like runtime folders
 		docker/prod/runtime/logs/airflow \
 		docker/prod/runtime/logs/ml
 
-prod-compose-config: prod-prepare-runtime ## Validate the local production-like Compose config
+prod-compose-config: prod-prepare-runtime ## Validate production-like Compose config
 	@$(call prod_log_target,prod-compose-config)
 	@$(prod_check_env)
 	$(prod_compose) --profile all config >/dev/null
