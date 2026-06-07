@@ -82,7 +82,7 @@ class TestArtifactManifestStore:
             },
         }
 
-    def test_write_manifest_writes_run_scoped_manifest(
+    def test_write_manifest_writes_counter_scoped_manifest(
         self,
         tmp_path,
         valid_manifest,
@@ -92,7 +92,11 @@ class TestArtifactManifestStore:
         manifest_path = write_manifest(valid_manifest, manifest_root)
 
         assert manifest_path == (
-            manifest_root / "runs" / "run-001" / "predictions-manifest.json"
+            manifest_root
+            / "predictions"
+            / "Sebastopol_N-S_airflow"
+            / "run-001"
+            / "manifest.json"
         )
         assert manifest_path.is_file()
         assert read_manifest(manifest_path).run_id == "run-001"
@@ -104,7 +108,7 @@ class TestArtifactManifestStore:
         with pytest.raises(ArtifactManifestValidationError, match="run_id"):
             write_manifest(invalid_manifest, tmp_path / "manifests")
 
-    def test_promote_manifest_writes_stable_current_manifest(
+    def test_promote_manifest_writes_counter_current_manifest(
         self,
         tmp_path,
         valid_manifest,
@@ -117,9 +121,18 @@ class TestArtifactManifestStore:
             repository_root=tmp_path,
         )
 
-        assert current_path == manifest_root / "current.json"
+        assert current_path == (
+            manifest_root
+            / "predictions"
+            / "Sebastopol_N-S_airflow"
+            / "current.json"
+        )
         assert current_path.is_file()
-        current_manifest = read_current_manifest(manifest_root)
+        current_manifest = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="Sebastopol_N-S_airflow",
+        )
         assert isinstance(current_manifest, ArtifactManifest)
         assert current_manifest.status == ArtifactStatus.VALIDATED
         assert current_manifest.counter_id == "Sebastopol_N-S_airflow"
@@ -128,7 +141,11 @@ class TestArtifactManifestStore:
         manifest_root = tmp_path / "docker/prod/runtime/artifacts/manifests"
 
         with pytest.raises(ArtifactManifestNotFoundError, match="does not exist"):
-            read_current_manifest(manifest_root)
+            read_current_manifest(
+                manifest_root=manifest_root,
+                artifact_type="predictions",
+                counter_id="Sebastopol_N-S_airflow",
+            )
 
     def test_read_manifest_invalid_json_raises_validation_error(self, tmp_path):
         manifest_path = tmp_path / "current.json"

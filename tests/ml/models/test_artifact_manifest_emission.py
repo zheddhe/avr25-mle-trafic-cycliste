@@ -116,11 +116,12 @@ class TestEmitPredictionArtifactManifest:
         assert manifest is not None
         run_manifest_path = (
             manifest_root
-            / "runs"
+            / "predictions"
+            / "counter-1"
             / "manual-run"
-            / "predictions-manifest.json"
+            / "manifest.json"
         )
-        current_path = manifest_root / "current.json"
+        current_path = manifest_root / "predictions" / "counter-1" / "current.json"
         assert run_manifest_path.exists()
         assert current_path.exists()
         assert manifest.counter_id == "counter-1"

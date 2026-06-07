@@ -1,7 +1,7 @@
 """Filesystem-backed artifact manifest store helpers.
 
-The helpers write validated run-scoped manifests and promote a stable
-``current.json`` file without introducing Airflow, FastAPI, or Docker coupling.
+The helpers write validated counter-scoped manifests and promote stable
+``current.json`` files without introducing Airflow, FastAPI, or Docker coupling.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from src.artifacts.exceptions import (
 from src.artifacts.schemas import ArtifactManifest, ArtifactStatus
 
 CURRENT_MANIFEST_NAME = "current.json"
-RUNS_DIR_NAME = "runs"
+RUN_MANIFEST_NAME = "manifest.json"
 
 _PROMOTABLE_STATUSES = {
     ArtifactStatus.PRODUCED,
@@ -36,13 +36,15 @@ def write_manifest(
     manifest: ArtifactManifest | dict[str, Any],
     manifest_root: str | Path,
 ) -> Path:
-    """Validate and write a run-scoped manifest below the manifest root.
+    """Validate and write a counter-scoped run manifest.
 
-    The path is ``<manifest_root>/runs/<run_id>/<artifact_type>-manifest.json``.
+    The path is::
+
+        <manifest_root>/<artifact_type>/<counter_id>/<run_id>/manifest.json
 
     Args:
         manifest: Validated manifest model or raw manifest payload.
-        manifest_root: Directory that owns current and run-scoped manifests.
+        manifest_root: Directory that owns counter-scoped manifests.
 
     Returns:
         Path to the written run-scoped manifest.
@@ -66,14 +68,15 @@ def promote_manifest(
     manifest_root: str | Path,
     repository_root: str | Path = ".",
 ) -> Path:
-    """Validate payload evidence and replace the stable current manifest.
+    """Validate payload evidence and replace the counter current manifest.
 
-    Promotion writes the run-scoped manifest first, then atomically replaces
-    ``<manifest_root>/current.json`` with the same validated payload.
+    Promotion writes the run-scoped manifest first, then atomically replaces::
+
+        <manifest_root>/<artifact_type>/<counter_id>/current.json
 
     Args:
         manifest: Validated manifest model or raw manifest payload.
-        manifest_root: Directory that owns current and run-scoped manifests.
+        manifest_root: Directory that owns counter-scoped manifests.
         repository_root: Base directory used to resolve manifest local paths.
 
     Returns:
@@ -92,7 +95,10 @@ def promote_manifest(
     verify_local_payload(validated_manifest, repository_root=repository_root)
 
     write_manifest(validated_manifest, manifest_root=manifest_root)
-    current_path = Path(manifest_root) / CURRENT_MANIFEST_NAME
+    current_path = _build_current_manifest_path(
+        manifest_root=manifest_root,
+        manifest=validated_manifest,
+    )
     _write_json_atomic(current_path, _dump_manifest(validated_manifest))
 
     return current_path
@@ -122,10 +128,20 @@ def read_manifest(path: str | Path) -> ArtifactManifest:
     return _validate_manifest(payload)
 
 
-def read_current_manifest(manifest_root: str | Path) -> ArtifactManifest:
-    """Read the stable current manifest from a manifest root."""
+def read_current_manifest(
+    manifest_root: str | Path,
+    artifact_type: str,
+    counter_id: str,
+) -> ArtifactManifest:
+    """Read the stable current manifest for one artifact type and counter."""
 
-    return read_manifest(Path(manifest_root) / CURRENT_MANIFEST_NAME)
+    current_path = (
+        Path(manifest_root)
+        / artifact_type
+        / counter_id
+        / CURRENT_MANIFEST_NAME
+    )
+    return read_manifest(current_path)
 
 
 def verify_local_payload(
@@ -136,7 +152,8 @@ def verify_local_payload(
 
     Args:
         manifest: Validated artifact manifest.
-        repository_root: Base directory used to resolve repository-relative paths.
+        repository_root: Base directory used to resolve repository-relative
+            paths.
 
     Returns:
         The computed checksum when a local payload exists, otherwise ``None``.
@@ -163,7 +180,9 @@ def verify_local_payload(
     return checksum
 
 
-def _validate_manifest(manifest: ArtifactManifest | dict[str, Any]) -> ArtifactManifest:
+def _validate_manifest(
+    manifest: ArtifactManifest | dict[str, Any],
+) -> ArtifactManifest:
     if isinstance(manifest, ArtifactManifest):
         return manifest
 
@@ -185,8 +204,28 @@ def _build_run_manifest_path(
     manifest_root: str | Path,
     manifest: ArtifactManifest,
 ) -> Path:
-    file_name = f"{manifest.artifact_type.value}-manifest.json"
-    return Path(manifest_root) / RUNS_DIR_NAME / manifest.run_id / file_name
+    return (
+        _build_artifact_scope_path(manifest_root=manifest_root, manifest=manifest)
+        / manifest.run_id
+        / RUN_MANIFEST_NAME
+    )
+
+
+def _build_current_manifest_path(
+    manifest_root: str | Path,
+    manifest: ArtifactManifest,
+) -> Path:
+    return (
+        _build_artifact_scope_path(manifest_root=manifest_root, manifest=manifest)
+        / CURRENT_MANIFEST_NAME
+    )
+
+
+def _build_artifact_scope_path(
+    manifest_root: str | Path,
+    manifest: ArtifactManifest,
+) -> Path:
+    return Path(manifest_root) / manifest.artifact_type.value / manifest.counter_id
 
 
 def _dump_manifest(manifest: ArtifactManifest) -> str:

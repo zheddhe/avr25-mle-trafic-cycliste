@@ -31,7 +31,7 @@ generation.
 
 The manifest includes:
 
-- `run_id` from CLI/runtime context or a UTC fallback;
+- `run_id` from runtime context or a UTC fallback;
 - `counter_id` from runtime context or `sub_dir`;
 - producer metadata for the model job;
 - source metadata for the processed dataset and model version;
@@ -39,16 +39,34 @@ The manifest includes:
 
 ## Manifest store layout
 
-The manifest store writes one run-scoped file and one stable pointer:
+The manifest store writes one run-scoped file and one stable pointer per
+`artifact_type` and `counter_id`:
 
 ```text
-<manifest_root>/runs/<run_id>/<artifact_type>-manifest.json
-<manifest_root>/current.json
+<manifest_root>/<artifact_type>/<counter_id>/<run_id>/manifest.json
+<manifest_root>/<artifact_type>/<counter_id>/current.json
 ```
 
-Promotion validates the local payload checksum before replacing `current.json`.
-The current implementation stores the latest promoted prediction manifest for the
-configured manifest root.
+For local validation, use a repository-relative manifest root:
+
+```bash
+ARTIFACT_MANIFEST_ROOT=logs/artifacts/manifests make local-models
+```
+
+This produces a layout similar to:
+
+```text
+logs/artifacts/manifests/
+└── predictions/
+    └── Sebastopol_N-S_local/
+        ├── <run_id>/
+        │   └── manifest.json
+        └── current.json
+```
+
+Promotion validates the local payload checksum before replacing the scoped
+`current.json`. This keeps one current prediction manifest per counter and avoids
+cross-counter overwrites in Airflow multi-counter runs.
 
 ## Shared technical metrics helpers
 

@@ -298,7 +298,6 @@ def main(
             prediction_path=y_full_path,
             processed_path=processed_path,
             sub_dir=sub_dir,
-            labels=labels,
             model_version=model_version,
         )
 
@@ -327,7 +326,6 @@ def _emit_manifest_or_raise(
     prediction_path: str,
     processed_path: str,
     sub_dir: str,
-    labels: dict[str, str],
     model_version: str | None,
 ) -> None:
     try:
@@ -337,7 +335,7 @@ def _emit_manifest_or_raise(
             processed_path=processed_path,
             sub_dir=sub_dir,
             repository_root=artifact_repository_root,
-            run_id=os.getenv("RUN_ID") or labels["run_id"],
+            run_id=os.getenv("RUN_ID") or os.getenv("AIRFLOW_CTX_DAG_RUN_ID"),
             counter_id=os.getenv("COUNTER_ID") or sub_dir,
             dataset_version=os.getenv("DATASET_VERSION"),
             model_version=model_version,
