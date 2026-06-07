@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from src.pipeline.contracts import (
+from src.pipeline.contracts.jobs import (
     ArtifactManifestReference,
     FeatureJobRequest,
     IngestJobRequest,
