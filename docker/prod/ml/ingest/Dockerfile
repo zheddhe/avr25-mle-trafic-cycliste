@@ -30,7 +30,8 @@ RUN groupadd --gid "${APP_GID}" app && \
 
 COPY src/artifacts /app/src/artifacts
 COPY src/metrics /app/src/metrics
-COPY src/ml/artifact_manifest_emission.py /app/src/ml/artifact_manifest_emission.py
+COPY src/ml/ingest/artifact_manifest_emission.py \
+     /app/src/ml/ingest/artifact_manifest_emission.py
 COPY src/ml/ingest/ingest_utils.py /app/src/ml/ingest/ingest_utils.py
 COPY src/ml/ingest/import_raw_data.py /app/src/ml/ingest/import_raw_data.py
 
