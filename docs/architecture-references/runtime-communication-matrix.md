@@ -8,7 +8,7 @@ The current runtime has two Compose views:
 | Runtime | Compose file | Communication model |
 | ------- | ------------ | ------------------- |
 | Development | `docker/dev/docker-compose.yaml` | Broad local integration, DockerOperator execution, root `data/logs/models` mounts. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces, and an internal runner API boundary. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces, and an internal typed ML step runner API. |
 
 Host port ranges and local URLs are documented in
 [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
@@ -54,7 +54,9 @@ The production-like runtime uses functional networks implemented in
 | Airflow services | Airflow Redis | Dev and prod-like | Compose DNS, Redis | Celery broker. |
 | Airflow services | Airflow API server | Prod-like | Compose DNS, HTTP | Internal Airflow execution API. |
 | Airflow DAG tasks | ML job containers | Dev only | Docker socket / DockerOperator | Current local development ML execution. |
+| Airflow DAG tasks | `job-runner-api` | Prod-like target | HTTP on internal network | Submit typed ML step jobs and read runner status. |
 | Airflow DAG tasks | `api-dev` | Dev and prod-like | HTTP on internal network | Refresh API after successful DAG runs. |
+| `job-runner-api` | ML step entrypoints | Prod-like | In-process Python adapter | Execute one allow-listed typed ML step at a time. |
 | ML jobs | Pushgateway | Dev and prod-like | HTTP | Batch metric push when enabled. |
 | ML model jobs | MLflow server | Dev and prod-like | HTTP | Run, parameter, metric, model, and artifact logging. |
 | MLflow server | MLflow PostgreSQL | Dev and prod-like | PostgreSQL | MLflow backend store. |
@@ -63,11 +65,27 @@ The production-like runtime uses functional networks implemented in
 | Grafana | Prometheus | Dev and prod-like | HTTP | Provisioned datasource. |
 | Alertmanager | MailHog | Dev and prod-like | SMTP | Local alert capture. |
 | API | Prediction artifacts | Dev and prod-like | Filesystem | Current prediction serving input. |
-| `job-runner-api` | In-memory state | Prod-like | Process memory | Local job status persistence for accepted typed requests. |
+| `job-runner-api` | In-memory state | Prod-like | Process memory | Local job status persistence for typed step attempts. |
 
 `job-runner-api` exposes an internal HTTP API on `pipeline_runtime_net`. The
-current implementation accepts and stores typed job requests without executing ML
-workloads.
+current implementation accepts one typed ML step request, executes it
+synchronously through a local runner adapter, records status in memory, and
+returns structured result or error evidence.
+
+## Runner execution boundary
+
+The active runner contract is intentionally narrow:
+
+- accepted job types are `ingest`, `features`, and `models`;
+- active request and status contracts live under `src/ml/jobs`;
+- a full-pipeline runtime job is not exposed by the runner API;
+- Airflow remains responsible for ordering ingest, features, and model tasks;
+- the runner does not use Docker socket access, Docker SDK, Kubernetes, or a
+  distributed worker queue.
+
+This boundary keeps step execution observable without making the runner a second
+pipeline orchestrator. Future durable queues or remote job backends must preserve
+this typed step-level API boundary unless a new story changes the architecture.
 
 ## Host exposure summary
 
@@ -105,8 +123,11 @@ for exact ports and URLs.
 | `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root with run-scoped manifests and promoted `current.json` files. |
 | Root raw CSV | Prod-like | Read-only business source input. |
 
-`job-runner-api` mounts only `docker/prod/runtime/logs/job-runner`. It does not
-mount data, model, artifact, Docker socket, or Docker runtime paths.
+`job-runner-api` currently mounts only `docker/prod/runtime/logs/job-runner` in
+Compose. It executes ML entrypoints through application code and returns manifest
+references when the typed request provides a manifest root. Any future data,
+model, artifact, tracking, or runtime-control mount widening must be documented
+with the runtime impact.
 
 ## Operational guardrails
 
@@ -116,5 +137,5 @@ mount data, model, artifact, Docker socket, or Docker runtime paths.
   state or privileged control surfaces require isolation.
 - Keep host exposure in `../current-runtime-and-operations/ports-and-services.md`
   synchronized with Compose.
-- Keep typed job contracts in `src/pipeline/contracts/` independent from FastAPI,
-  Airflow, Docker, and concrete runner implementation code.
+- Keep typed ML job contracts in `src/ml/jobs` independent from FastAPI, Airflow,
+  Docker, and concrete runner implementation code.
