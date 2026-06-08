@@ -6,7 +6,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
 
-from src.ml.jobs.contracts import MlJobType, StepJobRequest
+from src.ml.jobs.contracts import MlJobType, StepJobRequest, StepJobRequestPayload
 from src.ml.jobs.execution import MlStepExecutionError, StepCommandExecutor
 from src.ml.jobs.status import JobError, JobState, JobStatus, utc_now
 
@@ -37,7 +37,9 @@ class MlStepService:
         """Execute one job request synchronously and return a terminal status."""
 
         requested_at = utc_now()
-        job_id = job_request.job_id or f"{job_request.job_type.value}-{job_request.run_id}"
+        job_id = job_request.job_id or (
+            f"{job_request.job_type.value}-{job_request.run_id}"
+        )
         if job_request.job_type != self.job_type:
             return _failed_status(
                 job_request=job_request,
@@ -122,7 +124,7 @@ def create_app(
         status_code=status.HTTP_200_OK,
         tags=["Jobs"],
     )
-    def submit_job(job_request: StepJobRequest) -> JobStatus:
+    def submit_job(job_request: StepJobRequestPayload) -> JobStatus:
         if job_request.job_type != job_type:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
