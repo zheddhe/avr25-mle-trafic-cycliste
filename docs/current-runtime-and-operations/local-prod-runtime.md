@@ -224,13 +224,11 @@ Runner API checks inside the production-like Compose network:
 docker compose \
     --env-file .env \
     -f docker/prod/docker-compose.yaml \
-    -f docker/prod/docker-compose.ml-services.yaml \
     --profile ptf up -d job-runner-api
 
 docker compose \
     --env-file .env \
     -f docker/prod/docker-compose.yaml \
-    -f docker/prod/docker-compose.ml-services.yaml \
     exec job-runner-api \
     python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:10080/health').read().decode())"
 ```
