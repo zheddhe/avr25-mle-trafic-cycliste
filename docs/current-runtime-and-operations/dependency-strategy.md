@@ -42,14 +42,15 @@ repository.
 | ML features | Dev | `docker/dev/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
 | ML models | Dev | `docker/dev/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
 | API | Prod-like | `docker/prod/api/Dockerfile` | `docker/dev/api/requirements.txt` | Python 3.12 |
+| Job runner API | Prod-like | `docker/prod/job-runner/Dockerfile` | `docker/dev/api/requirements.txt` | Python 3.12 |
 | ML ingest | Prod-like | `docker/prod/ml/ingest/Dockerfile` | `docker/dev/ml/ingest/requirements.txt` | Python 3.12 |
 | ML features | Prod-like | `docker/prod/ml/features/Dockerfile` | `docker/dev/ml/features/requirements.txt` | Python 3.12 |
 | ML models | Prod-like | `docker/prod/ml/models/Dockerfile` | `docker/dev/ml/models/requirements.txt` | Python 3.12 |
 
-The prod-like Dockerfiles currently reuse the same requirements files as the dev
-images to avoid dependency drift while the runtime boundary is being introduced.
-A future hardening story may split requirements only when the operational need is
-clear and validated.
+The prod-like API and job runner API images reuse the same FastAPI requirements
+file because both expose HTTP/Pydantic services. Prod-like ML Dockerfiles reuse
+their development requirements files to avoid dependency drift while runtime
+boundaries are validated.
 
 ## Compose runtime image policy
 
@@ -77,20 +78,22 @@ local developer ergonomics and for tools such as the VS Code Docker extension.
 
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Orchestration services | Uses Airflow, PostgreSQL, and Redis images |
-| Experimentation services | Uses MLflow, PostgreSQL, MinIO, and MC images |
-| Monitoring services | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor images |
-| Development helpers | Uses MailHog images |
+| Orchestration services | Uses Airflow, PostgreSQL, and Redis images. |
+| Experimentation services | Uses MLflow, PostgreSQL, MinIO, and MC images. |
+| Monitoring services | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor images. |
+| Development helpers | Uses MailHog images. |
+| Custom FastAPI services | Uses Python 3.12 slim images with pinned FastAPI and uvicorn dependencies. |
 
 ## Healthchecks
 
 Docker Compose healthchecks should rely on endpoints or commands that are
-available in the upstream image itself. Avoid assuming that `curl` exists unless
-it is part of the selected image.
+available in the selected image itself. Avoid assuming that `curl` exists unless
+it is part of the image.
 
 | Service | Healthcheck strategy |
 | ------- | -------------------- |
 | `api-dev` | Python `urllib` read check on `/docs`. |
+| `job-runner-api` | Python `urllib` read check on `/health`. |
 | `mlflow-postgres` | `pg_isready` against the MLflow metadata database. |
 | `mlflow-minio` | curl check on `/minio/health/live`. |
 | `mlflow-server` | Python `urllib` read check on `/health`. |
@@ -140,6 +143,14 @@ MLflow compatibility checks should include:
 - local Docker Compose tracking through MinIO and PostgreSQL;
 - optional DagsHub remote tracking when credentials are available.
 
+FastAPI compatibility checks should include:
+
+- OpenAPI generation;
+- Redoc generation;
+- request validation errors;
+- response model serialization;
+- healthcheck endpoint availability.
+
 Monitoring runtime changes should validate at least:
 
 - Prometheus configuration parsing;
@@ -177,6 +188,7 @@ Then verify:
 - model artifacts are produced under root `models` for the development runtime;
 - MLflow runs contain expected parameters, metrics, and artifacts;
 - API `/docs` is reachable;
+- job runner API `/health` is reachable inside `docker/prod`;
 - API prediction endpoints still return the expected schema;
 - Prometheus targets are healthy and ML/API metrics are visible;
 - Grafana starts and loads the provisioned Prometheus datasource;

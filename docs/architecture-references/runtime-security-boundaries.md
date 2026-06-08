@@ -1,23 +1,22 @@
 # Runtime security boundaries and identities
 
-This document describes the current local runtime security boundaries after
-Phases 6 and 7, and the hardening direction for Phase 8.
+This document describes the current local runtime security boundaries and service
+identities.
 
 It is not a production security model. It is a local MLOps boundary reference
-that explains which privileges are acceptable for development, which boundaries
-are already implemented in `docker/prod`, and which gaps remain.
+that explains which privileges are acceptable for development and which
+boundaries are implemented in `docker/prod`.
 
 ## Scope and source documents
 
 | Document | Role |
 | -------- | ---- |
-| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and Phase 8 additions. |
+| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and network paths. |
 | [`local-prod-network-topology.md`](local-prod-network-topology.md) | Implemented functional network topology for `docker/prod`. |
 | [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, workspaces, and current exceptions. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Host exposure inventory. |
-| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact promotion contract and remaining plan. |
-| [`../next-phase-design/artifact-manifest-store.md`](../next-phase-design/artifact-manifest-store.md) | Implemented artifact store helpers for explicit promotion. |
-| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Target job execution boundary for Airflow and runner. |
+| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact promotion contract and open handoff gaps. |
+| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Runner execution design and open execution gaps. |
 
 Communication paths justify permissions, not the opposite. A container, network,
 credential, volume, or elevated runtime capability should exist because a
@@ -27,12 +26,13 @@ documented service dependency needs it.
 
 | Boundary | Development runtime | Production-like runtime |
 | -------- | ------------------- | ----------------------- |
-| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-dev`; currently reads production-like runtime prediction workspace; Phase 8 will move it to promoted manifests. |
-| Orchestration | Airflow uses DockerOperator and Docker socket. | Airflow does not mount Docker socket; runner integration remains Phase 8 work. |
+| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-dev`; reads production-like runtime prediction workspace. |
+| Runner API | Not present. | Internal-only `job-runner-api`; accepts typed job requests and stores statuses in memory. |
+| Orchestration | Airflow uses DockerOperator and Docker socket. | Airflow does not mount Docker socket. |
 | Tracking | MLflow, PostgreSQL, and MinIO are visible for local debugging. | MLflow UI/API is host-exposed; PostgreSQL and MinIO stay internal. |
 | Monitoring | Prometheus, Pushgateway, Alertmanager, cAdvisor, Grafana, MailHog UIs are exposed for local debugging. | Grafana is host-exposed; supporting monitoring services stay internal. |
 | Data and artifacts | Root `data`, `models`, and `logs` are writable dev/DVC workspaces. | `docker/prod/runtime` owns generated runtime data, models, logs, and artifacts. |
-| Job execution | Airflow worker can control the Docker daemon through Docker socket. | Docker socket is absent from Airflow; future runner owns typed execution. |
+| Job execution | Airflow worker can control the Docker daemon through Docker socket. | No production-like service exposes Docker daemon control to Airflow. |
 
 ## Runtime identities
 
@@ -40,6 +40,7 @@ documented service dependency needs it.
 | ---------------- | ------------- | -------------- |
 | Host operator | Local user running `make` and `docker compose` with Docker group access. | Docker group membership is high privilege and should not be confused with application identity. |
 | `api-dev` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads prediction artifacts and exposes HTTP on port `10000`. |
+| `job-runner-api` | Custom prod-like image; runs as non-root app user. | Exposes internal HTTP on port `10080`, keeps in-memory status, and has no Docker socket mount. |
 | `ml-ingest-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads raw data and writes interim data/logs. |
 | `ml-features-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads interim data and writes processed data/logs. |
 | `ml-models-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads processed data, writes forecasts/models/logs, and logs evidence to MLflow. |
@@ -69,8 +70,10 @@ Production-like rule:
 
 - do not add Docker socket mounts to Airflow services in `docker/prod`;
 - do not replace the missing socket with an untyped shell-execution API;
-- use typed job contracts and a controlled internal runner as described in
-  [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md).
+- keep job execution behind typed contracts and controlled service boundaries.
+
+`job-runner-api` does not import the Docker SDK, does not mount the Docker socket,
+and does not expose a generic shell command interface.
 
 ## Host exposure boundary
 
@@ -82,8 +85,8 @@ publishes only operator-facing services by default:
 - MLflow UI/API;
 - Grafana.
 
-MinIO, Prometheus, Pushgateway, Alertmanager, MailHog, cAdvisor, Redis, and
-PostgreSQL remain internal in `docker/prod`.
+`job-runner-api`, MinIO, Prometheus, Pushgateway, Alertmanager, MailHog,
+cAdvisor, Redis, and PostgreSQL remain internal in `docker/prod`.
 
 Exact port assignments are documented in
 [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
@@ -97,14 +100,14 @@ Exact port assignments are documented in
 | Root `logs` | Dev | Development service and batch logs. |
 | Root raw CSV | Prod-like | Read-only source input into ingestion. |
 | `docker/prod/runtime/data` | Prod-like | Generated runtime data. |
-| `docker/prod/runtime/models` | Prod-like | Generated runtime model artifacts. |
-| `docker/prod/runtime/logs` | Prod-like | Runtime service and job logs. |
+| `docker/prod/runtime/models` | Prod-like | Runtime model artifacts. |
+| `docker/prod/runtime/logs` | Prod-like | Runtime service, job, and runner API logs. |
 | `docker/prod/runtime/artifacts` | Prod-like | Manifest-first artifact handoff root. |
 | Service-owned Docker volumes | Dev and prod-like | Stateful backends for PostgreSQL, Redis, MinIO, Prometheus, Grafana, and Alertmanager. |
 
-The critical production-like handoff is the controlled publication of forecast
-data that the API can read. The manifest models and store helpers are now
-implemented, while ML emission and API consumption remain later Phase 8 stories.
+The runner API currently mounts only its service log path. It has no read or write
+access to ML data, model artifacts, promoted manifests, Docker runtime paths, or
+stateful backend volumes.
 
 ## Credential and secret review
 
@@ -123,12 +126,9 @@ Local-only defaults and placeholders that must not be promoted to production:
 - MailHog unauthenticated SMTP/UI;
 - Prometheus, Pushgateway, Alertmanager, and cAdvisor local UIs without auth.
 
-Phase 8 story #73 should introduce explicit configuration validation and reject
-unsafe placeholder values for custom services.
-
 ## Non-root and capability rules
 
-Implemented in `docker/prod` for custom API and ML images:
+Implemented in `docker/prod` for custom API, runner API, and ML images:
 
 - non-root application user;
 - default UID/GID compatible with common local bind mounts;
@@ -136,22 +136,7 @@ Implemented in `docker/prod` for custom API and ML images:
 - `no-new-privileges:true`.
 
 Do not assume upstream infrastructure images can safely be overridden to non-root
-without a service-specific validation story.
-
-## Phase 8 hardening map
-
-| Story | Security role | Status |
-| ----- | ------------- | ------ |
-| #64/#65 | Make artifact manifest validation and promotion helpers explicit and testable. | Implemented. |
-| #66 | Make ML jobs emit validated manifests instead of implicit output paths. | Remaining. |
-| #67/#68/#69 | Replace broad execution authority with typed runner contracts. | Remaining. |
-| #70 | Prove Airflow prod orchestration does not need Docker socket. | Remaining. |
-| #71 | Make the API consume promoted manifests rather than scanning files. | Remaining. |
-| #72 | Add smoke validation for runner, artifact, API, monitoring, and socket absence. | Remaining. |
-| #73 | Validate runtime configuration and secrets. | Remaining. |
-
-The artifact-specific remaining plan is maintained in
-[`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md).
+without service-specific validation.
 
 ## Validation expectations
 
@@ -164,10 +149,10 @@ make prod-start
 make prod-ps
 ```
 
-For Phase 8 completion, smoke validation should prove:
+Current production-like boundary validation should prove:
 
-- `docker/prod` Airflow has no Docker socket mount;
+- Airflow services do not mount `/var/run/docker.sock`;
 - `job-runner-api` is internal-only;
-- runner jobs return manifest references;
-- the API reports the currently promoted artifact;
-- monitoring can scrape required endpoints.
+- `job-runner-api` has no Docker SDK import or Docker socket mount;
+- custom prod-like API, runner API, and ML images keep their non-root settings;
+- generated runtime outputs stay under `docker/prod/runtime`.

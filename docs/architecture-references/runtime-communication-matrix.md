@@ -1,37 +1,19 @@
 # Runtime communication matrix
 
 This document describes the implemented local Docker Compose communication model.
-It is a current-state runtime architecture reference, not a Phase 8 backlog or a
-production security model.
-
-Planned runtime changes, remaining Phase 8 work, and validation debt are tracked
-under [`../next-phase-design/`](../next-phase-design/).
+It is a current-state runtime architecture reference.
 
 The current runtime has two Compose views:
 
 | Runtime | Compose file | Communication model |
 | ------- | ------------ | ------------------- |
 | Development | `docker/dev/docker-compose.yaml` | Broad local integration, DockerOperator execution, root `data/logs/models` mounts. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces, and an internal runner API boundary. |
 
 Host port ranges and local URLs are documented in
 [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
 Runtime ownership and current exceptions are documented in
 [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md).
-
-## Documentation boundary
-
-Use this document for implemented runtime communication only:
-
-- current services;
-- current networks;
-- current mounts;
-- current host exposure;
-- current service-to-service paths.
-
-Use [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md)
-and [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md)
-for target architecture, remaining Phase 8 work, and known validation debt.
 
 ## Development communication model
 
@@ -57,7 +39,7 @@ The production-like runtime uses functional networks implemented in
 | Boundary | Main services | Purpose |
 | -------- | ------------- | ------- |
 | `orchestration_net` | Airflow API, scheduler, DAG processor, triggerer, worker, Airflow PostgreSQL, Redis | Airflow control plane and metadata. |
-| `pipeline_runtime_net` | Airflow worker, API, ML jobs, Pushgateway | Runtime handoff between orchestration, business jobs, refresh, and batch metrics. |
+| `pipeline_runtime_net` | Airflow worker, API, job runner API, ML jobs, Pushgateway | Runtime handoff between orchestration, business jobs, refresh, and batch metrics. |
 | `tracking_client_net` | ML jobs, MLflow server | MLflow client calls. |
 | `tracking_backend_net` | MLflow server, MLflow PostgreSQL, MinIO, MC init | Private tracking metadata and artifact backend. |
 | `observability_net` | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics | Scrapes, dashboards, and local alerts. |
@@ -70,6 +52,7 @@ The production-like runtime uses functional networks implemented in
 | ------ | ------ | ------- | --------- | ------ |
 | Airflow services | Airflow PostgreSQL | Dev and prod-like | Compose DNS, PostgreSQL | Metadata database and result backend. |
 | Airflow services | Airflow Redis | Dev and prod-like | Compose DNS, Redis | Celery broker. |
+| Airflow services | Airflow API server | Prod-like | Compose DNS, HTTP | Internal Airflow execution API. |
 | Airflow DAG tasks | ML job containers | Dev only | Docker socket / DockerOperator | Current local development ML execution. |
 | Airflow DAG tasks | `api-dev` | Dev and prod-like | HTTP on internal network | Refresh API after successful DAG runs. |
 | ML jobs | Pushgateway | Dev and prod-like | HTTP | Batch metric push when enabled. |
@@ -80,6 +63,11 @@ The production-like runtime uses functional networks implemented in
 | Grafana | Prometheus | Dev and prod-like | HTTP | Provisioned datasource. |
 | Alertmanager | MailHog | Dev and prod-like | SMTP | Local alert capture. |
 | API | Prediction artifacts | Dev and prod-like | Filesystem | Current prediction serving input. |
+| `job-runner-api` | In-memory state | Prod-like | Process memory | Local job status persistence for accepted typed requests. |
+
+`job-runner-api` exposes an internal HTTP API on `pipeline_runtime_net`. The
+current implementation accepts and stores typed job requests without executing ML
+workloads.
 
 ## Host exposure summary
 
@@ -88,17 +76,18 @@ publishes only operator-facing services by default.
 
 | Service family | Development exposure | Production-like exposure |
 | -------------- | -------------------- | ------------------------ |
-| FastAPI | Host exposed | Host exposed |
-| Airflow API/UI | Host exposed | Host exposed |
-| MLflow UI/API | Host exposed | Host exposed |
-| Grafana | Host exposed | Host exposed |
-| MinIO API/console | Host exposed | Internal-only |
-| Prometheus | Host exposed | Internal-only |
-| Pushgateway | Host exposed | Internal-only |
-| Alertmanager | Host exposed | Internal-only |
-| cAdvisor | Host exposed | Internal-only |
-| MailHog | Host exposed | Internal-only |
-| PostgreSQL and Redis | Internal-only | Internal-only |
+| FastAPI prediction API | Host exposed | Host exposed. |
+| Job runner API | Not present | Internal-only. |
+| Airflow API/UI | Host exposed | Host exposed. |
+| MLflow UI/API | Host exposed | Host exposed. |
+| Grafana | Host exposed | Host exposed. |
+| MinIO API/console | Host exposed | Internal-only. |
+| Prometheus | Host exposed | Internal-only. |
+| Pushgateway | Host exposed | Internal-only. |
+| Alertmanager | Host exposed | Internal-only. |
+| cAdvisor | Host exposed | Internal-only. |
+| MailHog | Host exposed | Internal-only. |
+| PostgreSQL and Redis | Internal-only | Internal-only. |
 
 See [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md)
 for exact ports and URLs.
@@ -112,21 +101,12 @@ for exact ports and URLs.
 | Root `logs` | Dev | Development logs. |
 | `docker/prod/runtime/data` | Prod-like | Generated production-like data. |
 | `docker/prod/runtime/models` | Prod-like | Generated production-like model artifacts. |
-| `docker/prod/runtime/logs` | Prod-like | Production-like service and job logs. |
+| `docker/prod/runtime/logs` | Prod-like | Production-like service, batch, and runner API logs. |
 | `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root with run-scoped manifests and promoted `current.json` files. |
 | Root raw CSV | Prod-like | Read-only business source input. |
 
-## Current Phase 8 state in this architecture
-
-The implemented runtime already includes the artifact workspace, ML manifest
-emission wiring, and typed contract packages needed by the future runner path.
-It does not currently include a `job-runner-api` service, runner execution path,
-production-like Airflow DAG that calls the runner, or API serving from promoted
-manifests.
-
-Those target changes are tracked under
-[`../next-phase-design/`](../next-phase-design/), not in this current-state
-matrix.
+`job-runner-api` mounts only `docker/prod/runtime/logs/job-runner`. It does not
+mount data, model, artifact, Docker socket, or Docker runtime paths.
 
 ## Operational guardrails
 
@@ -136,3 +116,5 @@ matrix.
   state or privileged control surfaces require isolation.
 - Keep host exposure in `../current-runtime-and-operations/ports-and-services.md`
   synchronized with Compose.
+- Keep typed job contracts in `src/pipeline/contracts/` independent from FastAPI,
+  Airflow, Docker, and concrete runner implementation code.
