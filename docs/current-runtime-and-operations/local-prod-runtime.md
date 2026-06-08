@@ -98,13 +98,15 @@ The production-like runtime contains:
 - custom non-root API, runner API, and ML images;
 - Airflow services without `/var/run/docker.sock` mounts;
 - MLflow, MinIO, PostgreSQL, Redis, and monitoring support services;
-- an internal `job-runner-api` service for typed ML step submission, execution,
-  and status reads.
+- internal `ml-ingest-prod`, `ml-features-prod`, and `ml-models-prod` FastAPI
+  services for concrete ML step execution;
+- an internal `job-runner-api` service for typed ML step submission, status reads,
+  and failure mapping.
 
 `job-runner-api` is a FastAPI service listening on container port `10080`. It
 exposes `/health`, `/jobs`, and `/jobs/{job_id}` on internal Docker networks. It
-keeps job status in process memory and executes one allow-listed typed ML step at
-a time through the local runner adapter.
+keeps job status in process memory and delegates one allow-listed typed ML step at
+a time to the matching internal ML service through Compose DNS.
 
 The active runner contract accepts only `ingest`, `features`, and `models` jobs
 from `src/ml/jobs`. It does not expose a pipeline-wide runtime job. Submitted
@@ -114,12 +116,12 @@ manifest evidence. Controlled execution failures return structured job errors.
 
 The runner implementation is intentionally synchronous and in-memory for the
 local production-like runtime. It is not a durable queue, distributed scheduler,
-Docker SDK wrapper, or Kubernetes job controller.
+Docker SDK wrapper, shell command runner, or Kubernetes job controller.
 
 `docker/prod` Airflow services can start without Docker socket access. The
-DockerOperator-based ML execution path remains part of the development runtime.
-Production-like Airflow orchestration that chains runner jobs belongs to the
-active next-phase DAG work.
+production-like DAG under `docker/prod/airflow/dags` submits `ingest`, then
+`features`, then `models` jobs to `job-runner-api`, and only triggers API refresh
+after the model step has succeeded.
 
 ## Network topology
 
@@ -151,8 +153,9 @@ for local validation by default:
 | `mlflow-server` | Local tracking inspection while the model registry path matures. |
 | `monitoring-grafana` | Local dashboard entrypoint. |
 
-`job-runner-api`, MinIO, Prometheus, Pushgateway, Alertmanager, MailHog,
-cAdvisor, Redis, and PostgreSQL services stay internal in `docker/prod`.
+`job-runner-api`, ML step services, MinIO, Prometheus, Pushgateway,
+Alertmanager, MailHog, cAdvisor, Redis, and PostgreSQL services stay internal in
+`docker/prod`.
 
 ## Mount strategy
 
@@ -168,10 +171,10 @@ cAdvisor, Redis, and PostgreSQL services stay internal in `docker/prod`.
 | Airflow DAG/config files | Prod | Read-only | DAG and config placement is explicit for this runtime. |
 | Monitoring configs | Prod | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
 
-The runner API service currently mounts only its log directory in Compose. It
-executes ML entrypoints through the application code path; any future widening of
-runtime data, model, artifact, tracking, or Docker access must be justified by a
-story and reflected in the architecture references.
+The runner API service mounts only its log directory in Compose. The concrete ML
+services own runtime data, model, log, artifact, and optional MLflow access. The
+runner therefore keeps its control-plane boundary narrow and does not need Docker
+or broad artifact workspace mounts.
 
 ## Runtime identities and exceptions
 
@@ -218,7 +221,16 @@ make prod-ps
 Runner API checks inside the production-like Compose network:
 
 ```bash
-docker compose -f docker/prod/docker-compose.yaml --profile ptf up -d job-runner-api
-docker compose -f docker/prod/docker-compose.yaml exec job-runner-api \
+docker compose \
+    --env-file .env \
+    -f docker/prod/docker-compose.yaml \
+    -f docker/prod/docker-compose.ml-services.yaml \
+    --profile ptf up -d job-runner-api
+
+docker compose \
+    --env-file .env \
+    -f docker/prod/docker-compose.yaml \
+    -f docker/prod/docker-compose.ml-services.yaml \
+    exec job-runner-api \
     python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:10080/health').read().decode())"
 ```
