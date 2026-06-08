@@ -3,7 +3,7 @@
 # ========================
 # This runtime is intentionally separate from the root development runtime.
 # It follows docs/local-prod-network-topology.md and keeps the runner execution
-# gap explicit in docs/local-prod-runtime.md.
+# boundary explicit in docs/local-prod-runtime.md.
 
 volumes:
   prod-mlflow-postgres-db:
@@ -76,7 +76,7 @@ x-airflow-common: &airflow-common
   volumes:
     - ./runtime/logs/airflow:/opt/airflow/logs
     - ./runtime/data:/opt/airflow/data
-    - ../dev/airflow/dags:/opt/airflow/dags:ro
+    - ./airflow/dags:/opt/airflow/dags:ro
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
     - orchestration_net
@@ -93,24 +93,7 @@ services:
     build:
       context: ../..
       dockerfile: ./docker/prod/ml/ingest/Dockerfile
-    command:
-      - --raw-path
-      - /app/data/raw/${RAW_FILE_NAME}
-      - --site
-      - ${SITE}
-      - --orientation
-      - ${ORIENTATION}
-      - --range-start
-      - "${RANGE_START}"
-      - --range-end
-      - "${RANGE_END}"
-      - --timestamp-col
-      - date_et_heure_de_comptage
-      - --sub-dir
-      - ${SUB_DIR}
-      - --interim-name
-      - ${INTERIM_NAME}
-    restart: "no"
+    restart: unless-stopped
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
@@ -123,9 +106,17 @@ services:
       - ../../data/raw/${RAW_FILE_NAME}:/app/data/raw/${RAW_FILE_NAME}:ro
       - ./runtime/logs/ml:/app/logs
       - ./runtime/artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10081/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - pipeline_runtime_net
-    profiles: ["ml", "all"]
+    profiles: ["ml", "all", "ptf"]
 
   ml-features-prod:
     <<: *prod-security
@@ -133,16 +124,7 @@ services:
     build:
       context: ../..
       dockerfile: ./docker/prod/ml/features/Dockerfile
-    command:
-      - --interim-path
-      - /app/data/interim/${SUB_DIR}/${INTERIM_NAME}
-      - --sub-dir
-      - ${SUB_DIR}
-      - --processed-name
-      - ${PROCESSED_NAME}
-      - --timestamp-col
-      - date_et_heure_de_comptage
-    restart: "no"
+    restart: unless-stopped
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
@@ -154,9 +136,17 @@ services:
       - ./runtime/data:/app/data
       - ./runtime/logs/ml:/app/logs
       - ./runtime/artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10082/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - pipeline_runtime_net
-    profiles: ["ml", "all"]
+    profiles: ["ml", "all", "ptf"]
 
   ml-models-prod:
     <<: *prod-security
@@ -164,28 +154,7 @@ services:
     build:
       context: ../..
       dockerfile: ./docker/prod/ml/models/Dockerfile
-    command:
-      - --processed-path
-      - /app/data/processed/${SUB_DIR}/${PROCESSED_NAME}
-      - --sub-dir
-      - ${SUB_DIR}
-      - --target-col
-      - comptage_horaire
-      - --ts-col-utc
-      - date_et_heure_de_comptage_utc
-      - --ts-col-local
-      - date_et_heure_de_comptage_local
-      - --ar
-      - "${AR}"
-      - --mm
-      - "${MM}"
-      - --roll
-      - "${ROLL}"
-      - --test-ratio
-      - "${TEST_RATIO}"
-      - --grid-iter
-      - "${GRID_ITER}"
-    restart: "no"
+    restart: unless-stopped
     environment:
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
       MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
@@ -203,10 +172,18 @@ services:
       - ./runtime/models:/app/models
       - ./runtime/logs/ml:/app/logs
       - ./runtime/artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10083/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - pipeline_runtime_net
       - tracking_client_net
-    profiles: ["ml", "all"]
+    profiles: ["ml", "all", "ptf"]
 
   api-dev:
     <<: *prod-security
@@ -242,8 +219,20 @@ services:
       context: ../..
       dockerfile: ./docker/prod/job-runner/Dockerfile
     restart: unless-stopped
+    depends_on:
+      ml-ingest-prod:
+        condition: service_healthy
+      ml-features-prod:
+        condition: service_healthy
+      ml-models-prod:
+        condition: service_healthy
     environment:
+      JOB_RUNNER_EXECUTOR: service
       JOB_RUNNER_LOG_ROOT: /app/logs/job-runner
+      JOB_RUNNER_SERVICE_TIMEOUT_SECONDS: "3600"
+      ML_INGEST_SERVICE_URL: http://ml-ingest-prod:10081
+      ML_FEATURES_SERVICE_URL: http://ml-features-prod:10082
+      ML_MODELS_SERVICE_URL: http://ml-models-prod:10083
     volumes:
       - ./runtime/logs/job-runner:/app/logs/job-runner
     healthcheck:
