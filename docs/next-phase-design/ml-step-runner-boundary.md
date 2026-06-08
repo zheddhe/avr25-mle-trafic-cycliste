@@ -1,17 +1,16 @@
 # ML step runner boundary
 
-This note records the Phase 8 architecture correction before the runner execution
-work continues.
+This note records the Phase 8 architecture correction and the implemented
+runner execution boundary for typed ML steps.
 
 ## Decision
 
 Airflow owns pipeline orchestration.
 
-The internal runner owns execution of one typed ML step at a time. It should not
+The internal runner owns execution of one typed ML step at a time. It does not
 own the whole business pipeline as a single opaque runtime job.
 
-The project should stop expanding the `PipelineJobRequest` concept. The active
-production-like path should be based on explicit step-level jobs:
+The active production-like path is based on explicit step-level jobs:
 
 - ingest job;
 - feature engineering job;
@@ -22,8 +21,8 @@ DockerOperator or mounting the Docker socket.
 
 ## Why this boundary matters
 
-The first runner skeleton introduced a valid internal API boundary, but the next
-execution design must avoid two failure modes:
+The first runner skeleton introduced a valid internal API boundary, but the
+execution design avoids two failure modes:
 
 1. making the runner a broad ML service that embeds ingestion, feature, and model
    dependencies in one container;
@@ -35,28 +34,50 @@ while preserving Airflow as the orchestrator.
 
 ## Responsibilities
 
-| Component | Responsibility |
-| --------- | -------------- |
-| Airflow prod DAG | Select counters, derive ranges, build typed step requests, order ingest, features, and model tasks, apply retries, and refresh the API only after successful model output promotion. |
-| `job-runner-api` | Accept one allow-listed typed ML step request, expose status, map failures to structured job errors, and return step-level result evidence. |
-| ML step runtime | Execute the business code for exactly one step with its own image, dependencies, mounts, metrics, and manifest emission behavior. |
-| Artifact manifests | Carry the handoff evidence between steps and toward the serving API. |
-| API | Serve promoted prediction artifacts from manifests, without knowing runner or training internals. |
+Airflow prod DAG:
+
+- select counters and derive ranges;
+- build typed step requests;
+- order ingest, features, and model tasks;
+- apply retries;
+- refresh the API only after successful model output promotion.
+
+`job-runner-api`:
+
+- accept one allow-listed typed ML step request;
+- expose status;
+- map failures to structured job errors;
+- execute the step through a runner adapter;
+- return step-level result evidence.
+
+ML step runtime:
+
+- execute the business code for exactly one step;
+- keep step-specific image, dependency, mount, metric, and manifest behavior.
+
+Artifact manifests carry the handoff evidence between steps and toward the
+serving API. The API serves promoted prediction artifacts from manifests without
+knowing runner or training internals.
 
 ## Contract direction
 
-The current contracts under `src/pipeline/contracts` are ML-specific. A future
-refactor should move or alias them under an ML-specific namespace such as
-`src/ml/contracts` or `src/ml/jobs`, after the documentation and open stories are
-aligned.
+The active ML job contracts live under:
 
-`PipelineJobRequest` should not be the center of the runtime contract. The next
-implementation should either remove it from the active path or keep it only as a
-compatibility/deprecation object until callers are migrated to step-level jobs.
+```text
+src/ml/jobs/
+├── __init__.py
+├── contracts.py
+└── status.py
+```
+
+The active runner contract no longer exposes a full-pipeline request. It accepts
+only the `ingest`, `features`, and `models` job types. The previous
+`src/pipeline/contracts` namespace is removed from the active path instead of
+being kept as a compatibility layer.
 
 ## Runner execution direction
 
-The runner should support step-level execution first:
+The runner supports step-level execution:
 
 ```text
 Airflow prod DAG
@@ -69,25 +90,34 @@ Airflow prod DAG
   -> refresh artifact-aware API
 ```
 
-This keeps orchestration visible in Airflow and keeps the runner small enough to
-replace later with Kubernetes Jobs, a queue-backed worker pool, or another
-execution backend.
+The current service executes the submitted step synchronously in the internal
+runner process and records the `queued`, `running`, `succeeded`, and `failed`
+state transitions in its in-memory state store. This keeps the runner small
+enough to replace later with Kubernetes Jobs, a queue-backed worker pool, or
+another execution backend.
+
+Successful jobs return output path evidence, optional metrics evidence, and
+manifest references derived from the typed job request and configured manifest
+root. Controlled ML step failures are mapped to structured `JobError` payloads.
 
 ## Story impact
 
 The remaining Phase 8 work should be interpreted as follows:
 
-| Story | Direction after this decision |
-| ----- | ----------------------------- |
-| #69 | Implement runner-controlled execution for one typed ML step at a time. Do not implement a pipeline-wide runtime job as the main path. |
-| #70 | Implement the production-like Airflow DAG as the component that chains ingest, features, and model jobs. |
-| #71 | Keep artifact-aware API serving independent from runner internals. |
-| #72 | Validate the visible Airflow step chain, runner step execution, manifests, API refresh, and no Docker socket access. |
-| #73 | Validate configuration close to each service after runner/API boundaries are stable. |
-| #81 | Keep realistic fixtures focused on step-level runner execution and Airflow orchestration visibility. |
+- #69 implements runner-controlled execution for one typed ML step at a time.
+  The active contract does not expose a pipeline-wide runtime job.
+- #70 implements the production-like Airflow DAG that chains ingest, features,
+  and model jobs.
+- #71 keeps artifact-aware API serving independent from runner internals.
+- #72 validates the visible Airflow step chain, runner step execution,
+  manifests, API refresh, and no Docker socket access.
+- #73 validates configuration close to each service after runner/API boundaries
+  are stable.
+- #81 keeps realistic fixtures focused on step-level runner execution and
+  Airflow orchestration visibility.
 
 ## Out of scope
 
-This decision does not implement the refactor from `src/pipeline/contracts` to an
-ML-specific namespace. It also does not introduce queues, worker pools, dynamic
-container creation, Docker SDK usage, or Kubernetes.
+This decision does not introduce queues, worker pools, dynamic container
+creation, Docker SDK usage, or Kubernetes. It also does not implement the Airflow
+DAG chain, which belongs to story #70.

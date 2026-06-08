@@ -1,4 +1,4 @@
-"""Unit tests for typed pipeline job request contracts."""
+"""Unit tests for typed ML job request contracts."""
 
 from __future__ import annotations
 
@@ -8,18 +8,17 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from src.pipeline.contracts.jobs import (
+from src.ml.jobs.contracts import (
     ArtifactManifestReference,
     FeatureJobRequest,
     IngestJobRequest,
+    MlJobType,
     ModelJobRequest,
-    PipelineJobRequest,
-    PipelineJobType,
 )
 
 
-class TestPipelineJobRequests:
-    """Unit tests for typed pipeline job requests."""
+class TestMlJobRequests:
+    """Unit tests for typed ML step job requests."""
 
     @pytest.fixture
     def ingest_payload(self) -> dict:
@@ -100,10 +99,17 @@ class TestPipelineJobRequests:
             },
         }
 
+    def test_active_job_types_do_not_expose_pipeline(self):
+        assert {job_type.value for job_type in MlJobType} == {
+            "ingest",
+            "features",
+            "models",
+        }
+
     def test_valid_ingest_request_can_be_instantiated(self, ingest_payload):
         request = IngestJobRequest.model_validate(ingest_payload)
 
-        assert request.job_type == PipelineJobType.INGEST
+        assert request.job_type == MlJobType.INGEST
         assert request.range_start == 0.0
         assert request.range_end == 75.0
         assert request.interim_name == "initial.csv"
@@ -112,7 +118,7 @@ class TestPipelineJobRequests:
     def test_valid_features_request_can_be_instantiated(self, features_payload):
         request = FeatureJobRequest.model_validate(features_payload)
 
-        assert request.job_type == PipelineJobType.FEATURES
+        assert request.job_type == MlJobType.FEATURES
         assert request.processed_name == "initial_with_feats.csv"
         assert request.extra_drop == ("unused_column",)
 
@@ -122,36 +128,9 @@ class TestPipelineJobRequests:
     ):
         request = ModelJobRequest.model_validate(model_payload)
 
-        assert request.job_type == PipelineJobType.MODELS
+        assert request.job_type == MlJobType.MODELS
         assert isinstance(request.expected_manifest, ArtifactManifestReference)
         assert request.expected_manifest.artifact_type == "predictions"
-
-    def test_valid_pipeline_request_checks_step_artifact_handoff(
-        self,
-        ingest_payload,
-        features_payload,
-        model_payload,
-    ):
-        request = PipelineJobRequest.model_validate(
-            {
-                "job_type": "pipeline",
-                "run_id": "manual-run-001",
-                "counter_id": "Sebastopol_N-S_dvcrepro",
-                "requested_at": "2026-06-07T17:00:00Z",
-                "manifest_root": "docker/prod/runtime/artifacts/manifests",
-                "ingest": ingest_payload,
-                "features": features_payload,
-                "models": model_payload,
-            }
-        )
-
-        assert request.job_type == PipelineJobType.PIPELINE
-        assert request.ingest.interim_output_path == (
-            request.features.interim_input_path
-        )
-        assert request.features.processed_output_path == (
-            request.models.processed_input_path
-        )
 
     def test_invalid_percent_range_raises_validation_error(self, ingest_payload):
         payload = deepcopy(ingest_payload)
@@ -167,29 +146,6 @@ class TestPipelineJobRequests:
 
         with pytest.raises(ValidationError, match="parent traversal"):
             ModelJobRequest.model_validate(payload)
-
-    def test_pipeline_rejects_inconsistent_step_handoff(
-        self,
-        ingest_payload,
-        features_payload,
-        model_payload,
-    ):
-        payload = deepcopy(features_payload)
-        payload["interim_input_path"] = "data/interim/other/initial.csv"
-
-        with pytest.raises(ValidationError, match="interim_output_path"):
-            PipelineJobRequest.model_validate(
-                {
-                    "job_type": "pipeline",
-                    "run_id": "manual-run-001",
-                    "counter_id": "Sebastopol_N-S_dvcrepro",
-                    "requested_at": "2026-06-07T17:00:00Z",
-                    "manifest_root": "docker/prod/runtime/artifacts/manifests",
-                    "ingest": ingest_payload,
-                    "features": payload,
-                    "models": model_payload,
-                }
-            )
 
     def test_naive_requested_at_raises_validation_error(self, ingest_payload):
         payload = deepcopy(ingest_payload)

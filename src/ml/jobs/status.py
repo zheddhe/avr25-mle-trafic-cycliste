@@ -1,4 +1,4 @@
-"""Typed pipeline job status and result contracts."""
+"""Typed ML job status and result contracts."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from enum import StrEnum
 
 from pydantic import Field, field_validator, model_validator
 
-from src.pipeline.contracts.jobs import (
+from src.ml.jobs.contracts import (
     ArtifactManifestReference,
-    PipelineJobType,
-    StrictPipelineContract,
+    MlJobType,
+    StrictMlJobContract,
     ensure_timezone_aware,
 )
 
@@ -43,7 +43,7 @@ TERMINAL_JOB_STATES = frozenset(
 )
 
 
-class JobError(StrictPipelineContract):
+class JobError(StrictMlJobContract):
     """Structured error information attached to failed job states."""
 
     code: str = Field(
@@ -60,7 +60,7 @@ class JobError(StrictPipelineContract):
     )
 
 
-class MetricsEvidence(StrictPipelineContract):
+class MetricsEvidence(StrictMlJobContract):
     """Optional metrics evidence without Prometheus implementation coupling."""
 
     records: int | None = Field(
@@ -78,8 +78,8 @@ class MetricsEvidence(StrictPipelineContract):
     )
 
 
-class JobResult(StrictPipelineContract):
-    """Typed result returned by a completed or partially completed job."""
+class JobResult(StrictMlJobContract):
+    """Typed result returned by a completed or partially completed ML job."""
 
     job_id: str = Field(
         min_length=1,
@@ -87,14 +87,14 @@ class JobResult(StrictPipelineContract):
     )
     run_id: str = Field(
         min_length=1,
-        description="External pipeline run identifier.",
+        description="External ML run identifier.",
     )
     counter_id: str = Field(
         min_length=1,
         description="Counter identifier processed by the job.",
     )
-    job_type: PipelineJobType = Field(
-        description="Pipeline job type that produced this result.",
+    job_type: MlJobType = Field(
+        description="ML job type that produced this result.",
     )
     started_at: datetime | None = Field(
         default=None,
@@ -136,14 +136,14 @@ class JobResult(StrictPipelineContract):
         if started_at is not None and finished_at is not None:
             if finished_at < started_at:
                 raise ValueError(
-                    "finished_at must be greater than or equal to started_at"
+                    "finished_at must be greater than or equal to started_at",
                 )
 
         return self
 
 
-class JobStatus(StrictPipelineContract):
-    """Typed status exposed by the future runner API and observed by Airflow."""
+class JobStatus(StrictMlJobContract):
+    """Typed status exposed by the runner API and observed by Airflow."""
 
     job_id: str = Field(
         min_length=1,
@@ -151,14 +151,14 @@ class JobStatus(StrictPipelineContract):
     )
     run_id: str = Field(
         min_length=1,
-        description="External pipeline run identifier.",
+        description="External ML run identifier.",
     )
     counter_id: str = Field(
         min_length=1,
         description="Counter identifier processed by the job.",
     )
-    job_type: PipelineJobType = Field(
-        description="Pipeline job type represented by this status.",
+    job_type: MlJobType = Field(
+        description="ML job type represented by this status.",
     )
     state: JobState = Field(
         description="Current runner job state.",

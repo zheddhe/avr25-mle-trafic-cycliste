@@ -16,8 +16,8 @@ OPENAPI_TAGS = [
     {
         "name": "Jobs",
         "description": (
-            "Internal typed ML job submission and status endpoints. The first "
-            "implementation keeps state in memory and does not execute jobs."
+            "Internal typed ML step submission and status endpoints. The runner "
+            "executes one allow-listed step at a time and keeps state in memory."
         ),
     },
 ]
@@ -30,9 +30,9 @@ def create_app(service: JobRunnerService | None = None) -> FastAPI:
         title="Bike traffic internal job runner API",
         description=(
             "Private local production-like API used by Airflow to submit typed "
-            "ML pipeline jobs without Docker socket access."
+            "ML step jobs without Docker socket access."
         ),
-        version="0.1.0",
+        version="0.2.0",
         openapi_tags=OPENAPI_TAGS,
     )
     app.state.job_runner_service = service or JobRunnerService()
