@@ -8,7 +8,6 @@ SHELL := /bin/bash
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
 PROD_COMPOSE_FILE ?= docker/prod/docker-compose.yaml
-PROD_ML_SERVICES_COMPOSE_FILE ?= docker/prod/docker-compose.ml-services.yaml
 PROD_PROFILE ?= ptf
 PROD_PROJECT_NAME ?= bike-traffic-prod
 SERVICE ?= api-dev
@@ -19,7 +18,6 @@ prod_check_env = if [ ! -f "$(ENV_FILE)" ]; then echo "Error: $(ENV_FILE) is mis
 prod_compose = $(DOCKER_COMPOSE) \
 	--env-file $(ENV_FILE) \
 	-f $(PROD_COMPOSE_FILE) \
-	-f $(PROD_ML_SERVICES_COMPOSE_FILE) \
 	-p $(PROD_PROJECT_NAME)
 
 prod-help: ## Display local production-like runtime targets
