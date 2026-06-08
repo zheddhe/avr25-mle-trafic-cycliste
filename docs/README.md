@@ -55,6 +55,7 @@ one completed implementation slice.
 
 | Document | Purpose |
 | -------- | ------- |
+| [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md) | Phase 8 closure target: minimal `docker/prod` execution path without Airflow Docker socket, using internal ML step services and manifest-first API serving. |
 | [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md) | Consolidated manifest-first artifact handoff contract, implemented coverage, and open artifact-serving gaps. |
 | [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md) | Remaining production-like Airflow orchestration design that chains typed runner jobs. |
 
@@ -69,7 +70,8 @@ For runtime work, read:
 
 For active phase implementation, read:
 
-1. [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md)
-2. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
-3. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
-4. The GitHub issue for the current implementation task.
+1. [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md)
+2. [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md)
+3. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
+4. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+5. The GitHub issue for the current implementation task.
