@@ -39,7 +39,9 @@ def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {error.code} while calling {url}: {body}") from error
+        raise RuntimeError(
+            f"HTTP {error.code} while calling {url}: {body}"
+        ) from error
 
 
 def _submit_runner_job(payload: dict[str, Any]) -> dict[str, Any]:
@@ -57,7 +59,10 @@ def _refresh_api() -> dict[str, Any]:
     return _post_json(f"{API_URL}/admin/refresh", {})
 
 
-def _counter_paths(counter_id: str, counter_config: dict[str, Any]) -> dict[str, str]:
+def _counter_paths(
+    counter_id: str,
+    counter_config: dict[str, Any],
+) -> dict[str, str]:
     sub_dir = counter_id
     interim_name = counter_config["interim_name"]
     processed_name = counter_config["processed_name"]
@@ -73,7 +78,10 @@ def _counter_paths(counter_id: str, counter_config: dict[str, Any]) -> dict[str,
     }
 
 
-def _build_ingest_payload(counter_id: str, counter_config: dict[str, Any]) -> dict[str, Any]:
+def _build_ingest_payload(
+    counter_id: str,
+    counter_config: dict[str, Any],
+) -> dict[str, Any]:
     paths = _counter_paths(counter_id, counter_config)
     return {
         "job_type": "ingest",
@@ -94,7 +102,10 @@ def _build_ingest_payload(counter_id: str, counter_config: dict[str, Any]) -> di
     }
 
 
-def _build_features_payload(counter_id: str, counter_config: dict[str, Any]) -> dict[str, Any]:
+def _build_features_payload(
+    counter_id: str,
+    counter_config: dict[str, Any],
+) -> dict[str, Any]:
     paths = _counter_paths(counter_id, counter_config)
     return {
         "job_type": "features",
@@ -110,7 +121,10 @@ def _build_features_payload(counter_id: str, counter_config: dict[str, Any]) -> 
     }
 
 
-def _build_models_payload(counter_id: str, counter_config: dict[str, Any]) -> dict[str, Any]:
+def _build_models_payload(
+    counter_id: str,
+    counter_config: dict[str, Any],
+) -> dict[str, Any]:
     paths = _counter_paths(counter_id, counter_config)
     modeling = counter_config["modeling"]
     return {
