@@ -12,8 +12,8 @@ placement.
 
 | Document | Role |
 | -------- | ---- |
-| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Operational runtime guide and workspace ownership. |
-| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and communication paths. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Operational runtime guide, runner API behavior, and workspace ownership. |
+| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic, runner boundary, and communication paths. |
 | [`runtime-security-boundaries.md`](runtime-security-boundaries.md) | Runtime identities and security boundaries. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Host exposure and internal-only service inventory. |
 
@@ -27,7 +27,8 @@ A network is justified when at least one of these statements is true:
 
 - it protects stateful backend services such as PostgreSQL, Redis, or MinIO;
 - it represents a stable many-to-one communication pattern such as monitoring;
-- it separates local-development support services from production-like runtime services;
+- it separates local-development support services from production-like runtime
+  services;
 - it carries controlled job-execution concerns such as typed runner API access.
 
 ## Implemented `docker/prod` networks
@@ -52,7 +53,7 @@ accidental broad-network members; they bridge bounded domains.
 | Service | Networks | Gateway role |
 | ------- | -------- | ------------ |
 | `airflow-worker` | `orchestration_net`, `pipeline_runtime_net`, `dev_support_net` | Runs orchestration tasks and reaches runtime services that are part of pipeline control. |
-| `job-runner-api` | `pipeline_runtime_net` | Accepts typed job submissions and exposes internal job status reads. |
+| `job-runner-api` | `pipeline_runtime_net` | Accepts typed ML step submissions, executes one allow-listed step at a time, and exposes internal job status reads. |
 | `api-dev` | `pipeline_runtime_net`, `observability_net` | Receives refresh calls and exposes metrics. Host publication remains local ingress. |
 | `mlflow-server` | `tracking_client_net`, `tracking_backend_net`, `observability_net` | Accepts MLflow client calls and owns backend access to PostgreSQL and MinIO. |
 | `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receives batch metrics writes and exposes them for Prometheus scrape. |
@@ -88,6 +89,7 @@ into `docker/prod`.
 | Airflow services | `airflow-redis` | `airflow-redis` | `6379` | `orchestration_net` | Celery broker. |
 | Airflow services | `airflow-api-server` | `airflow-api-server` | `8080` | `orchestration_net` | Internal Airflow execution API. |
 | Airflow DAG tasks | `api-dev` | `api-dev` | `10000` | `pipeline_runtime_net` | Authenticated API refresh after successful DAG runs. |
+| Airflow DAG tasks | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed step job submission and status reads. |
 | Local runner API callers | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed job submission and status reads. |
 | ML jobs | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `pipeline_runtime_net` | Push batch job metrics. |
 | ML jobs | `mlflow-server` | `mlflow-server` | `5000` | `tracking_client_net` | Log runs, metrics, params, and artifacts. |
@@ -109,8 +111,9 @@ network:
 - MailHog should remain local-support-only.
 - `api-dev` should not share Airflow metadata, Redis, MLflow backend, or MinIO
   backend networks.
-- `job-runner-api` should not join tracking or backend networks while it only
-  validates requests and stores in-memory status.
+- `job-runner-api` should not join tracking or backend networks while its public
+  runtime contract remains typed step submission, local execution, and in-memory
+  status tracking.
 - Docker socket access should not be introduced in the production-like runtime.
 
 ## Topology sketch

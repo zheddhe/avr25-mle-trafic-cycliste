@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY docker/dev/ml/models/requirements.txt /tmp/requirements.txt
+COPY docker/prod/ml/models/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 RUN groupadd --gid "${APP_GID}" app && \

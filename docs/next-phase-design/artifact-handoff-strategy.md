@@ -6,16 +6,8 @@ explicit manifests instead of implicit latest-file discovery.
 
 Current runtime and architecture placement are documented in
 `current-runtime-and-operations/` and `architecture-references/`. This document
-keeps the handoff contract, current coverage, and open artifact-specific gaps.
-
-Implementation details are intentionally split into smaller documents:
-
-| Document | Responsibility |
-| -------- | -------------- |
-| [`artifact-manifest-models.md`](artifact-manifest-models.md) | Implemented Pydantic manifest contract. |
-| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented checksum, manifest store, and `current.json` promotion helpers. |
-| [`ml-step-runner-boundary.md`](ml-step-runner-boundary.md) | Boundary decision for Airflow orchestration and step-level runner execution. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Runner execution design and open orchestration gaps. |
+keeps the consolidated handoff contract, current implemented coverage, and open
+artifact-specific gaps.
 
 ## Decision summary
 
@@ -39,17 +31,16 @@ a stable contract that can later point to MinIO without changing every consumer.
 Implemented:
 
 - strict artifact manifest models under `src/artifacts`;
-- local manifest store helpers with checksum verification and atomic
-  `current.json` replacement;
+- local checksum, manifest write, read, and promotion helpers;
 - local manifest emission wrappers for ingest, features, and model jobs;
-- typed ML step request and status contracts under `src/pipeline/contracts`;
-- internal runner API boundary under `src/job_runner`;
+- typed ML step request and status contracts under `src/ml/jobs`;
+- internal runner API boundary and synchronous typed step execution under
+  `src/job_runner`;
 - production-like runtime mounts for generated data and artifact manifests;
 - production-like Airflow services without `/var/run/docker.sock`.
 
 Open artifact handoff gaps:
 
-- runner execution of typed ML step jobs;
 - production-like Airflow DAG path chaining step jobs through the runner;
 - API serving from promoted prediction manifests;
 - production-like smoke validation using realistic test fixtures;
@@ -64,12 +55,12 @@ backend.
 
 | Source | Use in this strategy |
 | ------ | -------------------- |
-| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage and `docker/prod/runtime` ownership. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, runner API behavior, and `docker/prod/runtime` ownership. |
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | Repository path ownership and DVC boundary. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Local host exposure and internal-only MinIO policy. |
 | [`../current-runtime-and-operations/dependency-strategy.md`](../current-runtime-and-operations/dependency-strategy.md) | MLflow, MinIO, and runtime dependency compatibility. |
-| [`ml-step-runner-boundary.md`](ml-step-runner-boundary.md) | Airflow and runner responsibility boundary. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Step-level runner execution model. |
+| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Airflow and runner responsibility boundary. |
+| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Remaining production-like Airflow orchestration design. |
 
 ## Why manifest-first
 
@@ -87,6 +78,63 @@ conventions create MLOps risks.
 
 The manifest is not a metadata side file. It is the release contract for one
 promoted artifact.
+
+## Implemented artifact package
+
+The reusable artifact package lives under:
+
+```text
+src/artifacts/
+├── __init__.py
+├── checksums.py
+├── exceptions.py
+├── manifest_store.py
+└── schemas.py
+```
+
+The package is framework-neutral. It does not import Airflow, FastAPI, Docker
+SDK, MLflow, or concrete ML pipeline modules.
+
+`src/artifacts/schemas.py` exposes:
+
+- `ArtifactManifest`;
+- `ArtifactProducer`;
+- `ArtifactSource`;
+- `ArtifactStorage`;
+- `ArtifactType`;
+- `ArtifactStatus`;
+- `StorageBackend`;
+- `validate_artifact_manifest`.
+
+`src/artifacts/manifest_store.py` exposes:
+
+- `write_manifest`;
+- `promote_manifest`;
+- `read_manifest`;
+- `read_current_manifest`;
+- `verify_local_payload`.
+
+`src/artifacts/checksums.py` exposes `compute_sha256`. The artifact package also
+exposes explicit exceptions for invalid metadata, missing manifests, missing
+local payloads, and checksum mismatches.
+
+## Manifest validation rules
+
+The manifest model validates:
+
+- required fields: schema version, artifact type, status, run id, counter id,
+  creation timestamp, producer, source, and storage;
+- local-only manifests with repository-relative `local_path` values;
+- hybrid manifests with local paths plus optional `s3://` object URIs;
+- storage backend values through constrained enums;
+- URI-like local paths, absolute paths, and parent traversal;
+- SHA-256 checksums when present;
+- timezone-aware `created_at` timestamps;
+- undeclared fields through strict Pydantic configuration.
+
+The first runtime implementation still uses `primary_backend="local"`.
+`object_uri` remains optional and only records the S3-compatible reference when
+the artifact is also available through MinIO or another object store.
 
 ## Workspace boundary
 
@@ -132,7 +180,7 @@ artifact:
 - ML jobs know the output path, counter, dataset, model, metrics, and checksum
   evidence.
 - The artifact store validates manifests and updates the stable promoted pointer.
-- A step runner can return manifest references and validate expected outputs
+- A step runner returns manifest references and validates expected outputs
   without fabricating metadata that belongs to ML code.
 - Airflow orchestrates job order and records manifest references, but should not
   fabricate artifact metadata that belongs to ML code.
@@ -185,7 +233,7 @@ storage, or object-storage-first API serving.
 | `run_id` | UTC timestamp plus a stable slug. | `2026-06-06T140000Z-sebastopol-ns` |
 | `counter_id` | Existing project counter identifier. | `Sebastopol_N-S_airflow` |
 | `dataset_version` | DVC revision, source snapshot label, or runtime input version. | `local-dev-dvc` |
-| `model_version` | MLflow run ID, registry version, or local model release label. | `mlflow-run-<short_sha>` |
+| `model_version` | MLflow run ID, registry version, or local model release label. | `mlflow-run-20260606` |
 
 `run_id` values should be unique per external attempt. Airflow retries should
 include enough context to avoid overwriting previous attempts unless a deliberate
@@ -193,8 +241,8 @@ idempotency rule returns the same job.
 
 ## Manifest shape
 
-The canonical JSON shape is implemented by the Pydantic models documented in
-[`artifact-manifest-models.md`](artifact-manifest-models.md).
+The canonical JSON shape is implemented by the Pydantic models in
+`src/artifacts/schemas.py`.
 
 ```json
 {
@@ -252,9 +300,6 @@ Promotion must not happen when:
 - the artifact status is not eligible for serving;
 - required producer, source, or storage metadata is missing.
 
-The implemented details and explicit exceptions are documented in
-[`artifact-manifest-store.md`](artifact-manifest-store.md).
-
 ## Component interactions
 
 | Component | Responsibility in the contract |
@@ -273,22 +318,22 @@ training job internals.
 
 ## Implementation progress
 
-| Capability | Status | Owner document |
-| ---------- | ------ | -------------- |
-| Define artifact handoff vocabulary. | Done | This document. |
-| Add strict Pydantic manifest models. | Done | [`artifact-manifest-models.md`](artifact-manifest-models.md) |
-| Add checksum, write, read, and promotion helpers. | Done | [`artifact-manifest-store.md`](artifact-manifest-store.md) |
-| Make ML jobs emit local manifests. | Done | This document and service wrappers. |
-| Add typed step job contracts. | Done | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Add the internal runner API boundary. | Done as skeleton | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Execute typed ML step jobs through the runner. | Open | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Add production-like Airflow DAG chaining runner steps. | Open | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Make the API load the promoted local manifest. | Open | API implementation notes. |
-| Add production-like smoke validation. | Open | Validation notes. |
-| Harden runtime configuration and secrets validation. | Open | Runtime hardening notes. |
-| Strengthen realistic phase test coverage. | Open | Test-fixture notes. |
-| Add optional MinIO upload/download helpers. | Open | Object-storage implementation notes. |
-| Switch `primary_backend` to object storage. | Deferred | Requires API and runner support first. |
+| Capability | Status |
+| ---------- | ------ |
+| Define artifact handoff vocabulary. | Done |
+| Add strict Pydantic manifest models. | Done |
+| Add checksum, write, read, and promotion helpers. | Done |
+| Make ML jobs emit local manifests. | Done |
+| Add typed step job contracts. | Done |
+| Add the internal runner API boundary. | Done |
+| Execute typed ML step jobs through the runner. | Done |
+| Add production-like Airflow DAG chaining runner steps. | Open |
+| Make the API load the promoted local manifest. | Open |
+| Add production-like smoke validation. | Open |
+| Harden runtime configuration and secrets validation. | Open |
+| Strengthen realistic phase test coverage. | Open |
+| Add optional MinIO upload/download helpers. | Open |
+| Switch `primary_backend` to object storage. | Deferred |
 
 ## Known technical and functional debt
 
@@ -303,8 +348,6 @@ stays incremental:
   does not reintroduce implicit latest-file scanning;
 - runner execution should stay typed and allow-listed, not a generic shell
   command runner or full-pipeline scheduler;
-- `PipelineJobRequest` still exists and should be removed, deprecated, or kept
-  only for compatibility after callers are aligned to step-level jobs;
 - MinIO is not yet a functional artifact backend despite the optional
   `object_uri` contract.
 

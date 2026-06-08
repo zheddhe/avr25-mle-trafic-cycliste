@@ -13,14 +13,14 @@ networks, non-root custom application images, and isolated runtime workspaces.
 | Runtime | Entry point | Primary use |
 | ------- | ----------- | ----------- |
 | Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, isolated runtime workspaces, runner API boundary checks, and monitoring smoke checks. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, isolated runtime workspaces, internal runner API checks, and monitoring smoke checks. |
 
 Use `docker/dev` when iterating on DAGs, ML CLI containers, root-level DVC data,
 logs, or model outputs.
 
 Use `docker/prod` when validating implemented service boundaries, reduced host
-exposure, non-root application containers, internal service discovery, and
-isolated runtime workspaces.
+exposure, non-root application containers, internal service discovery, runner API
+behavior, and isolated runtime workspaces.
 
 Do not use a root-level Compose file. Runtime commands must go through the
 runtime-specific Make targets or an explicit `docker compose -f` command.
@@ -35,7 +35,7 @@ design notes.
 | -------- | ---- |
 | [`repository-structure.md`](repository-structure.md) | Repository ownership, DVC boundaries, and runtime workspace ownership. |
 | [`ports-and-services.md`](ports-and-services.md) | Implemented host exposure and internal-only services. |
-| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Implemented service traffic, networks, and mounts. |
+| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Implemented service traffic, runner boundary, networks, and mounts. |
 | [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and security boundaries. |
 | [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented production-like network topology. |
 
@@ -77,8 +77,8 @@ The local production-like runtime writes to ignored runtime workspaces under
 | Path | Purpose |
 | ---- | ------- |
 | `docker/prod/runtime/data` | Production-like generated data workspace. |
-| `docker/prod/runtime/models` | Production-like generated model workspace. |
-| `docker/prod/runtime/logs` | Production-like service and batch logs. |
+| `docker/prod/runtime/models` | Production-like model workspace. |
+| `docker/prod/runtime/logs` | Production-like service and batch log workspace. |
 | `docker/prod/runtime/artifacts` | Manifest-first artifact handoff root. |
 
 Only the required business source CSV is mounted from the root development/DVC
@@ -95,17 +95,31 @@ to run without writing into root `data`, `models`, or `logs`.
 
 The production-like runtime contains:
 
-- custom non-root API and ML images;
+- custom non-root API, runner API, and ML images;
 - Airflow services without `/var/run/docker.sock` mounts;
 - MLflow, MinIO, PostgreSQL, Redis, and monitoring support services;
-- an internal `job-runner-api` service for typed job submission and status reads.
+- an internal `job-runner-api` service for typed ML step submission, execution,
+  and status reads.
 
 `job-runner-api` is a FastAPI service listening on container port `10080`. It
 exposes `/health`, `/jobs`, and `/jobs/{job_id}` on internal Docker networks. It
-keeps job status in process memory and does not execute ML jobs.
+keeps job status in process memory and executes one allow-listed typed ML step at
+a time through the local runner adapter.
+
+The active runner contract accepts only `ingest`, `features`, and `models` jobs
+from `src/ml/jobs`. It does not expose a pipeline-wide runtime job. Submitted
+jobs move through `queued`, `running`, and a terminal `succeeded` or `failed`
+state. Successful jobs return output path, metrics, and optional artifact
+manifest evidence. Controlled execution failures return structured job errors.
+
+The runner implementation is intentionally synchronous and in-memory for the
+local production-like runtime. It is not a durable queue, distributed scheduler,
+Docker SDK wrapper, or Kubernetes job controller.
 
 `docker/prod` Airflow services can start without Docker socket access. The
 DockerOperator-based ML execution path remains part of the development runtime.
+Production-like Airflow orchestration that chains runner jobs belongs to the
+active next-phase DAG work.
 
 ## Network topology
 
@@ -154,9 +168,10 @@ cAdvisor, Redis, and PostgreSQL services stay internal in `docker/prod`.
 | Airflow DAG/config files | Prod | Read-only | DAG and config placement is explicit for this runtime. |
 | Monitoring configs | Prod | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
 
-The runner API mounts only its log directory. Data, model, artifact, and
-worker-specific mounts belong to services that actually produce or consume those
-runtime assets.
+The runner API service currently mounts only its log directory in Compose. It
+executes ML entrypoints through the application code path; any future widening of
+runtime data, model, artifact, tracking, or Docker access must be justified by a
+story and reflected in the architecture references.
 
 ## Runtime identities and exceptions
 
@@ -204,5 +219,6 @@ Runner API checks inside the production-like Compose network:
 
 ```bash
 docker compose -f docker/prod/docker-compose.yaml --profile ptf up -d job-runner-api
-docker compose -f docker/prod/docker-compose.yaml exec job-runner-api     python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:10080/health').read().decode())"
+docker compose -f docker/prod/docker-compose.yaml exec job-runner-api \
+    python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:10080/health').read().decode())"
 ```
