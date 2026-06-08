@@ -36,8 +36,8 @@ A network is justified when at least one of these statements is true:
 | Network | Responsibility | Current members |
 | ------- | -------------- | --------------- |
 | `orchestration_net` | Airflow control plane, metadata DB, broker, and internal Airflow execution API. | Airflow API, scheduler, DAG processor, triggerer, worker, init, PostgreSQL, Redis. |
-| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, runner API, batch jobs, and batch metric writes. | Airflow worker, API, job runner API, ML jobs, Pushgateway. |
-| `tracking_client_net` | MLflow client API calls from ML workloads. | ML jobs and `mlflow-server`. |
+| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, runner API, ML step services, and batch metric writes. | Airflow worker, API, job runner API, ML step services, Pushgateway. |
+| `tracking_client_net` | MLflow client API calls from model workloads. | `ml-models-prod` and `mlflow-server`. |
 | `tracking_backend_net` | Private MLflow metadata and artifact backends. | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`. |
 | `observability_net` | Monitoring, dashboard, alert routing, and scrape access to selected metric endpoints. | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics endpoint. |
 | `dev_support_net` | Local support services that should not be part of the production-like core. | MailHog, Airflow services that send local email, Alertmanager in local email mode. |
@@ -53,8 +53,9 @@ accidental broad-network members; they bridge bounded domains.
 | Service | Networks | Gateway role |
 | ------- | -------- | ------------ |
 | `airflow-worker` | `orchestration_net`, `pipeline_runtime_net`, `dev_support_net` | Runs orchestration tasks and reaches runtime services that are part of pipeline control. |
-| `job-runner-api` | `pipeline_runtime_net` | Accepts typed ML step submissions, executes one allow-listed step at a time, and exposes internal job status reads. |
+| `job-runner-api` | `pipeline_runtime_net` | Accepts typed ML step submissions, delegates them to internal ML step services, and exposes internal job status reads. |
 | `api-dev` | `pipeline_runtime_net`, `observability_net` | Receives refresh calls and exposes metrics. Host publication remains local ingress. |
+| `ml-models-prod` | `pipeline_runtime_net`, `tracking_client_net` | Receives typed model job requests and logs model evidence to MLflow. |
 | `mlflow-server` | `tracking_client_net`, `tracking_backend_net`, `observability_net` | Accepts MLflow client calls and owns backend access to PostgreSQL and MinIO. |
 | `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receives batch metrics writes and exposes them for Prometheus scrape. |
 | `monitoring-alertmanager` | `observability_net`, `dev_support_net` | Receives Prometheus alerts and sends local development email. |
@@ -91,8 +92,11 @@ into `docker/prod`.
 | Airflow DAG tasks | `api-dev` | `api-dev` | `10000` | `pipeline_runtime_net` | Authenticated API refresh after successful DAG runs. |
 | Airflow DAG tasks | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed step job submission and status reads. |
 | Local runner API callers | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed job submission and status reads. |
-| ML jobs | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `pipeline_runtime_net` | Push batch job metrics. |
-| ML jobs | `mlflow-server` | `mlflow-server` | `5000` | `tracking_client_net` | Log runs, metrics, params, and artifacts. |
+| `job-runner-api` | `ml-ingest-prod` | `ml-ingest-prod` | `10081` | `pipeline_runtime_net` | Execute validated ingestion jobs. |
+| `job-runner-api` | `ml-features-prod` | `ml-features-prod` | `10082` | `pipeline_runtime_net` | Execute validated feature jobs. |
+| `job-runner-api` | `ml-models-prod` | `ml-models-prod` | `10083` | `pipeline_runtime_net` | Execute validated model jobs. |
+| ML step services | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `pipeline_runtime_net` | Push batch job metrics. |
+| `ml-models-prod` | `mlflow-server` | `mlflow-server` | `5000` | `tracking_client_net` | Log runs, metrics, params, and artifacts. |
 | `mlflow-server` | `mlflow-postgres` | `mlflow-postgres` | `5432` | `tracking_backend_net` | MLflow backend store. |
 | `mlflow-server` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | MLflow artifact store. |
 | `mlflow-mc-init` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | Bootstrap the MLflow bucket. |
@@ -112,7 +116,7 @@ network:
 - `api-dev` should not share Airflow metadata, Redis, MLflow backend, or MinIO
   backend networks.
 - `job-runner-api` should not join tracking or backend networks while its public
-  runtime contract remains typed step submission, local execution, and in-memory
+  runtime contract remains typed step submission, HTTP delegation, and in-memory
   status tracking.
 - Docker socket access should not be introduced in the production-like runtime.
 
@@ -126,10 +130,15 @@ flowchart LR
 
     pipeline --- runner[job-runner-api]
     pipeline --- api[api-dev]
-    pipeline --- jobs[ML job services]
+    pipeline --- ingest[ml-ingest-prod]
+    pipeline --- features[ml-features-prod]
+    pipeline --- models[ml-models-prod]
     pipeline --- pushgateway[monitoring-pushgateway]
 
-    jobs --> mlflow[mlflow-server]
+    runner --> ingest
+    runner --> features
+    runner --> models
+    models --> mlflow[mlflow-server]
     mlflow --> mlflow_db[(mlflow-postgres)]
     mlflow --> minio[(mlflow-minio)]
 
@@ -153,4 +162,6 @@ make prod-ps
 
 The production-like network config should show `job-runner-api` on
 `pipeline_runtime_net` without host-published ports, Docker socket mounts,
-tracking backend access, or Airflow metadata network access.
+tracking backend access, Airflow metadata network access, or broad runtime data
+mounts. It should also show the internal ML step services on
+`pipeline_runtime_net`, with only `ml-models-prod` joining `tracking_client_net`.
