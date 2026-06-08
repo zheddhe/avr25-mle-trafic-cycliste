@@ -14,9 +14,7 @@ from src.ml.jobs.contracts import MlJobType, StepJobRequest
 from src.ml.jobs.execution import MlStepExecutionError, StepCommandExecutor
 from src.ml.jobs.status import JobResult, JobStatus
 
-
-class MlJobExecutionError(MlStepExecutionError):
-    """Controlled error raised when a typed ML step fails."""
+MlJobExecutionError = MlStepExecutionError
 
 
 class MlJobExecutor(Protocol):
@@ -80,7 +78,12 @@ class ServiceMlJobExecutor:
                 retryable=status.error.retryable if status.error else True,
             )
 
-        return status.result.model_copy(update={"job_id": job_id, "started_at": started_at})
+        return status.result.model_copy(
+            update={
+                "job_id": job_id,
+                "started_at": started_at,
+            },
+        )
 
 
 class MlServiceTransport(Protocol):
