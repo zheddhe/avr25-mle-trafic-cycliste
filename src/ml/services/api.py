@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import FastAPI, HTTPException, status
 
 from src.ml.jobs.contracts import MlJobType, StepJobRequest
@@ -108,7 +110,11 @@ def create_app(
 
     @app.get("/health", tags=["Health"])
     def health() -> dict[str, str]:
-        return {"status": "ok", "service": service_name, "job_type": job_type.value}
+        return {
+            "status": "ok",
+            "service": service_name,
+            "job_type": job_type.value,
+        }
 
     @app.post(
         "/jobs",
@@ -135,7 +141,7 @@ def _failed_status(
     *,
     job_request: StepJobRequest,
     job_id: str,
-    requested_at: object,
+    requested_at: datetime,
     code: str,
     message: str,
     retryable: bool,
