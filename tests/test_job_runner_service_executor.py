@@ -7,7 +7,6 @@ from src.job_runner.service import build_default_executor
 from src.ml.jobs.contracts import IngestJobRequest, MlJobType
 from src.ml.jobs.status import JobResult, JobState, JobStatus, utc_now
 
-
 INTERIM_OUTPUT_PATH = "/app/data/interim/counter-001/initial.csv"
 INGEST_ENDPOINT = "http://ml-ingest-prod:10081"
 

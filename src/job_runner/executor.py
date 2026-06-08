@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -40,7 +39,7 @@ class ServiceMlJobExecutor:
 
     def __init__(
         self,
-        transport: "MlServiceTransport | None" = None,
+        transport: MlServiceTransport | None = None,
         endpoints: dict[MlJobType, str] | None = None,
     ) -> None:
         self._transport = transport or UrllibMlServiceTransport()
@@ -126,7 +125,7 @@ class UrllibMlServiceTransport:
                 message=f"ML service returned HTTP {error.code}: {body}",
                 retryable=error.code >= 500,
             ) from error
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
+        except (urllib.error.URLError, TimeoutError) as error:
             raise MlJobExecutionError(
                 code="ML_SERVICE_UNAVAILABLE",
                 message=f"ML service call failed: {error}",
