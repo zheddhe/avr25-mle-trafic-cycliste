@@ -7,14 +7,14 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from src.artifacts.schemas import ArtifactType
 from src.job_runner.api import create_app
 from src.job_runner.executor import MlJobExecutionError
 from src.job_runner.service import JobRunnerService
 from src.job_runner.state import InMemoryJobState
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
-    BaseMlJobRequest,
-    MlJobType,
+    StepJobRequest,
 )
 from src.ml.jobs.status import JobResult, MetricsEvidence
 
@@ -23,11 +23,11 @@ class SuccessfulExecutor:
     """Test executor returning deterministic step-level evidence."""
 
     def __init__(self) -> None:
-        self.calls: list[BaseMlJobRequest] = []
+        self.calls: list[StepJobRequest] = []
 
     def execute(
         self,
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
         *,
         job_id: str,
         started_at: datetime,
@@ -42,7 +42,7 @@ class SuccessfulExecutor:
             finished_at=started_at,
             output_paths=("data/interim/Sebastopol_N-S_dvcrepro/initial.csv",),
             manifest=ArtifactManifestReference(
-                artifact_type="interim_dataset",
+                artifact_type=ArtifactType.INTERIM_DATASET,
                 counter_id=job_request.counter_id,
                 run_id=job_request.run_id,
                 manifest_path=(
@@ -65,7 +65,7 @@ class FailingExecutor:
 
     def execute(
         self,
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
         *,
         job_id: str,
         started_at: datetime,

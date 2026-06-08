@@ -9,7 +9,7 @@ from src.job_runner.executor import (
     MlJobExecutor,
 )
 from src.job_runner.state import InMemoryJobState
-from src.ml.jobs.contracts import BaseMlJobRequest
+from src.ml.jobs.contracts import StepJobRequest
 from src.ml.jobs.status import JobError, JobState, JobStatus
 
 
@@ -24,7 +24,7 @@ class JobRunnerService:
         self._state = state or InMemoryJobState()
         self._executor = executor or LocalMlJobExecutor()
 
-    def submit_job(self, job_request: BaseMlJobRequest) -> JobStatus:
+    def submit_job(self, job_request: StepJobRequest) -> JobStatus:
         """Submit a typed ML step request and execute it synchronously."""
 
         status = self._state.submit(job_request)

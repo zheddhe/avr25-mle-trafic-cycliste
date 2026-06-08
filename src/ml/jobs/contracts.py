@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -337,7 +337,13 @@ class ModelJobRequest(BaseMlJobRequest):
         return value
 
 
-StepJobRequest = IngestJobRequest | FeatureJobRequest | ModelJobRequest
+type StepJobRequest = (
+    IngestJobRequest | FeatureJobRequest | ModelJobRequest
+)
+type StepJobRequestPayload = Annotated[
+    StepJobRequest,
+    Field(discriminator="job_type"),
+]
 
 
 def ensure_timezone_aware(value: datetime, field_name: str) -> datetime:

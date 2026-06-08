@@ -12,11 +12,11 @@ from click.testing import CliRunner
 from src.artifacts.schemas import ArtifactType
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
-    BaseMlJobRequest,
     FeatureJobRequest,
     IngestJobRequest,
     MlJobType,
     ModelJobRequest,
+    StepJobRequest,
 )
 from src.ml.jobs.status import JobResult, MetricsEvidence, utc_now
 
@@ -36,12 +36,13 @@ class MlJobExecutor(Protocol):
 
     def execute(
         self,
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
         *,
         job_id: str,
         started_at: datetime,
     ) -> JobResult:
         """Execute one typed ML step and return its result evidence."""
+        ...
 
 
 class LocalMlJobExecutor:
@@ -52,7 +53,7 @@ class LocalMlJobExecutor:
 
     def execute(
         self,
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
         *,
         job_id: str,
         started_at: datetime,
@@ -171,7 +172,7 @@ class LocalMlJobExecutor:
     def _append_manifest_root(
         self,
         args: list[str],
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
     ) -> None:
         if job_request.manifest_root:
             args.extend(["--artifact-manifest-root", job_request.manifest_root])
@@ -181,7 +182,7 @@ class LocalMlJobExecutor:
         self,
         command: Command,
         args: list[str],
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
     ) -> None:
         result = self._runner.invoke(
             command,
@@ -206,7 +207,7 @@ class LocalMlJobExecutor:
 
     def _build_manifest_reference(
         self,
-        job_request: BaseMlJobRequest,
+        job_request: StepJobRequest,
     ) -> ArtifactManifestReference | None:
         if isinstance(job_request, ModelJobRequest) and job_request.expected_manifest:
             return job_request.expected_manifest
@@ -236,7 +237,7 @@ class LocalMlJobExecutor:
         )
 
 
-def _execution_env(job_request: BaseMlJobRequest) -> dict[str, str]:
+def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
     env = {
         "RUN_ID": job_request.run_id,
         "COUNTER_ID": job_request.counter_id,

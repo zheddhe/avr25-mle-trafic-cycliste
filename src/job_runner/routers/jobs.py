@@ -4,22 +4,20 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
-from pydantic import Field
+from fastapi import APIRouter, Body, Depends, status
 
 from src.job_runner.dependencies import get_job_runner_service
 from src.job_runner.errors import ErrorResponse
 from src.job_runner.service import JobRunnerService
-from src.ml.jobs.contracts import FeatureJobRequest, IngestJobRequest, ModelJobRequest
+from src.ml.jobs.contracts import StepJobRequest
 from src.ml.jobs.status import JobStatus
-
-JobRequest = Annotated[
-    IngestJobRequest | FeatureJobRequest | ModelJobRequest,
-    Field(discriminator="job_type"),
-]
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
+JobRequestBody = Annotated[
+    StepJobRequest,
+    Body(discriminator="job_type"),
+]
 
 @router.post(
     "",
@@ -32,7 +30,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
     },
 )
 def submit_job(
-    job_request: JobRequest,
+    job_request: JobRequestBody,
     service: JobRunnerService = Depends(get_job_runner_service),
 ) -> JobStatus:
     """Accept one typed ML step request and execute it through the runner."""

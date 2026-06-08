@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from threading import Lock
 
-from src.ml.jobs.contracts import BaseMlJobRequest
+from src.ml.jobs.contracts import StepJobRequest
 from src.ml.jobs.status import JobError, JobResult, JobState, JobStatus
 
 _ID_PART_PATTERN = re.compile(r"[^a-zA-Z0-9_.-]+")
@@ -30,7 +30,7 @@ def _slugify(value: str) -> str:
     return slug[:_MAX_JOB_ID_SLUG_LENGTH]
 
 
-def build_idempotency_key(job_request: BaseMlJobRequest) -> str:
+def build_idempotency_key(job_request: StepJobRequest) -> str:
     """Build the stable submission key for a typed job request."""
 
     if job_request.job_id:
@@ -47,7 +47,7 @@ def build_idempotency_key(job_request: BaseMlJobRequest) -> str:
     return "|".join(key_parts)
 
 
-def build_job_id(job_request: BaseMlJobRequest) -> str:
+def build_job_id(job_request: StepJobRequest) -> str:
     """Build an explicit, deterministic runner job id."""
 
     if job_request.job_id:
@@ -69,7 +69,7 @@ class InMemoryJobState:
         self._statuses_by_id: dict[str, JobStatus] = {}
         self._job_ids_by_idempotency_key: dict[str, str] = {}
 
-    def submit(self, job_request: BaseMlJobRequest) -> JobStatus:
+    def submit(self, job_request: StepJobRequest) -> JobStatus:
         """Record a typed job request and return its queued status."""
 
         job_id = build_job_id(job_request)
