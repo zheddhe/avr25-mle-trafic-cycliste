@@ -17,13 +17,14 @@ and the coordination rules for the work that is still in progress.
 | [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and implemented service boundaries. |
 | [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented functional networks and service placement. |
 | [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) | Manifest-first artifact handoff contract and open artifact gaps. |
-| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented promotion helpers that runner jobs can call from execution code. |
+| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented promotion helpers used by ML step execution. |
+| [`ml-step-runner-boundary.md`](ml-step-runner-boundary.md) | Boundary decision for step-level runner execution. |
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | DAG placement rules and the `docker/dev` versus `docker/prod` split. |
 
 ## Current runner boundary
 
-The production-like runtime now includes an internal `job-runner-api` FastAPI
-service. It provides the API boundary needed before real execution is added.
+The production-like runtime includes an internal `job-runner-api` FastAPI
+service. It provides the API boundary needed before real step execution is added.
 
 Implemented behavior:
 
@@ -39,29 +40,28 @@ Implemented behavior:
 - the API imports no Airflow, Docker SDK, or concrete container runtime code.
 
 The service is an internal local production-like bridge. It is not a durable
-queue, worker pool, or distributed execution platform.
+queue, worker pool, distributed execution platform, or full-pipeline scheduler.
 
 ## Decision summary
 
-The preferred local production-like target is a controlled internal job runner
-composed of:
+Airflow owns pipeline orchestration.
 
-1. a small internal job API;
-2. a simple job state model;
-3. typed ML worker execution paths;
-4. an allow-list of supported job types and arguments;
-5. explicit artifact handoff and observability contracts.
+The runner owns execution control for one allow-listed typed ML step at a time.
+It should not receive a whole business pipeline as one opaque runtime job.
 
-Airflow should submit and observe jobs. It should not create containers through
-the host Docker socket in the production-like runtime.
+The production-like execution path should therefore use three visible Airflow
+steps:
 
-This target keeps the architecture translatable to Kubernetes Jobs or CronJobs
-later without forcing Kubernetes into the local Compose runtime.
+1. submit and observe an ingest job;
+2. submit and observe a feature engineering job;
+3. submit and observe a model training and prediction job.
 
-Ingestion, feature engineering, and model training must remain separate business
-microservices. They may share a common runner protocol, common schemas, and a
-common base image pattern, but they should not be collapsed into a single generic
-ML service.
+This keeps the ML chain observable and retryable from Airflow without giving
+Airflow access to the Docker socket or Docker SDK.
+
+The `PipelineJobRequest` concept should no longer grow as the primary runtime
+contract. It may be removed or kept temporarily for compatibility, but the active
+production-like path should rely on step-level requests.
 
 ## Current Airflow-triggered execution model in development
 
@@ -90,33 +90,33 @@ available to the daemon.
 
 The development `airflow-worker` therefore mixes two responsibilities:
 
-- orchestration: schedule tasks, track dependencies, expose retries, and keep DAG state;
+- orchestration: schedule tasks, track dependencies, expose retries, and keep DAG
+  state;
 - execution control: create runtime containers with host-level Docker privileges.
 
 | Concern | Development behavior | Production-like target behavior |
 | ------- | -------------------- | ------------------------------- |
 | Privilege boundary | Airflow worker can control the host container runtime. | Airflow can call only a narrow job submission interface. |
-| Runtime user | Worker uses a root entrypoint to align Docker socket access. | Airflow and ML workers run without Docker socket access. |
+| Runtime user | Worker uses a root entrypoint to align Docker socket access. | Airflow and ML execution run without Docker socket access. |
 | Network scope | Jobs inherit networks selected by Airflow variables. | Jobs run on predefined functional networks. |
-| Command scope | DAG code can construct container commands. | Runner accepts only allow-listed job types and arguments. |
+| Command scope | DAG code can construct container commands. | Runner accepts only allow-listed step job types and arguments. |
 | Artifact scope | Jobs write broad host-mounted folders. | Jobs publish through manifest-first artifact handoff. |
-| Observability | DockerOperator status is mixed with container logs. | Runner exposes job state, retries, logs, and metrics. |
+| Observability | DockerOperator status is mixed with container logs. | Airflow sees each ML step and runner status explicitly. |
 
 ## Workload model
 
-The runner must cover the existing ML pipeline shape:
+The runner must cover the existing ML step shape:
 
 | Job type | Current dev image or action | Main outputs | External dependencies |
 | -------- | --------------------------- | ------------ | --------------------- |
-| `ingest` | `ml-ingest-dev` | interim data, manifest, and ingest metrics | raw data, runtime data workspace, logs, Pushgateway. |
-| `features` | `ml-features-dev` | processed features, manifest, and feature metrics | interim data, runtime data workspace, logs, Pushgateway. |
-| `models` | `ml-models-dev` | forecasts, model artifacts, MLflow runs, prediction manifest | processed data, runtime data/model workspace, logs, MLflow, Pushgateway. |
-| `pipeline` | coordinated ingest, features, and model steps | coherent multi-step job status and artifact handoff | all stage-specific dependencies. |
+| `ingest` | `ml-ingest-dev` | Interim data, manifest, and ingest metrics. | Raw data, runtime data workspace, logs, Pushgateway. |
+| `features` | `ml-features-dev` | Processed features, manifest, and feature metrics. | Interim data, runtime data workspace, logs, Pushgateway. |
+| `models` | `ml-models-dev` | Forecasts, model artifacts, MLflow runs, prediction manifest. | Processed data, runtime data/model workspace, logs, MLflow, Pushgateway. |
 
-The init and daily DAGs should keep their business responsibility: choose
-counters, derive ranges or dates, trigger jobs in the right order, and decide
-whether downstream refresh is allowed. They should stop owning container runtime
-details.
+The runner should not add a `pipeline` runtime workload. The init and daily DAGs
+should keep their business responsibility: choose counters, derive ranges or
+dates, trigger jobs in the right order, apply retries, and decide whether
+downstream refresh is allowed.
 
 ## Target architecture
 
@@ -124,30 +124,29 @@ details.
 flowchart LR
     airflow[Airflow DAG tasks] --> job_api[job-runner-api]
     job_api --> state[(job state)]
-    job_api --> worker_ingest[ingest execution]
-    job_api --> worker_features[features execution]
-    job_api --> worker_models[models execution]
+    job_api --> ingest_exec[ingest step execution]
+    job_api --> features_exec[features step execution]
+    job_api --> models_exec[models step execution]
 
-    worker_ingest --> artifacts[(artifact manifest store)]
-    worker_features --> artifacts
-    worker_models --> artifacts
-    worker_models --> mlflow[mlflow-server]
-    worker_ingest --> pushgateway[monitoring-pushgateway]
-    worker_features --> pushgateway
-    worker_models --> pushgateway
+    ingest_exec --> artifacts[(artifact manifest store)]
+    features_exec --> artifacts
+    models_exec --> artifacts
+    models_exec --> mlflow[mlflow-server]
+    ingest_exec --> pushgateway[monitoring-pushgateway]
+    features_exec --> pushgateway
+    models_exec --> pushgateway
 
     airflow --> api[api-dev refresh]
     api --> artifacts
-    prometheus[monitoring-prometheus] --> job_api
-    prometheus --> pushgateway
 ```
 
-The diagram shows the runner execution target. The current runtime topology is
-kept in [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md).
+The diagram shows step-level runner execution. Airflow remains the component that
+orders the ML chain. The current runtime topology is kept in
+[`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md).
 
 ## Typed job contracts
 
-The framework-neutral contracts are implemented under:
+The framework-neutral contracts are currently implemented under:
 
 ```text
 src/pipeline/contracts/
@@ -156,9 +155,10 @@ src/pipeline/contracts/
 └── statuses.py
 ```
 
-They are Pydantic models used to describe the payloads that Airflow, the runner
-API, and typed ML workers exchange. They deliberately do not import Airflow,
-Docker SDK, FastAPI application instances, or runner implementation code.
+They are Pydantic models used to describe payloads exchanged between Airflow,
+the runner API, and ML step execution code. They deliberately do not import
+Airflow, Docker SDK, FastAPI application instances, or runner implementation
+code.
 
 Implemented request contracts include:
 
@@ -167,6 +167,14 @@ Implemented request contracts include:
 - `ModelJobRequest`;
 - `PipelineJobRequest`.
 
+The active production-like path should use only the step-level request contracts.
+`PipelineJobRequest` should be treated as a compatibility/deprecation concern,
+not as the target runtime job shape.
+
+These contracts are ML-specific despite their current `src/pipeline/contracts`
+location. A future refactor may move or alias them under an ML-specific namespace
+such as `src/ml/contracts` or `src/ml/jobs` after open stories are aligned.
+
 Implemented status and result contracts include:
 
 - `JobStatus`;
@@ -174,13 +182,10 @@ Implemented status and result contracts include:
 - `JobError`;
 - `MetricsEvidence`.
 
-`PipelineJobRequest` validates that related ingest, features, and model steps
-share `run_id`, `counter_id`, and `manifest_root`, and that their handoff paths
-match in order: ingest interim output, features input/output, and model input.
-
 ## Runner API contract
 
-Airflow submits a typed job request to `job-runner-api`. The request includes:
+Airflow submits a typed step job request to `job-runner-api`. The request
+includes:
 
 - `dag_id`;
 - `task_id`;
@@ -188,14 +193,15 @@ Airflow submits a typed job request to `job-runner-api`. The request includes:
 - `try_number`;
 - `counter_id`;
 - `job_type`;
-- validated business parameters;
-- expected input and output artifact references.
+- validated step business parameters;
+- expected input and output artifact references where relevant.
 
 The API validates the request, assigns or reuses a `job_id`, records job state,
 and returns a typed `JobStatus`.
 
 The current API keeps state in memory. The execution implementation must keep the
-same external contract while adding controlled dispatch and state transitions.
+same external contract while adding controlled step dispatch and state
+transitions.
 
 ## Worker execution design
 
@@ -206,19 +212,17 @@ The execution path should use typed workers or typed execution adapters:
 | Ingestion execution | `ingest` only | Raw and interim data access, ingest configuration, Pushgateway metrics. |
 | Feature execution | `features` only | Interim and processed data access, feature configuration, Pushgateway metrics. |
 | Model execution | `models` only | Processed/final data, model artifacts, MLflow, optional MinIO/S3 credentials, Pushgateway metrics. |
-| Pipeline execution | `pipeline` only | Coordinated stage execution using the same per-stage constraints. |
 
 Execution paths may share a common job protocol:
 
 - validate the job payload with a typed schema;
-- resolve a safe command from an allow-list;
-- execute the business entrypoint;
+- resolve safe step arguments from an allow-list;
+- execute one business entrypoint;
 - publish status, logs, metrics, and artifact references.
 
 They should not share one broad runtime configuration. Service-specific
 dependencies, environment variables, mounted paths, network attachments,
-healthchecks, and resource limits should remain explicit per worker or per job
-type.
+healthchecks, and resource limits should remain explicit per step type.
 
 ## Job state model
 
@@ -229,8 +233,8 @@ The shared `JobState` enum currently supports:
 | `pending` | Request was created but not yet queued. | Continue polling. |
 | `queued` | Job is accepted and waiting for execution. | Continue polling or sensor deferral. |
 | `running` | Execution started. | Continue polling and link logs. |
-| `succeeded` | Command exited successfully and outputs were published. | Mark task successful. |
-| `failed` | Command failed with a controlled error. | Fail the Airflow attempt. |
+| `succeeded` | Step exited successfully and outputs were published. | Mark the current Airflow task successful. |
+| `failed` | Step failed with a controlled error. | Fail the Airflow attempt. |
 | `canceled` | Job was canceled by operator or cleanup policy. | Fail or skip according to DAG policy. |
 | `expired` | Job exceeded retention or timeout. | Fail with an explicit timeout reason. |
 
@@ -250,11 +254,11 @@ Development DAG responsibility:
 
 Production-like DAG responsibility:
 
-- build typed business job specs;
-- submit jobs to `job-runner-api`;
-- wait for runner terminal state;
+- build typed business specs for each ML step;
+- submit each step to `job-runner-api`;
+- wait for each step terminal state;
 - map runner failure to Airflow failure;
-- call API refresh through the existing HTTP connection;
+- call API refresh through the existing HTTP connection after model success;
 - preserve DAG-level retry, schedule, and dependency semantics.
 
 DAG code should stay near Airflow runtime assets under `docker/dev` or
@@ -271,20 +275,21 @@ runtime that consumes it.
 2. For each configured counter, submit `ingest`.
 3. Submit `features` only after the matching ingest job succeeds.
 4. Submit `models` only after the matching feature job succeeds.
-5. Promote or refresh final prediction data only after required model outputs are promoted.
+5. Refresh final prediction data only after required model outputs are promoted.
 6. Fail the Airflow run if any required runner job fails.
 
 ### Daily DAG
 
 1. Compute the daily range or business window.
 2. Submit `ingest` with the daily range and counter configuration.
-3. Submit `features` and `models` with the same idempotency context.
-4. Promote or refresh final prediction data only after successful model jobs.
-5. Keep Airflow retries at the orchestration layer while the runner records every
+3. Submit `features` only after the matching ingest job succeeds.
+4. Submit `models` only after the matching feature job succeeds.
+5. Refresh final prediction data only after successful model jobs.
+6. Keep Airflow retries at the orchestration layer while the runner records every
    external job attempt.
 
 In both flows, Airflow never asks Docker to start a container. It only asks the
-runner API to handle typed business jobs.
+runner API to handle typed business step jobs.
 
 ## Implementation progress
 
@@ -293,20 +298,24 @@ runner API to handle typed business jobs.
 | Artifact manifest models | Implemented | [`artifact-manifest-models.md`](artifact-manifest-models.md) |
 | Manifest write, read, and promotion helpers | Implemented | [`artifact-manifest-store.md`](artifact-manifest-store.md) |
 | Local ML manifest emission | Implemented | [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) |
-| Typed job requests and statuses | Implemented | `src/pipeline/contracts/` |
+| Typed step job requests and statuses | Implemented | `src/pipeline/contracts/` |
 | Internal runner API boundary | Implemented skeleton | This document and `src/job_runner/` |
-| Typed ML execution through the runner | Open | This document |
-| Production-like Airflow DAG using the runner | Open | This document |
+| Step-level ML execution through the runner | Open | This document and [`ml-step-runner-boundary.md`](ml-step-runner-boundary.md) |
+| Production-like Airflow DAG using step runner jobs | Open | This document |
 | API serving from promoted manifests | Open | [`artifact-handoff-strategy.md`](artifact-handoff-strategy.md) |
 | Production-like smoke validation | Open | Active validation work |
 | Runtime configuration and secret validation | Open | Active runtime hardening work |
 
 ## Open design gaps
 
-- The runner does not yet start typed ML workers or service-specific execution
-  adapters.
+- The runner does not yet execute typed step jobs.
 - Job status is in memory and is not durable across process restarts.
-- Airflow still needs a production-like DAG path that submits typed runner jobs.
+- `PipelineJobRequest` still exists in contracts and needs removal,
+  deprecation, or compatibility handling.
+- The ML-specific contracts still live under `src/pipeline/contracts` and may
+  need a later namespace correction.
+- Airflow still needs a production-like DAG path that submits step-level runner
+  jobs.
 - The API still needs to serve predictions through promoted manifests.
 - Runner metrics and Prometheus scrape integration are not implemented.
 - Configuration validation still needs to reject unsafe placeholder values for
@@ -317,10 +326,11 @@ runner API to handle typed business jobs.
 A complete validation should prove that:
 
 - `docker/prod` Airflow has no Docker socket mount;
-- Airflow can submit a typed job to `job-runner-api`;
-- the runner can execute the pipeline or a single step without exposing the
-  Docker socket to Airflow;
+- Airflow can submit typed step jobs to `job-runner-api`;
+- the runner can execute each ML step without exposing Docker runtime control to
+  Airflow;
 - each ML step emits coherent artifact manifests;
+- Airflow chains ingest, features, and models visibly;
 - the API serves predictions by reading the promoted manifest;
 - Prometheus/Grafana can observe job status and artifact freshness.
 
