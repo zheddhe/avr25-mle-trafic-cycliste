@@ -8,6 +8,10 @@ from src.ml.jobs.contracts import IngestJobRequest, MlJobType
 from src.ml.jobs.status import JobResult, JobState, JobStatus, utc_now
 
 
+INTERIM_OUTPUT_PATH = "/app/data/interim/counter-001/initial.csv"
+INGEST_ENDPOINT = "http://ml-ingest-prod:10081"
+
+
 def _build_ingest_request() -> IngestJobRequest:
     return IngestJobRequest(
         run_id="run-001",
@@ -17,7 +21,7 @@ def _build_ingest_request() -> IngestJobRequest:
         site="Totem 73 boulevard de Sébastopol",
         orientation="N-S",
         sub_dir="counter-001",
-        interim_output_path="/app/data/interim/counter-001/initial.csv",
+        interim_output_path=INTERIM_OUTPUT_PATH,
     )
 
 
@@ -60,7 +64,7 @@ class TestServiceMlJobExecutor:
         transport = FakeTransport(status)
         executor = ServiceMlJobExecutor(
             transport=transport,
-            endpoints={MlJobType.INGEST: "http://ml-ingest-prod:10081"},
+            endpoints={MlJobType.INGEST: INGEST_ENDPOINT},
         )
 
         result = executor.execute(
@@ -70,8 +74,8 @@ class TestServiceMlJobExecutor:
         )
 
         assert result.job_id == "runner-job-001"
-        assert result.output_paths == ("/app/data/interim/counter-001/initial.csv",)
-        assert transport.calls == [("http://ml-ingest-prod:10081", job_request)]
+        assert result.output_paths == (INTERIM_OUTPUT_PATH,)
+        assert transport.calls == [(INGEST_ENDPOINT, job_request)]
 
     def test_build_default_executor_uses_service_mode_by_default(self) -> None:
         executor = build_default_executor()
