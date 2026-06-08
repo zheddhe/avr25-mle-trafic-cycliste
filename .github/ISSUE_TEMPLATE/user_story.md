@@ -1,28 +1,28 @@
 ---
 name: 📘 User Story
-about: Décrire une fonctionnalité ou un besoin utilisateur
-title: "[STORY] ---a compléter---"
+about: Describe a feature or user need
+title: "[STORY] ---to complete---"
 labels: enhancement
 assignees: ''
 ---
-## En tant que …
+## As a …
 
-Quel est le rôle de l’utilisateur concerné ? (ex. : utilisateur, admin…)
+What is the role of the user concerned? For example: user, admin…
 
-## Je veux …
+## I want …
 
-Quelle action l’utilisateur veut-il faire ?
+What action does the user want to perform?
 
-## Afin de …
+## So that …
 
-Quel est l’objectif ou bénéfice attendu ?
+What is the expected goal or benefit?
 
-## Critères d’acceptation
+## Acceptance criteria
 
-- [ ] Critère 1  
-- [ ] Critère 2  
-- [ ] …
+* [ ] Criterion 1
+* [ ] Criterion 2
+* [ ] …
 
-## Notes techniques (si besoin)
+## Technical notes (if needed)
 
-Ajoute ici des précisions techniques ou contraintes si nécessaire.
+Add any technical details or constraints here if needed.

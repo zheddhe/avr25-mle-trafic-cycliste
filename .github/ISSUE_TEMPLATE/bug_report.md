@@ -1,30 +1,30 @@
 ---
 name: 🐞 Bug Report
-about: Signaler un bug ou un comportement inattendu
-title: "[BUG] ---a compléter---"
+about: Report a bug or unexpected behavior
+title: "[BUG] ---to complete---"
 labels: bug
 assignees: ''
 ---
-## Description du bug
+## Bug description
 
-Décris le problème rencontré.
+Describe the issue encountered.
 
-## Étapes pour reproduire
+## Steps to reproduce
 
-1. Étape 1
-2. Étape 2
+1. Step 1
+2. Step 2
 3. ...
 
-## Comportement attendu
+## Expected behavior
 
-Décris ce que tu t’attendais à voir.
+Describe what you expected to see.
 
-## Informations techniques
+## Technical information
 
-- OS :
-- Version Python :
-- Navigateur / Environnement :
+* OS:
+* Python version:
+* Browser / Environment:
 
-## Captures d’écran / logs
+## Screenshots / logs
 
-Ajoute ici des captures d’écran ou extraits de logs si nécessaire.
+Add screenshots or log excerpts here if needed.

@@ -1,21 +1,20 @@
 ---
 name: 🧩 Epic
-about: Regrouper plusieurs tâches ou stories autour d’un objectif fonctionnel
-title: "[EPIC] ---à compléter---"
+about: Group multiple tasks or stories around a functional objective
+title: "[EPIC] ---to complete---"
 labels: epic
 assignees: ''
 ---
+## Epic objective
 
-## Objectif de l’epic
+Briefly describe the overall objective of this epic. For example: "Allow the user to sign in with a username and password".
 
-Décris brièvement l’objectif global de cette epic (ex. : "Permettre à l'utilisateur de se connecter avec un identifiant et un mot de passe").
+## Expected deliverables
 
-## Livrables attendus
+* Expected overall functional result
+* Features or user journeys covered
 
-- Résultat fonctionnel global attendu
-- Fonctionnalités ou parcours couverts
+## Notes (optional)
 
-## Notes (optionnelles)
-
-- Contexte métier ou technique
-- Contraintes de version, dépendances, etc.
+* Business or technical context
+* Version constraints, dependencies, etc.
