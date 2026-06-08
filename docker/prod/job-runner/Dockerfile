@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-COPY docker/dev/api/requirements.txt /tmp/requirements.txt
+COPY docker/prod/job-runner/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 RUN groupadd --gid "${APP_GID}" app && \
@@ -23,12 +23,12 @@ RUN groupadd --gid "${APP_GID}" app && \
         --home-dir /app \
         --shell /usr/sbin/nologin \
         app && \
-    mkdir -p /app/src/artifacts /app/src/pipeline /app/src/job_runner && \
+    mkdir -p /app/src/artifacts /app/src/ml/jobs /app/src/job_runner && \
     mkdir -p /app/logs/job-runner && \
     chown -R app:app /app
 
 COPY src/artifacts /app/src/artifacts
-COPY src/pipeline /app/src/pipeline
+COPY /src/ml/jobs /app/src/ml/jobs
 COPY src/job_runner /app/src/job_runner
 
 USER app

@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-COPY docker/dev/api/requirements.txt /tmp/requirements.txt
+COPY docker/prod/api/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 RUN groupadd --gid "${APP_GID}" app && \
