@@ -1,1 +1,0 @@
-"""Typed pipeline contracts package."""

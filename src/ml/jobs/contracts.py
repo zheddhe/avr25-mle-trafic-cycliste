@@ -1,11 +1,11 @@
-"""Typed pipeline job request contracts."""
+"""Typed ML job request contracts for step-level runner execution."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -19,17 +19,16 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class PipelineJobType(StrEnum):
-    """Supported ML pipeline job types."""
+class MlJobType(StrEnum):
+    """Supported step-level ML job types."""
 
     INGEST = "ingest"
     FEATURES = "features"
     MODELS = "models"
-    PIPELINE = "pipeline"
 
 
-class StrictPipelineContract(BaseModel):
-    """Base model for strict pipeline contracts."""
+class StrictMlJobContract(BaseModel):
+    """Base model for strict ML job contracts."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -38,8 +37,8 @@ class StrictPipelineContract(BaseModel):
     )
 
 
-class ArtifactManifestReference(StrictPipelineContract):
-    """Reference to an artifact manifest emitted by a typed job."""
+class ArtifactManifestReference(StrictMlJobContract):
+    """Reference to an artifact manifest emitted by a typed ML job."""
 
     artifact_type: ArtifactType = Field(
         description="Artifact type described by the referenced manifest.",
@@ -50,7 +49,7 @@ class ArtifactManifestReference(StrictPipelineContract):
     )
     run_id: str = Field(
         min_length=1,
-        description="Pipeline run identifier associated with the manifest.",
+        description="ML run identifier associated with the manifest.",
     )
     manifest_path: str = Field(
         min_length=1,
@@ -89,8 +88,8 @@ class ArtifactManifestReference(StrictPipelineContract):
         return value
 
 
-class BasePipelineJobRequest(StrictPipelineContract):
-    """Base request fields shared by every typed pipeline job."""
+class BaseMlJobRequest(StrictMlJobContract):
+    """Base request fields shared by every typed ML step job."""
 
     job_id: str | None = Field(
         default=None,
@@ -98,7 +97,7 @@ class BasePipelineJobRequest(StrictPipelineContract):
     )
     run_id: str = Field(
         min_length=1,
-        description="External pipeline run id shared by related jobs.",
+        description="External ML run id shared by related Airflow tasks.",
     )
     counter_id: str = Field(
         min_length=1,
@@ -141,10 +140,10 @@ class BasePipelineJobRequest(StrictPipelineContract):
         return validate_filesystem_path(value)
 
 
-class IngestJobRequest(BasePipelineJobRequest):
-    """Typed request for the ingestion pipeline step."""
+class IngestJobRequest(BaseMlJobRequest):
+    """Typed request for the ingestion ML step."""
 
-    job_type: Literal[PipelineJobType.INGEST] = PipelineJobType.INGEST
+    job_type: Literal[MlJobType.INGEST] = MlJobType.INGEST
     raw_path: str = Field(
         min_length=1,
         description="Raw CSV path consumed by the ingestion step.",
@@ -205,10 +204,10 @@ class IngestJobRequest(BasePipelineJobRequest):
         return self
 
 
-class FeatureJobRequest(BasePipelineJobRequest):
-    """Typed request for the feature engineering pipeline step."""
+class FeatureJobRequest(BaseMlJobRequest):
+    """Typed request for the feature engineering ML step."""
 
-    job_type: Literal[PipelineJobType.FEATURES] = PipelineJobType.FEATURES
+    job_type: Literal[MlJobType.FEATURES] = MlJobType.FEATURES
     interim_input_path: str = Field(
         min_length=1,
         description="Interim CSV path produced by ingestion.",
@@ -240,10 +239,10 @@ class FeatureJobRequest(BasePipelineJobRequest):
         return validate_filesystem_path(value) or value
 
 
-class ModelJobRequest(BasePipelineJobRequest):
-    """Typed request for the model training and prediction pipeline step."""
+class ModelJobRequest(BaseMlJobRequest):
+    """Typed request for the model training and prediction ML step."""
 
-    job_type: Literal[PipelineJobType.MODELS] = PipelineJobType.MODELS
+    job_type: Literal[MlJobType.MODELS] = MlJobType.MODELS
     processed_input_path: str = Field(
         min_length=1,
         description="Processed CSV path produced by feature engineering.",
@@ -338,49 +337,13 @@ class ModelJobRequest(BasePipelineJobRequest):
         return value
 
 
-class PipelineJobRequest(BasePipelineJobRequest):
-    """Typed request that chains ingest, features, and model jobs coherently."""
-
-    job_type: Literal[PipelineJobType.PIPELINE] = PipelineJobType.PIPELINE
-    ingest: IngestJobRequest = Field(
-        description="Ingestion step request.",
-    )
-    features: FeatureJobRequest = Field(
-        description="Feature engineering step request.",
-    )
-    models: ModelJobRequest = Field(
-        description="Model training and prediction step request.",
-    )
-
-    @model_validator(mode="after")
-    def validate_step_coherence(self) -> PipelineJobRequest:
-        """Validate shared context and artifact handoff between pipeline steps."""
-
-        steps: tuple[BasePipelineJobRequest, ...] = (
-            self.ingest,
-            self.features,
-            self.models,
-        )
-        for step in steps:
-            if step.run_id != self.run_id:
-                raise ValueError("all pipeline steps must share run_id")
-            if step.counter_id != self.counter_id:
-                raise ValueError("all pipeline steps must share counter_id")
-            if self.manifest_root and step.manifest_root != self.manifest_root:
-                raise ValueError("all pipeline steps must share manifest_root")
-
-        if self.ingest.interim_output_path != self.features.interim_input_path:
-            raise ValueError(
-                "ingest interim_output_path must match "
-                "features interim_input_path",
-            )
-        if self.features.processed_output_path != self.models.processed_input_path:
-            raise ValueError(
-                "features processed_output_path must match "
-                "models processed_input_path",
-            )
-
-        return self
+type StepJobRequest = (
+    IngestJobRequest | FeatureJobRequest | ModelJobRequest
+)
+type StepJobRequestPayload = Annotated[
+    StepJobRequest,
+    Field(discriminator="job_type"),
+]
 
 
 def ensure_timezone_aware(value: datetime, field_name: str) -> datetime:

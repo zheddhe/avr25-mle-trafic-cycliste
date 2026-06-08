@@ -1,13 +1,80 @@
-"""Integration tests for the internal job runner API skeleton."""
+"""Integration tests for the internal job runner API."""
 
 from __future__ import annotations
+
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
+from src.artifacts.schemas import ArtifactType
 from src.job_runner.api import create_app
+from src.job_runner.executor import MlJobExecutionError
 from src.job_runner.service import JobRunnerService
 from src.job_runner.state import InMemoryJobState
+from src.ml.jobs.contracts import (
+    ArtifactManifestReference,
+    StepJobRequest,
+)
+from src.ml.jobs.status import JobResult, MetricsEvidence
+
+
+class SuccessfulExecutor:
+    """Test executor returning deterministic step-level evidence."""
+
+    def __init__(self) -> None:
+        self.calls: list[StepJobRequest] = []
+
+    def execute(
+        self,
+        job_request: StepJobRequest,
+        *,
+        job_id: str,
+        started_at: datetime,
+    ) -> JobResult:
+        self.calls.append(job_request)
+        return JobResult(
+            job_id=job_id,
+            run_id=job_request.run_id,
+            counter_id=job_request.counter_id,
+            job_type=job_request.job_type,
+            started_at=started_at,
+            finished_at=started_at,
+            output_paths=("data/interim/Sebastopol_N-S_dvcrepro/initial.csv",),
+            manifest=ArtifactManifestReference(
+                artifact_type=ArtifactType.INTERIM_DATASET,
+                counter_id=job_request.counter_id,
+                run_id=job_request.run_id,
+                manifest_path=(
+                    "docker/prod/runtime/artifacts/manifests/"
+                    "interim_dataset/Sebastopol_N-S_dvcrepro/"
+                    "manual-run-001/manifest.json"
+                ),
+                current_path=(
+                    "docker/prod/runtime/artifacts/manifests/"
+                    "interim_dataset/Sebastopol_N-S_dvcrepro/"
+                    "current.json"
+                ),
+            ),
+            metrics=MetricsEvidence(records=12, metrics_pushed=False),
+        )
+
+
+class FailingExecutor:
+    """Test executor raising a controlled ML step failure."""
+
+    def execute(
+        self,
+        job_request: StepJobRequest,
+        *,
+        job_id: str,
+        started_at: datetime,
+    ) -> JobResult:
+        raise MlJobExecutionError(
+            code="INGEST_JOB_FAILED",
+            message="Raw input file was not found.",
+            retryable=True,
+        )
 
 
 @pytest.mark.integration
@@ -15,8 +82,23 @@ class TestJobRunnerApi:
     """Integration tests for typed job submission and status retrieval."""
 
     @pytest.fixture
-    def client(self) -> TestClient:
-        service = JobRunnerService(state=InMemoryJobState())
+    def executor(self) -> SuccessfulExecutor:
+        return SuccessfulExecutor()
+
+    @pytest.fixture
+    def client(self, executor: SuccessfulExecutor) -> TestClient:
+        service = JobRunnerService(
+            state=InMemoryJobState(),
+            executor=executor,
+        )
+        return TestClient(create_app(service=service))
+
+    @pytest.fixture
+    def failing_client(self) -> TestClient:
+        service = JobRunnerService(
+            state=InMemoryJobState(),
+            executor=FailingExecutor(),
+        )
         return TestClient(create_app(service=service))
 
     @pytest.fixture
@@ -50,9 +132,10 @@ class TestJobRunnerApi:
             "service": "job-runner-api",
         }
 
-    def test_valid_job_submission_returns_typed_queued_status(
+    def test_valid_job_submission_returns_succeeded_status(
         self,
         client: TestClient,
+        executor: SuccessfulExecutor,
         ingest_payload: dict,
     ):
         response = client.post("/jobs", json=ingest_payload)
@@ -63,13 +146,33 @@ class TestJobRunnerApi:
         assert body["run_id"] == ingest_payload["run_id"]
         assert body["counter_id"] == ingest_payload["counter_id"]
         assert body["job_type"] == "ingest"
-        assert body["state"] == "queued"
-        assert body["result"] is None
+        assert body["state"] == "succeeded"
+        assert body["result"]["output_paths"] == [
+            "data/interim/Sebastopol_N-S_dvcrepro/initial.csv",
+        ]
+        assert body["result"]["metrics"]["records"] == 12
+        assert body["result"]["manifest"] == {
+            "artifact_type": "interim_dataset",
+            "counter_id": ingest_payload["counter_id"],
+            "run_id": ingest_payload["run_id"],
+            "manifest_path": (
+                "docker/prod/runtime/artifacts/manifests/"
+                "interim_dataset/Sebastopol_N-S_dvcrepro/"
+                "manual-run-001/manifest.json"
+            ),
+            "current_path": (
+                "docker/prod/runtime/artifacts/manifests/"
+                "interim_dataset/Sebastopol_N-S_dvcrepro/current.json"
+            ),
+            "object_uri": None,
+        }
         assert body["error"] is None
+        assert len(executor.calls) == 1
 
     def test_valid_job_submission_is_idempotent(
         self,
         client: TestClient,
+        executor: SuccessfulExecutor,
         ingest_payload: dict,
     ):
         first_response = client.post("/jobs", json=ingest_payload)
@@ -78,6 +181,8 @@ class TestJobRunnerApi:
         assert first_response.status_code == 202
         assert second_response.status_code == 202
         assert second_response.json()["job_id"] == first_response.json()["job_id"]
+        assert second_response.json()["state"] == "succeeded"
+        assert len(executor.calls) == 1
 
     def test_invalid_job_submission_returns_validation_error(
         self,
@@ -92,7 +197,20 @@ class TestJobRunnerApi:
         assert response.status_code == 422
         assert "raw_path" in response.text
 
-    def test_status_retrieval_returns_current_status(
+    def test_pipeline_job_submission_is_not_exposed(
+        self,
+        client: TestClient,
+        ingest_payload: dict,
+    ):
+        payload = dict(ingest_payload)
+        payload["job_type"] = "pipeline"
+
+        response = client.post("/jobs", json=payload)
+
+        assert response.status_code == 422
+        assert "pipeline" in response.text
+
+    def test_status_retrieval_returns_current_terminal_status(
         self,
         client: TestClient,
         ingest_payload: dict,
@@ -104,6 +222,23 @@ class TestJobRunnerApi:
 
         assert response.status_code == 200
         assert response.json() == submit_response.json()
+
+    def test_failed_step_returns_structured_job_error(
+        self,
+        failing_client: TestClient,
+        ingest_payload: dict,
+    ):
+        response = failing_client.post("/jobs", json=ingest_payload)
+
+        assert response.status_code == 202
+        body = response.json()
+        assert body["state"] == "failed"
+        assert body["result"] is None
+        assert body["error"] == {
+            "code": "INGEST_JOB_FAILED",
+            "message": "Raw input file was not found.",
+            "retryable": True,
+        }
 
     def test_status_retrieval_returns_explicit_not_found(
         self,

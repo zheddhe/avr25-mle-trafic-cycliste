@@ -1,23 +1,63 @@
-"""Service layer for the internal job runner API skeleton."""
+"""Service layer for the internal job runner API."""
 
 from __future__ import annotations
 
 from src.job_runner.errors import JobNotFoundError
+from src.job_runner.executor import (
+    LocalMlJobExecutor,
+    MlJobExecutionError,
+    MlJobExecutor,
+)
 from src.job_runner.state import InMemoryJobState
-from src.pipeline.contracts.jobs import BasePipelineJobRequest
-from src.pipeline.contracts.statuses import JobStatus
+from src.ml.jobs.contracts import StepJobRequest
+from src.ml.jobs.status import JobError, JobState, JobStatus
 
 
 class JobRunnerService:
-    """Submit and expose local in-memory runner job statuses."""
+    """Submit, execute, and expose local in-memory runner job statuses."""
 
-    def __init__(self, state: InMemoryJobState | None = None) -> None:
+    def __init__(
+        self,
+        state: InMemoryJobState | None = None,
+        executor: MlJobExecutor | None = None,
+    ) -> None:
         self._state = state or InMemoryJobState()
+        self._executor = executor or LocalMlJobExecutor()
 
-    def submit_job(self, job_request: BasePipelineJobRequest) -> JobStatus:
-        """Submit a typed job request without starting real execution yet."""
+    def submit_job(self, job_request: StepJobRequest) -> JobStatus:
+        """Submit a typed ML step request and execute it synchronously."""
 
-        return self._state.submit(job_request)
+        status = self._state.submit(job_request)
+        if status.state != JobState.QUEUED:
+            return status
+
+        running_status = self._state.set_running(status.job_id)
+        try:
+            result = self._executor.execute(
+                job_request,
+                job_id=status.job_id,
+                started_at=running_status.updated_at,
+            )
+        except MlJobExecutionError as error:
+            return self._state.set_failed(
+                status.job_id,
+                JobError(
+                    code=error.code,
+                    message=error.message,
+                    retryable=error.retryable,
+                ),
+            )
+        except Exception as error:
+            return self._state.set_failed(
+                status.job_id,
+                JobError(
+                    code=f"{job_request.job_type.value.upper()}_JOB_FAILED",
+                    message=str(error),
+                    retryable=True,
+                ),
+            )
+
+        return self._state.set_succeeded(status.job_id, result)
 
     def get_job_status(self, job_id: str) -> JobStatus:
         """Return the current job status or raise an explicit not-found error."""

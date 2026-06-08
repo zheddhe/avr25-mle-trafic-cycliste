@@ -1,4 +1,4 @@
-"""Unit tests for typed pipeline job status contracts."""
+"""Unit tests for typed ML job status contracts."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from src.pipeline.contracts.jobs import PipelineJobType
-from src.pipeline.contracts.statuses import (
+from src.ml.jobs.contracts import MlJobType
+from src.ml.jobs.status import (
     TERMINAL_JOB_STATES,
     JobError,
     JobResult,
@@ -60,11 +60,11 @@ class TestJobStatus:
                 "state": "pending",
                 "requested_at": "2026-06-07T17:00:00Z",
                 "updated_at": "2026-06-07T17:00:00Z",
-            }
+            },
         )
 
         assert status.state == JobState.PENDING
-        assert status.job_type == PipelineJobType.INGEST
+        assert status.job_type == MlJobType.INGEST
         assert status.result is None
         assert status.error is None
 
@@ -78,11 +78,11 @@ class TestJobStatus:
                 "state": "running",
                 "requested_at": "2026-06-07T17:00:00Z",
                 "updated_at": "2026-06-07T17:01:00Z",
-            }
+            },
         )
 
         assert status.state == JobState.RUNNING
-        assert status.job_type == PipelineJobType.FEATURES
+        assert status.job_type == MlJobType.FEATURES
 
     def test_succeeded_status_requires_and_accepts_result(self, result_payload):
         status = JobStatus.model_validate(
@@ -95,7 +95,7 @@ class TestJobStatus:
                 "requested_at": "2026-06-07T17:00:00Z",
                 "updated_at": "2026-06-07T17:05:00Z",
                 "result": result_payload,
-            }
+            },
         )
 
         assert status.state == JobState.SUCCEEDED
@@ -109,7 +109,7 @@ class TestJobStatus:
                 "job_id": "job-001",
                 "run_id": "manual-run-001",
                 "counter_id": "Sebastopol_N-S_dvcrepro",
-                "job_type": "pipeline",
+                "job_type": "models",
                 "state": "failed",
                 "requested_at": "2026-06-07T17:00:00Z",
                 "updated_at": "2026-06-07T17:03:00Z",
@@ -118,7 +118,7 @@ class TestJobStatus:
                     "message": "Model execution failed.",
                     "retryable": True,
                 },
-            }
+            },
         )
 
         assert status.state == JobState.FAILED
@@ -136,7 +136,7 @@ class TestJobStatus:
                     "state": "failed",
                     "requested_at": "2026-06-07T17:00:00Z",
                     "updated_at": "2026-06-07T17:03:00Z",
-                }
+                },
             )
 
     def test_succeeded_status_without_result_raises_validation_error(self):
@@ -150,7 +150,7 @@ class TestJobStatus:
                     "state": "succeeded",
                     "requested_at": "2026-06-07T17:00:00Z",
                     "updated_at": "2026-06-07T17:03:00Z",
-                }
+                },
             )
 
     def test_non_terminal_status_with_result_raises_validation_error(
@@ -168,7 +168,7 @@ class TestJobStatus:
                     "requested_at": "2026-06-07T17:00:00Z",
                     "updated_at": "2026-06-07T17:03:00Z",
                     "result": result_payload,
-                }
+                },
             )
 
     def test_result_rejects_reversed_timestamps(self, result_payload):

@@ -1,4 +1,4 @@
-"""In-memory job state used by the first internal runner skeleton."""
+"""In-memory job state used by the internal runner."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from threading import Lock
 
-from src.pipeline.contracts.jobs import BasePipelineJobRequest
-from src.pipeline.contracts.statuses import JobState, JobStatus
+from src.ml.jobs.contracts import StepJobRequest
+from src.ml.jobs.status import JobError, JobResult, JobState, JobStatus
 
 _ID_PART_PATTERN = re.compile(r"[^a-zA-Z0-9_.-]+")
 _MAX_JOB_ID_SLUG_LENGTH = 48
@@ -30,7 +30,7 @@ def _slugify(value: str) -> str:
     return slug[:_MAX_JOB_ID_SLUG_LENGTH]
 
 
-def build_idempotency_key(job_request: BasePipelineJobRequest) -> str:
+def build_idempotency_key(job_request: StepJobRequest) -> str:
     """Build the stable submission key for a typed job request."""
 
     if job_request.job_id:
@@ -47,7 +47,7 @@ def build_idempotency_key(job_request: BasePipelineJobRequest) -> str:
     return "|".join(key_parts)
 
 
-def build_job_id(job_request: BasePipelineJobRequest) -> str:
+def build_job_id(job_request: StepJobRequest) -> str:
     """Build an explicit, deterministic runner job id."""
 
     if job_request.job_id:
@@ -69,7 +69,7 @@ class InMemoryJobState:
         self._statuses_by_id: dict[str, JobStatus] = {}
         self._job_ids_by_idempotency_key: dict[str, str] = {}
 
-    def submit(self, job_request: BasePipelineJobRequest) -> JobStatus:
+    def submit(self, job_request: StepJobRequest) -> JobStatus:
         """Record a typed job request and return its queued status."""
 
         job_id = build_job_id(job_request)
@@ -93,15 +93,59 @@ class InMemoryJobState:
                 job_type=job_request.job_type,
                 state=JobState.QUEUED,
                 requested_at=job_request.requested_at,
-                updated_at=utc_now(),
+                updated_at=max(utc_now(), job_request.requested_at),
             )
             self._statuses_by_id[job_id] = status
             self._job_ids_by_idempotency_key[idempotency_key] = job_id
 
             return status
 
+    def set_running(self, job_id: str) -> JobStatus:
+        """Record that execution started for a queued job."""
+
+        return self._transition(job_id=job_id, state=JobState.RUNNING)
+
+    def set_succeeded(self, job_id: str, result: JobResult) -> JobStatus:
+        """Record a successful terminal status with result evidence."""
+
+        return self._transition(
+            job_id=job_id,
+            state=JobState.SUCCEEDED,
+            result=result,
+        )
+
+    def set_failed(self, job_id: str, error: JobError) -> JobStatus:
+        """Record a failed terminal status with structured error details."""
+
+        return self._transition(job_id=job_id, state=JobState.FAILED, error=error)
+
     def get(self, job_id: str) -> JobStatus | None:
         """Return a stored job status when the id exists."""
 
         with self._lock:
             return self._statuses_by_id.get(job_id)
+
+    def _transition(
+        self,
+        *,
+        job_id: str,
+        state: JobState,
+        result: JobResult | None = None,
+        error: JobError | None = None,
+    ) -> JobStatus:
+        with self._lock:
+            current = self._statuses_by_id[job_id]
+            status = JobStatus(
+                job_id=current.job_id,
+                run_id=current.run_id,
+                counter_id=current.counter_id,
+                job_type=current.job_type,
+                state=state,
+                requested_at=current.requested_at,
+                updated_at=max(utc_now(), current.updated_at),
+                result=result,
+                error=error,
+            )
+            self._statuses_by_id[job_id] = status
+
+            return status
