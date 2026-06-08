@@ -25,11 +25,15 @@ RUN groupadd --gid "${APP_GID}" app && \
         /app/logs \
         /app/src/artifacts \
         /app/src/metrics \
-        /app/src/ml/ingest && \
+        /app/src/ml/ingest \
+        /app/src/ml/jobs \
+        /app/src/ml/services && \
     chown -R app:app /app
 
 COPY src/artifacts /app/src/artifacts
 COPY src/metrics /app/src/metrics
+COPY src/ml/jobs /app/src/ml/jobs
+COPY src/ml/services /app/src/ml/services
 COPY src/ml/ingest/artifact_manifest_emission.py \
      /app/src/ml/ingest/artifact_manifest_emission.py
 COPY src/ml/ingest/ingest_utils.py /app/src/ml/ingest/ingest_utils.py
@@ -37,4 +41,11 @@ COPY src/ml/ingest/import_raw_data.py /app/src/ml/ingest/import_raw_data.py
 
 USER app
 
-ENTRYPOINT ["python", "-m", "src.ml.ingest.import_raw_data"]
+CMD [
+    "uvicorn",
+    "src.ml.services.ingest_main:app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "10081"
+]
