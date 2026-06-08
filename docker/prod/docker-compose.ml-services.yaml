@@ -3,6 +3,12 @@
 # This overlay turns ML images into long-lived internal FastAPI services and
 # keeps job-runner-api as the only Airflow-facing execution boundary.
 
+x-prod-airflow-volumes: &prod-airflow-volumes
+  - ./runtime/logs/airflow:/opt/airflow/logs
+  - ./runtime/data:/opt/airflow/data
+  - ./airflow/dags:/opt/airflow/dags:ro
+  - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
+
 services:
   ml-ingest-prod:
     command: null
@@ -58,3 +64,18 @@ services:
       ML_INGEST_SERVICE_URL: http://ml-ingest-prod:10081
       ML_FEATURES_SERVICE_URL: http://ml-features-prod:10082
       ML_MODELS_SERVICE_URL: http://ml-models-prod:10083
+
+  airflow-api-server:
+    volumes: *prod-airflow-volumes
+
+  airflow-scheduler:
+    volumes: *prod-airflow-volumes
+
+  airflow-dag-processor:
+    volumes: *prod-airflow-volumes
+
+  airflow-worker:
+    volumes: *prod-airflow-volumes
+
+  airflow-triggerer:
+    volumes: *prod-airflow-volumes
