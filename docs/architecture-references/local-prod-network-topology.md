@@ -1,9 +1,8 @@
 # Local production-like network topology
 
-This document describes the implemented `docker/prod` functional network topology
-after Phase 7. It started as the Phase 7 design artifact for issue #55 and now
-acts as the reference for current production-like Compose service placement and
-for Phase 8 service additions.
+This document describes the implemented `docker/prod` functional network
+topology. It is the reference for current production-like Compose service
+placement.
 
 `docker/dev` intentionally keeps its broader development-oriented network model.
 `docker/prod` uses bounded functional domains instead of the broad development
@@ -14,10 +13,9 @@ for Phase 8 service additions.
 | Document | Role |
 | -------- | ---- |
 | [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Operational runtime guide and workspace ownership. |
-| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and Phase 8 additions. |
+| [`runtime-communication-matrix.md`](runtime-communication-matrix.md) | Current service traffic and communication paths. |
 | [`runtime-security-boundaries.md`](runtime-security-boundaries.md) | Runtime identities and security boundaries. |
-| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Phase 8 artifact handoff contract. |
-| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Phase 8 runner execution target. |
+| [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Host exposure and internal-only service inventory. |
 
 ## Design principle
 
@@ -30,24 +28,21 @@ A network is justified when at least one of these statements is true:
 - it protects stateful backend services such as PostgreSQL, Redis, or MinIO;
 - it represents a stable many-to-one communication pattern such as monitoring;
 - it separates local-development support services from production-like runtime services;
-- it carries privileged or controlled job-execution concerns such as the future
-  runner API and typed workers.
+- it carries controlled job-execution concerns such as typed runner API access.
 
 ## Implemented `docker/prod` networks
 
-| Network | Responsibility | Current members or expected members |
-| ------- | -------------- | ----------------------------------- |
+| Network | Responsibility | Current members |
+| ------- | -------------- | --------------- |
 | `orchestration_net` | Airflow control plane, metadata DB, broker, and internal Airflow execution API. | Airflow API, scheduler, DAG processor, triggerer, worker, init, PostgreSQL, Redis. |
-| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, batch jobs, and batch metric writes. | Airflow worker, API, ML jobs, Pushgateway, future `job-runner-api`. |
+| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, runner API, batch jobs, and batch metric writes. | Airflow worker, API, job runner API, ML jobs, Pushgateway. |
 | `tracking_client_net` | MLflow client API calls from ML workloads. | ML jobs and `mlflow-server`. |
 | `tracking_backend_net` | Private MLflow metadata and artifact backends. | `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`. |
-| `observability_net` | Monitoring, dashboard, alert routing, and scrape access to selected metric endpoints. | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics endpoint, selected exporters. |
+| `observability_net` | Monitoring, dashboard, alert routing, and scrape access to selected metric endpoints. | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics endpoint. |
 | `dev_support_net` | Local support services that should not be part of the production-like core. | MailHog, Airflow services that send local email, Alertmanager in local email mode. |
 
-`artifact_handoff_net` is not implemented. The current Phase 8 handoff strategy
-uses manifests that reference local runtime paths and optional MinIO object URIs.
-Introduce a dedicated artifact network only if a future object-store or promotion
-service needs a separate boundary.
+`artifact_handoff_net` is not implemented. The current handoff strategy uses
+manifests that reference local runtime paths and optional MinIO object URIs.
 
 ## Gateway services
 
@@ -56,9 +51,8 @@ accidental broad-network members; they bridge bounded domains.
 
 | Service | Networks | Gateway role |
 | ------- | -------- | ------------ |
-| `airflow-worker` | `orchestration_net`, `pipeline_runtime_net`, `dev_support_net` | Runs orchestration tasks and, after Phase 8, submits work to the runner API. |
-| future `job-runner-api` | `pipeline_runtime_net`, optional `observability_net` | Accepts typed job submissions and exposes runner health/metrics internally. |
-| future typed ML workers | `pipeline_runtime_net`, plus `tracking_client_net` for model workers | Execute allowed business jobs without exposing Docker runtime control to Airflow. |
+| `airflow-worker` | `orchestration_net`, `pipeline_runtime_net`, `dev_support_net` | Runs orchestration tasks and reaches runtime services that are part of pipeline control. |
+| `job-runner-api` | `pipeline_runtime_net` | Accepts typed job submissions and exposes internal job status reads. |
 | `api-dev` | `pipeline_runtime_net`, `observability_net` | Receives refresh calls and exposes metrics. Host publication remains local ingress. |
 | `mlflow-server` | `tracking_client_net`, `tracking_backend_net`, `observability_net` | Accepts MLflow client calls and owns backend access to PostgreSQL and MinIO. |
 | `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receives batch metrics writes and exposes them for Prometheus scrape. |
@@ -94,26 +88,12 @@ into `docker/prod`.
 | Airflow services | `airflow-redis` | `airflow-redis` | `6379` | `orchestration_net` | Celery broker. |
 | Airflow services | `airflow-api-server` | `airflow-api-server` | `8080` | `orchestration_net` | Internal Airflow execution API. |
 | Airflow DAG tasks | `api-dev` | `api-dev` | `10000` | `pipeline_runtime_net` | Authenticated API refresh after successful DAG runs. |
+| Local runner API callers | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed job submission and status reads. |
 | ML jobs | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `pipeline_runtime_net` | Push batch job metrics. |
 | ML jobs | `mlflow-server` | `mlflow-server` | `5000` | `tracking_client_net` | Log runs, metrics, params, and artifacts. |
 | `mlflow-server` | `mlflow-postgres` | `mlflow-postgres` | `5432` | `tracking_backend_net` | MLflow backend store. |
 | `mlflow-server` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | MLflow artifact store. |
 | `mlflow-mc-init` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | Bootstrap the MLflow bucket. |
-
-## Phase 8 additions
-
-Phase 8 should place new services according to these rules:
-
-- `job-runner-api` belongs on `pipeline_runtime_net` and should not be published
-  to the host by default.
-- Runner health or metrics may be attached to `observability_net` if Prometheus
-  needs to scrape them.
-- Typed ML workers should attach only to the networks required for their stage.
-- Model workers may attach to `tracking_client_net`; ingest and feature workers
-  should not receive MLflow or MinIO access unless they need it.
-- Artifact handoff should follow
-  [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md)
-  before introducing any new network.
 
 ## Services that should not share a broad network
 
@@ -129,6 +109,8 @@ network:
 - MailHog should remain local-support-only.
 - `api-dev` should not share Airflow metadata, Redis, MLflow backend, or MinIO
   backend networks.
+- `job-runner-api` should not join tracking or backend networks while it only
+  validates requests and stores in-memory status.
 - Docker socket access should not be introduced in the production-like runtime.
 
 ## Topology sketch
@@ -137,15 +119,17 @@ network:
 flowchart LR
     airflow[Airflow services] --> airflow_db[(airflow-postgres)]
     airflow --> airflow_redis[(airflow-redis)]
-    airflow --> runner[Future job-runner-api]
-    runner --> api[api-dev]
-    runner --> jobs[Typed ML workers]
+    airflow_worker[airflow-worker] --- pipeline[pipeline_runtime_net]
+
+    pipeline --- runner[job-runner-api]
+    pipeline --- api[api-dev]
+    pipeline --- jobs[ML job services]
+    pipeline --- pushgateway[monitoring-pushgateway]
 
     jobs --> mlflow[mlflow-server]
     mlflow --> mlflow_db[(mlflow-postgres)]
     mlflow --> minio[(mlflow-minio)]
 
-    jobs --> pushgateway[monitoring-pushgateway]
     pushgateway --> prometheus[monitoring-prometheus]
     api --> prometheus
     prometheus --> grafana[monitoring-grafana]
@@ -155,7 +139,7 @@ flowchart LR
 
 ## Validation
 
-Network validation is expected through the runtime configuration and future smoke
+Network validation is expected through the runtime configuration and local smoke
 checks:
 
 ```bash
@@ -164,6 +148,6 @@ make prod-start
 make prod-ps
 ```
 
-A dedicated production-like smoke target is tracked by Phase 8 and should verify
-runner reachability, API metrics scraping, artifact manifest availability, and the
-absence of Docker socket mounts in production-like Airflow services.
+The production-like network config should show `job-runner-api` on
+`pipeline_runtime_net` without host-published ports, Docker socket mounts,
+tracking backend access, or Airflow metadata network access.

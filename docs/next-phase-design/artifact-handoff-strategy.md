@@ -1,16 +1,20 @@
 # Hybrid artifact handoff strategy
 
-This document is the canonical Phase 8 artifact handoff reference. It defines
-how generated artifacts are described, promoted, and consumed through explicit
-manifests instead of implicit latest-file discovery.
+This document coordinates the active artifact handoff design for generated ML
+artifacts. It defines how artifacts are described, promoted, and consumed through
+explicit manifests instead of implicit latest-file discovery.
+
+Current runtime and architecture placement are documented in
+`current-runtime-and-operations/` and `architecture-references/`. This document
+keeps the handoff contract, current coverage, and open artifact-specific gaps.
 
 Implementation details are intentionally split into smaller documents:
 
 | Document | Responsibility |
 | -------- | -------------- |
-| [`artifact-manifest-models.md`](artifact-manifest-models.md) | Implemented Pydantic manifest contract from issue #64. |
-| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented checksum, manifest store, and `current.json` promotion helpers from issue #65. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Runner and Airflow execution target for the remaining Phase 8 stories. |
+| [`artifact-manifest-models.md`](artifact-manifest-models.md) | Implemented Pydantic manifest contract. |
+| [`artifact-manifest-store.md`](artifact-manifest-store.md) | Implemented checksum, manifest store, and `current.json` promotion helpers. |
+| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Runner execution design and open orchestration gaps. |
 
 ## Decision summary
 
@@ -20,19 +24,16 @@ The project uses a hybrid manifest-first strategy:
 2. `docker/prod/runtime` remains the first local production-like backend.
 3. Optional MinIO object URIs can be recorded when an artifact is also available
    through S3-compatible object storage.
-4. The API, Airflow, and the future runner must consume manifests instead of
+4. The API, Airflow, and runner path must consume manifests instead of
    discovering files through implicit `latest` conventions.
 5. Development and DVC workspaces stay separate from production-like generated
    runtime artifacts.
 
-This hybrid decision keeps Phase 8 incremental. The project can validate the
-production-like runtime with local bind-mounted artifacts first, while keeping a
-stable contract that can later point to MinIO without changing every consumer.
+This hybrid decision keeps the active phase incremental. The project can validate
+the production-like runtime with local bind-mounted artifacts first, while keeping
+a stable contract that can later point to MinIO without changing every consumer.
 
 ## Current coverage summary
-
-The Phase 8 foundation is now implemented, but the production-like execution path
-is not complete yet.
 
 Implemented:
 
@@ -41,17 +42,18 @@ Implemented:
   `current.json` replacement;
 - local manifest emission wrappers for ingest, features, and model jobs;
 - typed pipeline request and status contracts under `src/pipeline/contracts`;
+- internal runner API boundary under `src/job_runner`;
 - production-like runtime mounts for generated data and artifact manifests;
 - production-like Airflow services without `/var/run/docker.sock`.
 
-Remaining before the Phase 8 goal is operational end-to-end:
+Open artifact handoff gaps:
 
-- internal `job-runner-api` skeleton;
 - runner execution of typed ML jobs;
 - production-like Airflow DAG path calling the runner;
 - API serving from promoted prediction manifests;
 - production-like smoke validation using realistic test fixtures;
-- configuration and placeholder hardening.
+- configuration and placeholder hardening;
+- optional MinIO upload, download, and checksum verification helpers.
 
 The MinIO part is contract-compatible today through optional `s3://` object URIs.
 It is not yet a functional upload, download, verification, or primary serving
@@ -65,7 +67,7 @@ backend.
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | Repository path ownership and DVC boundary. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Local host exposure and internal-only MinIO policy. |
 | [`../current-runtime-and-operations/dependency-strategy.md`](../current-runtime-and-operations/dependency-strategy.md) | MLflow, MinIO, and runtime dependency compatibility. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Target runner and worker-pool execution model. |
+| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Runner and worker-pool execution model. |
 
 ## Why manifest-first
 
@@ -169,9 +171,9 @@ s3://<bucket>/artifacts/<artifact_type>/<counter_id>/<run_id>/<file_name>
 Credentials, endpoint URLs, and access keys must remain runtime configuration and
 must not be embedded in manifests.
 
-Current limitation: object URIs are metadata only. Phase 8 does not yet implement
-artifact upload, download, checksum verification against object storage, or
-object-storage-first API serving.
+Current limitation: object URIs are metadata only. The active phase does not yet
+implement artifact upload, download, checksum verification against object
+storage, or object-storage-first API serving.
 
 ## Identifier conventions
 
@@ -260,34 +262,34 @@ The implemented details and explicit exceptions are documented in
 | MLflow | Track runs, metrics, parameters, and model evidence. |
 | MinIO | Optionally store object-backed artifact payloads. |
 | API | Read `current.json`, validate metadata, serve the referenced artifact. |
-| Prometheus/Grafana | Observe freshness, job status, and current artifact metadata later. |
+| Prometheus/Grafana | Observe freshness, job status, and current artifact metadata. |
 
 The contract deliberately keeps Airflow out of low-level filesystem discovery and
 keeps the API out of training job internals.
 
-## Phase 8 implementation status and remaining plan
+## Implementation progress
 
-| Step | Story | Status | Owner document |
-| ---- | ----- | ------ | -------------- |
-| Define artifact handoff vocabulary. | #63 | Done | This document. |
-| Add strict Pydantic manifest models. | #64 | Done | [`artifact-manifest-models.md`](artifact-manifest-models.md) |
-| Add checksum, write, read, and promotion helpers. | #65 | Done | [`artifact-manifest-store.md`](artifact-manifest-store.md) |
-| Make ML jobs emit local manifests. | #66 | Done | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Add typed job contracts. | #67 | Done | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Add the internal `job-runner-api` skeleton. | #68 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Execute typed ML jobs through the runner. | #69 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Add production-like Airflow DAG using the runner. | #70 | Remaining | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
-| Make the API load the promoted local manifest. | #71 | Remaining | Future API implementation note. |
-| Add production-like smoke validation. | #72 | Remaining | Future smoke validation note. |
-| Harden runtime configuration and secrets validation. | #73 | Remaining | Future runtime hardening note. |
-| Strengthen realistic Phase 8 test coverage. | Follow-up technical debt | Remaining | Future test-fixture issue. |
-| Add optional MinIO upload/download helpers. | Later | Remaining | Future object-storage implementation note. |
-| Switch `primary_backend` to object storage. | Later | Deferred | Requires API and runner support first. |
+| Capability | Status | Owner document |
+| ---------- | ------ | -------------- |
+| Define artifact handoff vocabulary. | Done | This document. |
+| Add strict Pydantic manifest models. | Done | [`artifact-manifest-models.md`](artifact-manifest-models.md) |
+| Add checksum, write, read, and promotion helpers. | Done | [`artifact-manifest-store.md`](artifact-manifest-store.md) |
+| Make ML jobs emit local manifests. | Done | This document and service wrappers. |
+| Add typed job contracts. | Done | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Add the internal runner API boundary. | Done as skeleton | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Execute typed ML jobs through the runner. | Open | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Add production-like Airflow DAG using the runner. | Open | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) |
+| Make the API load the promoted local manifest. | Open | API implementation notes. |
+| Add production-like smoke validation. | Open | Validation notes. |
+| Harden runtime configuration and secrets validation. | Open | Runtime hardening notes. |
+| Strengthen realistic phase test coverage. | Open | Test-fixture notes. |
+| Add optional MinIO upload/download helpers. | Open | Object-storage implementation notes. |
+| Switch `primary_backend` to object storage. | Deferred | Requires API and runner support first. |
 
 ## Known technical and functional debt
 
-The remaining stories should not aim for a perfect production platform. They
-should leave explicit debt where Phase 8 deliberately stays incremental:
+The remaining work should leave explicit debt where the active phase deliberately
+stays incremental:
 
 - realistic integration fixtures derived from the real raw-data schema are still
   needed;
@@ -302,7 +304,7 @@ should leave explicit debt where Phase 8 deliberately stays incremental:
 
 ## Out of scope for the current implementation wave
 
-The current Phase 8 implementation wave does not implement:
+The current implementation wave does not implement:
 
 - object-storage-first serving;
 - production secret management;

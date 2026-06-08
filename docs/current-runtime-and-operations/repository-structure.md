@@ -26,10 +26,10 @@ development and local production-like validation.
 | `.env` | Local-only runtime values created from `.env.template`. |
 | `pyproject.toml` | Local Python dependency groups and tooling configuration. |
 | `uv.lock` | Versioned uv lockfile for reproducible local validation. |
-| `src/` | Reusable FastAPI, ML, feature, model, metrics, and pipeline code. |
+| `src/` | Reusable FastAPI, ML, feature, model, metrics, runner, and pipeline code. |
 | `tests/` | Unit, integration, and regression tests. |
 | `docker/` | Dockerfiles, runtime config, Airflow DAG wiring, and service helpers. |
-| `docs/` | Current runtime docs, architecture references, and next phase design docs. |
+| `docs/` | Current runtime docs, architecture references, and active design docs. |
 | `data/` | Development/DVC data workspace and root source input. |
 | `models/` | Development/DVC model and forecast artifact workspace. |
 | `logs/` | Development local runtime logs. |
@@ -74,15 +74,19 @@ reproduced.
 
 `src/` is the right place for reusable Python logic that should be importable and
 testable outside a specific Docker Compose service. This includes FastAPI code,
-ML ingestion, feature engineering, model training, prediction, metrics, and
-shared pipeline helpers.
+ML ingestion, feature engineering, model training, prediction, metrics, the
+runner API, and shared pipeline helpers.
+
+The runner API lives under `src/job_runner/` because it is reusable application
+logic with API tests. It uses the framework-neutral pipeline contracts from
+`src/pipeline/contracts/` instead of redefining job request and status schemas.
 
 Airflow DAGs under `docker/dev/airflow/dags/` are runtime integration assets.
 They are coupled to local Airflow variables, connections, DockerOperator
 settings, service names, mounted paths, and the current worker model. They should
 not be moved into `src/` unless a separate packaging decision is made.
 
-DAG placement may differ between `docker/dev` and `docker/prod` if operators,
+DAG placement may differ between `docker/dev` and `docker/prod` when operators,
 worker pools, queue names, image names, or artifact handoff mechanisms diverge.
 
 ## Docker runtime layout
@@ -113,11 +117,13 @@ runtime folders for the newest files.
 
 ## Documentation areas
 
+The documentation level rules are defined in [`../README.md`](../README.md).
+
 | Area | Responsibility |
 | ---- | -------------- |
 | `docs/current-runtime-and-operations/` | Runtime operation, port inventory, dependency policy, and repository ownership. |
 | `docs/architecture-references/` | Communication, security, and implemented network topology. |
-| `docs/next-phase-design/` | Phase 8 target contracts and implementation strategy. |
+| `docs/next-phase-design/` | Active design notes and open implementation coordination. |
 | `references/` | Static diagrams, exports, and explanatory assets. |
 
 Architecture documentation, operations documentation, dependency strategy,
@@ -182,22 +188,6 @@ The current ignore strategy is consistent with this structure:
 - `docker/prod/runtime/.gitignore` keeps production-like runtime outputs out of
   Git and DVC ownership.
 
-There is no root `.dockerignore` at the time of this review. Adding one should be
-validated separately because current image build contexts rely on repository root
+There is no root `.dockerignore` at the time of this review. Adding one requires
+validation because current image build contexts rely on repository root
 visibility.
-
-## Migration strategy
-
-Phase 7 completed the structural runtime split:
-
-1. `docker/dev` is the stable local development runtime.
-2. `docker/prod` is the local production-like validation runtime.
-3. Root `data`, `logs`, and `models` remain dev/DVC-owned.
-4. Production-like generated outputs stay under `docker/prod/runtime`.
-
-Follow-up work should continue with:
-
-1. Use the artifact handoff contract before reducing remaining local runtime mounts.
-2. Decide whether Airflow DAGs need separate dev and prod placement.
-3. Introduce `docker/common` only when concrete shared assets justify it.
-4. Update diagrams and operations docs after the target runtime is validated.
