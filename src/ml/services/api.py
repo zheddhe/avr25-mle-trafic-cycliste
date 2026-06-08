@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Body, FastAPI, HTTPException, status
 
-from src.ml.jobs.contracts import MlJobType, StepJobRequest, StepJobRequestPayload
+from src.ml.jobs.contracts import MlJobType, StepJobRequest
 from src.ml.jobs.execution import MlStepExecutionError, StepCommandExecutor
 from src.ml.jobs.status import JobError, JobState, JobStatus, utc_now
 
@@ -19,6 +20,11 @@ OPENAPI_TAGS = [
         "name": "Jobs",
         "description": "Internal typed ML step execution endpoint.",
     },
+]
+
+JobRequestBody = Annotated[
+    StepJobRequest,
+    Body(discriminator="job_type"),
 ]
 
 
@@ -124,7 +130,7 @@ def create_app(
         status_code=status.HTTP_200_OK,
         tags=["Jobs"],
     )
-    def submit_job(job_request: StepJobRequestPayload) -> JobStatus:
+    def submit_job(job_request: JobRequestBody) -> JobStatus:
         if job_request.job_type != job_type:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
