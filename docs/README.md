@@ -57,6 +57,7 @@ Use these documents when implementing or reviewing the active MLOps phase.
 | [`next-phase-design/artifact-manifest-models.md`](next-phase-design/artifact-manifest-models.md) | Implemented Pydantic artifact manifest models and validation rules. |
 | [`next-phase-design/artifact-manifest-store.md`](next-phase-design/artifact-manifest-store.md) | Implemented artifact checksum, manifest write, read, and promotion helpers. |
 | [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md) | Runner-based Airflow execution design, implemented API boundary, and remaining execution path. |
+| [`next-phase-design/ml-step-runner-boundary.md`](next-phase-design/ml-step-runner-boundary.md) | Phase 8 boundary correction: Airflow orchestrates ML steps while the runner executes one typed step at a time. |
 
 ## Reading order
 
@@ -72,6 +73,7 @@ For active phase implementation, read:
 1. [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md)
 2. [`next-phase-design/artifact-manifest-models.md`](next-phase-design/artifact-manifest-models.md)
 3. [`next-phase-design/artifact-manifest-store.md`](next-phase-design/artifact-manifest-store.md)
-4. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
-5. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
-6. The GitHub issue for the current implementation task.
+4. [`next-phase-design/ml-step-runner-boundary.md`](next-phase-design/ml-step-runner-boundary.md)
+5. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
+6. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+7. The GitHub issue for the current implementation task.
