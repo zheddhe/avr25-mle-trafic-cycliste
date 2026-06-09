@@ -1,7 +1,7 @@
 # tests/api/test_schemas.py
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.api.schemas import (
     ArtifactSourceMetadata,
@@ -47,7 +47,7 @@ class TestApiSchemas:
         assert response.item[0].y_pred == 120.5
 
     def test_current_artifact_metadata_serializes_sanitized_manifest(self) -> None:
-        created_at = datetime(2026, 6, 6, 14, 0, tzinfo=timezone.utc)
+        created_at = datetime(2026, 6, 6, 14, 0, tzinfo=UTC)
         metadata = CurrentArtifactMetadata(
             counter_id="Sebastopol_N-S",
             run_id="run-1",
