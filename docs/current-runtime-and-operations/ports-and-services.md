@@ -49,7 +49,7 @@ than the local production-like runtime.
 
 | Variable | Default | Service | Internal port | Reason |
 | -------- | ------- | ------- | ------------- | ------ |
-| `API_HOST_PORT` | `10000` | `api-dev` | `10000` | FastAPI prediction API and OpenAPI docs. |
+| `API_HOST_PORT` | `10000` | `api-prod` | `10000` | FastAPI prediction API and OpenAPI docs. |
 | `AIRFLOW_HOST_PORT` | `12080` | `airflow-api-server` | `8080` | Airflow UI and API for local DAG operations. |
 | `MLFLOW_HOST_PORT` | `13001` | `mlflow-server` | `5000` | MLflow tracking UI and host-side MLflow clients. |
 | `GRAFANA_HOST_PORT` | `14300` | `monitoring-grafana` | `3000` | Grafana dashboards. |
