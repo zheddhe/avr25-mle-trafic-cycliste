@@ -8,6 +8,16 @@ runtime assets, and direct inspection of local service UIs. The production-like
 runtime optimizes for stricter local operation, reduced host exposure, functional
 networks, non-root custom application images, and isolated runtime workspaces.
 
+Both Compose runtimes keep their operational outputs under runtime-scoped
+workspaces:
+
+- `docker/dev/runtime` for Airflow-driven development operations;
+- `docker/prod/runtime` for local production-like validation.
+
+Root `data`, `models`, and `logs` remain the local experimentation and DVC
+workspaces. This separation prevents routine Compose runs from polluting the DVC
+or notebook-oriented workspace.
+
 ## When to use each runtime
 
 | Runtime | Entry point | Primary use |
@@ -15,8 +25,13 @@ networks, non-root custom application images, and isolated runtime workspaces.
 | Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
 | Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, isolated runtime workspaces, internal runner API checks, and monitoring smoke checks. |
 
-Use `docker/dev` when iterating on DAGs, ML CLI containers, root-level DVC data,
-logs, or model outputs.
+Use `docker/dev` when iterating on DAGs, ML CLI containers, service wiring, and
+Airflow-driven operational behavior. Its DAG path mounts `docker/dev/runtime` so
+that Compose-generated data, logs, and models stay isolated from root DVC
+workspaces.
+
+Use root Python, DVC, notebooks, or explicit local scripts when iterating on
+reproducible experimentation assets under root `data`, `models`, and `logs`.
 
 Use `docker/prod` when validating implemented service boundaries, reduced host
 exposure, non-root application containers, internal service discovery, runner API
@@ -68,8 +83,17 @@ make prod-clean
 ## Runtime workspace strategy
 
 The root `data`, `models`, and `logs` folders are development, DVC, and
-host-local workspaces. They are used by the development runtime and by local
-Python/DVC commands.
+host-local experimentation workspaces. They are used by local Python commands,
+DVC reproduction, notebooks, and ad hoc developer exploration.
+
+The Airflow-driven development runtime writes operational outputs to ignored
+runtime workspaces under `docker/dev/runtime`:
+
+| Path | Purpose |
+| ---- | ------- |
+| `docker/dev/runtime/data` | Development Compose generated data workspace. |
+| `docker/dev/runtime/models` | Development Compose model workspace. |
+| `docker/dev/runtime/logs` | Development Compose service and batch log workspace. |
 
 The local production-like runtime writes to ignored runtime workspaces under
 `docker/prod/runtime`:
@@ -88,8 +112,9 @@ workspace into the production-like ingestion service as read-only input:
 data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
 ```
 
-This keeps DVC ownership local to the root workspace while allowing `docker/prod`
-to run without writing into root `data`, `models`, or `logs`.
+This keeps DVC ownership local to the root workspace while allowing Compose
+runtimes to run without writing routine operational outputs into root `data`,
+`models`, or `logs`.
 
 ## Production-like service boundary
 
@@ -182,7 +207,10 @@ Alertmanager, MailHog, cAdvisor, Redis, and PostgreSQL services stay internal in
 
 | Mount | Runtime | Status | Reason |
 | ----- | ------- | ------ | ------ |
-| Root `data`, `models`, `logs` | Dev | Writable | Debug visibility, local DVC, and current DockerOperator jobs. |
+| Root `data`, `models`, `logs` | Local Python/DVC | Writable | Reproducible experimentation and notebook-oriented local work. |
+| `docker/dev/runtime/data` | Dev | Writable | Airflow-driven development generated data workspace. |
+| `docker/dev/runtime/models` | Dev | Writable | Airflow-driven development model workspace. |
+| `docker/dev/runtime/logs` | Dev | Writable | Development Compose service and batch log workspace. |
 | Root source CSV | Prod | Read-only | Required business input for ingestion. |
 | `docker/prod/runtime/data` | Prod | Writable | Production-like generated data workspace. |
 | `docker/prod/runtime/models` | Prod | Writable | Production-like model workspace. |
