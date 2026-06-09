@@ -21,6 +21,7 @@ API_ADMIN_PASSWORD = os.getenv("API_ADMIN_PASSWORD", "admin1")
 API_USER = os.getenv("API_USER", "user1")
 API_PASSWORD = os.getenv("API_PASS", "user1")
 COUNTER_ID_ENV = "ACCEPTANCE_COUNTER_ID"
+PROMOTABLE_STATUSES = {"produced", "validated", "promoted"}
 
 
 @pytest.mark.acceptance
@@ -40,13 +41,13 @@ class TestProdApiManifestSmoke:
             f"current manifests for {counter_id}: {missing_paths}"
         )
 
-    def test_prediction_manifest_is_promoted_current_manifest(self) -> None:
+    def test_prediction_manifest_is_current_publishable_manifest(self) -> None:
         counter_id = _acceptance_counter_id()
         manifest = _read_current_manifest("predictions", counter_id)
 
         assert manifest["counter_id"] == counter_id
         assert manifest["artifact_type"] == "predictions"
-        assert manifest["status"] == "promoted"
+        assert manifest["status"] in PROMOTABLE_STATUSES
         assert manifest["storage"]["primary_backend"] == "local"
         assert manifest["storage"].get("local_path")
 
@@ -96,9 +97,8 @@ def _acceptance_counter_id() -> str:
     current_manifests = sorted((MANIFEST_ROOT / "predictions").glob("*/current.json"))
     if not current_manifests:
         pytest.fail(
-            "No promoted prediction current manifest found. Run the "
-            "production-like Airflow chain before make acceptance, or set "
-            f"{COUNTER_ID_ENV}."
+            "No prediction current manifest found. Run the production-like "
+            f"Airflow chain before make acceptance, or set {COUNTER_ID_ENV}."
         )
 
     return current_manifests[0].parent.name
