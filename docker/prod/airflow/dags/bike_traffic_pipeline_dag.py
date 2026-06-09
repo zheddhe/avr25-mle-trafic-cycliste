@@ -336,7 +336,6 @@ def _api_refresh_task() -> HttpOperator:
         http_conn_id="api_prod",
         endpoint="/admin/refresh",
         method="POST",
-        response_check=lambda response: response.status_code == 200,
         log_response=True,
     )
 
