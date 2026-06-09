@@ -23,10 +23,12 @@ RUN groupadd --gid "${APP_GID}" app && \
         --home-dir /app \
         --shell /usr/sbin/nologin \
         app && \
-    mkdir -p /app/src/api /app/logs/api /app/data/final && \
+    mkdir -p /app/src/api /app/src/artifacts /app/logs/api && \
+    mkdir -p /app/data/final /app/artifacts/manifests && \
     chown -R app:app /app
 
-COPY src/api/main.py /app/src/api/main.py
+COPY src/api /app/src/api
+COPY src/artifacts /app/src/artifacts
 
 USER app
 

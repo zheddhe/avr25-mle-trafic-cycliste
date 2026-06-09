@@ -8,7 +8,7 @@ The current runtime has two Compose views:
 | Runtime | Compose file | Communication model |
 | ------- | ------------ | ------------------- |
 | Development | `docker/dev/docker-compose.yaml` | Broad local integration, DockerOperator execution, root `data/logs/models` mounts. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces, an internal typed ML step runner API, and internal ML step services. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Functional networks, reduced host exposure, no Docker socket in Airflow, isolated `docker/prod/runtime` workspaces, an internal typed ML step runner API, internal ML step services, and manifest-first API serving. |
 
 Host port ranges and local URLs are documented in
 [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
@@ -44,7 +44,7 @@ The production-like runtime uses functional networks implemented in
 | `tracking_backend_net` | MLflow server, MLflow PostgreSQL, MinIO, MC init | Private tracking metadata and artifact backend. |
 | `observability_net` | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics | Scrapes, dashboards, and local alerts. |
 | `dev_support_net` | MailHog, Alertmanager, Airflow email clients | Local support services. |
-| Runtime mounts | `docker/prod/runtime/data`, `docker/prod/runtime/models`, `docker/prod/runtime/logs`, `docker/prod/runtime/artifacts` | Production-like generated data, models, logs, and artifact manifests. |
+| Runtime mounts | `docker/prod/runtime/data`, `docker/prod/runtime/models`, `docker/prod/runtime/logs`, `docker/prod/runtime/artifacts` | Production-like generated data, models, logs, payloads, and promoted artifact manifests. |
 
 ## Current service-to-service paths
 
@@ -55,10 +55,13 @@ The production-like runtime uses functional networks implemented in
 | Airflow services | Airflow API server | Prod-like | Compose DNS, HTTP | Internal Airflow execution API. |
 | Airflow DAG tasks | ML job containers | Dev only | Docker socket / DockerOperator | Current local development ML execution. |
 | Airflow DAG tasks | `job-runner-api` | Prod-like | HTTP on internal network | Submit typed ML step jobs and read runner status. |
-| Airflow DAG tasks | API | Dev and Prod-like | HTTP on internal network | Refresh API after successful DAG runs. |
+| Airflow DAG tasks | API | Dev and prod-like | HTTP on internal network | Refresh API after successful DAG runs. |
 | `job-runner-api` | `ml-ingest-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated ingestion job request. |
 | `job-runner-api` | `ml-features-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated feature job request. |
 | `job-runner-api` | `ml-models-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated model job request. |
+| ML step services | Runtime artifact manifests | Dev and prod-like | Filesystem mount | Write and promote artifact manifests under the configured manifest root. |
+| API | Promoted prediction manifests | Dev and prod-like | Filesystem mount | Read `predictions/<counter_id>/current.json` and verify local payload evidence. |
+| API | Prediction payload CSV | Dev and prod-like | Filesystem mount | Load the manifest-referenced local prediction payload. |
 | ML step services | Pushgateway | Dev and prod-like | HTTP | Batch metric push when enabled. |
 | `ml-models-prod` | MLflow server | Prod-like | HTTP | Run, parameter, metric, model, and artifact logging. |
 | Development model jobs | MLflow server | Dev | HTTP | Run, parameter, metric, model, and artifact logging. |
@@ -67,13 +70,30 @@ The production-like runtime uses functional networks implemented in
 | Prometheus | API, Pushgateway, cAdvisor | Dev and prod-like | HTTP scrape | Metrics collection. |
 | Grafana | Prometheus | Dev and prod-like | HTTP | Provisioned datasource. |
 | Alertmanager | MailHog | Dev and prod-like | SMTP | Local alert capture. |
-| API | Prediction artifacts | Dev and prod-like | Filesystem | Current prediction serving input. |
 | `job-runner-api` | In-memory state | Prod-like | Process memory | Local job status persistence for typed step attempts. |
 
 `job-runner-api` exposes an internal HTTP API on `pipeline_runtime_net`. The
 current implementation accepts one typed ML step request, records status in
 memory, delegates execution synchronously to the matching internal ML step
 service, and returns structured result or error evidence.
+
+## Manifest handoff path
+
+The implemented production-like handoff is explicit:
+
+```text
+Airflow DAG task
+  -> job-runner-api
+  -> ml-ingest-prod / ml-features-prod / ml-models-prod
+  -> docker/prod/runtime/artifacts/manifests/<artifact_type>/<counter_id>/current.json
+  -> authenticated API /admin/refresh
+  -> API serving from the manifest-referenced local prediction payload
+```
+
+The API does not scan `data/final` for the newest `y_full.csv`. It reads the
+promoted prediction manifest, checks that the storage backend is local, resolves
+`storage.local_path` from the configured repository root, verifies the checksum
+when available, and then loads the referenced CSV.
 
 ## Runner execution boundary
 
@@ -122,7 +142,8 @@ for exact ports and URLs.
 | Root `data` | Dev | Raw, interim, processed, final data for DVC/local workflows. |
 | Root `models` | Dev | Development model artifacts. |
 | Root `logs` | Dev | Development logs. |
-| `docker/prod/runtime/data` | Prod-like | Generated production-like data owned by ML step services. |
+| `docker/dev/runtime/artifacts` | Dev | Development manifest-first handoff root. |
+| `docker/prod/runtime/data` | Prod-like | Generated production-like data owned by ML step services and read by the API through manifest local paths. |
 | `docker/prod/runtime/models` | Prod-like | Generated production-like model artifacts owned by `ml-models-prod`. |
 | `docker/prod/runtime/logs` | Prod-like | Production-like service, batch, and runner API logs. |
 | `docker/prod/runtime/artifacts` | Prod-like | Manifest-first handoff root with run-scoped manifests and promoted `current.json` files. |
@@ -137,6 +158,7 @@ widening must be documented with the runtime impact.
 
 - Do not add Docker socket mounts to production-like Airflow services.
 - Do not copy the broad `mlops_net` development model into `docker/prod`.
+- Do not reintroduce implicit latest-file or folder scanning in API serving.
 - Prefer explicit functional networks over pairwise networks unless sensitive
   state or privileged control surfaces require isolation.
 - Keep host exposure in `../current-runtime-and-operations/ports-and-services.md`

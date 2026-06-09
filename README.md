@@ -20,9 +20,9 @@ The implementation currently provides:
 
 - reproducible local Python tooling with uv;
 - DVC-oriented development data and model workspaces;
-- FastAPI prediction serving;
+- FastAPI prediction serving from promoted artifact manifests;
 - ML pipeline containers for ingestion, features, and modelling;
-- optional prediction artifact manifests for model outputs;
+- manifest-first artifact handoff for pipeline outputs;
 - Airflow orchestration for multi-counter workflows;
 - MLflow tracking with PostgreSQL and MinIO;
 - Prometheus, Grafana, Pushgateway, Alertmanager, cAdvisor, and MailHog;
@@ -67,7 +67,6 @@ Key entrypoints:
 - [`docs/current-runtime-and-operations/repository-structure.md`](docs/current-runtime-and-operations/repository-structure.md)
 - [`docs/architecture-references/runtime-communication-matrix.md`](docs/architecture-references/runtime-communication-matrix.md)
 - [`docs/next-phase-design/artifact-handoff-strategy.md`](docs/next-phase-design/artifact-handoff-strategy.md)
-- [`docs/next-phase-design/artifact-ml-pipeline-emission.md`](docs/next-phase-design/artifact-ml-pipeline-emission.md)
 - [`docs/next-phase-design/airflow-job-runner-strategy.md`](docs/next-phase-design/airflow-job-runner-strategy.md)
 
 ## First setup
@@ -143,7 +142,7 @@ The project has two explicit runtime entrypoints.
 | Runtime | Compose file | Make targets | Main purpose |
 | ------- | ------------ | ------------ | ------------ |
 | Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debugging, broad host visibility, DVC/local workspaces, current Airflow DockerOperator jobs. |
-| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, isolated runtime workspace. |
+| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, runner-backed ML steps, and manifest-first API serving. |
 
 Development runtime:
 
@@ -163,14 +162,14 @@ make prod-compose-config
 make prod-build
 make prod-start
 make prod-ps
-make prod-logs SERVICE=api-dev
+make prod-logs SERVICE=api-prod
 make prod-clean
 ```
 
 The default profile is `ptf`, combining MLflow, Airflow, monitoring, and API
 services. Use `DEV_PROFILE=api` or `PROD_PROFILE=api` for targeted startup.
 
-## ML pipeline and tracking
+## ML pipeline, artifacts, and tracking
 
 Development one-off pipeline containers:
 
@@ -188,10 +187,15 @@ make local-pipeline
 make mlflow-local
 ```
 
-The model step can emit prediction artifact manifests when
+Pipeline steps can emit and promote artifact manifests when
 `ARTIFACT_MANIFEST_ROOT` or `--artifact-manifest-root` is configured. This keeps
 local/DVC runs unchanged by default while allowing production-like runtimes to
 publish validated artifact metadata and checksums.
+
+The prediction API now serves from promoted prediction manifests. It reads
+`predictions/<counter_id>/current.json`, resolves the referenced local payload
+through `ARTIFACT_REPOSITORY_ROOT`, verifies the checksum when present, and no
+longer scans `data/final` to infer the current prediction file.
 
 MLflow environment presets:
 
@@ -209,6 +213,11 @@ Airflow orchestrates multi-counter workflows:
 - `bike_traffic_daily`: rolling increment after initialization;
 - `bike_traffic_orchestrator`: orchestrates configured counters.
 
+In the production-like runtime, Airflow calls the internal `job-runner-api`, which
+then delegates typed `ingest`, `features`, and `models` jobs to internal ML step
+FastAPI services. The API is refreshed only after the model step has produced and
+promoted prediction artifacts.
+
 Monitoring uses Prometheus, Grafana, Pushgateway, cAdvisor, Alertmanager, and
 MailHog. Batch metric push is controlled through `DISABLE_METRICS_PUSH` in
 `.env`.
@@ -225,7 +234,7 @@ Phase 8 focuses on:
 - internal `job-runner-api`;
 - runner-based execution for `docker/prod`;
 - production-like Airflow DAGs without Docker socket;
-- artifact-aware API serving;
+- manifest-first API serving;
 - production-like smoke validation;
 - runtime configuration and secret validation.
 

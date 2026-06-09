@@ -15,7 +15,10 @@ from airflow.models import TaskInstance
 from airflow.models.param import Param, ParamsDict
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.http.operators.http import HttpOperator
-from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.providers.standard.operators.python import (
+    PythonOperator,
+    ShortCircuitOperator,
+)
 from airflow.sdk import Variable
 from airflow.utils.task_group import TaskGroup
 from common.utils import _load_config, _required_var
@@ -43,18 +46,33 @@ DOCKER_NET = _required_var("docker_network")
 HOST_REPO = _required_var("host_repo_root")
 AIRFLOW_REPO = _required_var("airflow_repo_root")
 CONT_REPO = _required_var("container_repo_root")
+
+# Artifact handoff configuration
+# These variables are mandatory: a missing root would silently disable manifest
+# emission or make local_path resolution diverge from API serving.
+ARTIFACT_MANIFEST_ROOT = _required_var("artifact_manifest_root")
+ARTIFACT_REPOSITORY_ROOT = _required_var("artifact_repository_root")
+
 MOUNTS = [
     Mount(
         source=f"{HOST_REPO}/docker/dev/runtime/data",
-        target=f"{CONT_REPO}/data", type="bind"
+        target=f"{CONT_REPO}/data",
+        type="bind",
     ),
     Mount(
         source=f"{HOST_REPO}/docker/dev/runtime/logs",
-        target=f"{CONT_REPO}/logs", type="bind"
+        target=f"{CONT_REPO}/logs",
+        type="bind",
     ),
     Mount(
         source=f"{HOST_REPO}/docker/dev/runtime/models",
-        target=f"{CONT_REPO}/models", type="bind"
+        target=f"{CONT_REPO}/models",
+        type="bind",
+    ),
+    Mount(
+        source=f"{HOST_REPO}/docker/dev/runtime/artifacts",
+        target=f"{CONT_REPO}/artifacts",
+        type="bind",
     ),
 ]
 
@@ -120,6 +138,8 @@ def _make_env(sub_dir: str, run_id: str, window: dict[str, float]) -> dict[str, 
         "RANGE_START": str(window["start"]),
         "RANGE_END": str(window["end"]),
         "ARTIFACT_RUN_ROOT": artifact_root,
+        "ARTIFACT_MANIFEST_ROOT": ARTIFACT_MANIFEST_ROOT,
+        "ARTIFACT_REPOSITORY_ROOT": ARTIFACT_REPOSITORY_ROOT,
         "MANIFEST_INGEST": f"{artifact_root}/ingest/manifest.json",
         "MANIFEST_FEATS": f"{artifact_root}/features/manifest.json",
         "MANIFEST_MODELS": f"{artifact_root}/models/manifest.json",
@@ -167,7 +187,7 @@ def _read_manifests(**ctx) -> dict[str, Any]:
         ing = {
             "outputs": {
                 "interim_path": f"{CONT_REPO}/data/interim/{sub_dir}/"
-                                f"{ti.xcom_pull('etl.prepare_args', key='INTERIM_NAME')}"
+                f"{ti.xcom_pull('etl.prepare_args', key='INTERIM_NAME')}"
             }
         }
     if fea is None:
@@ -175,7 +195,7 @@ def _read_manifests(**ctx) -> dict[str, Any]:
             "inputs": {"interim_path": ing["outputs"]["interim_path"]},
             "outputs": {
                 "processed_path": f"{CONT_REPO}/data/processed/{sub_dir}/"
-                                  f"{ti.xcom_pull('etl.prepare_args', key='PROCESSED_NAME')}"
+                f"{ti.xcom_pull('etl.prepare_args', key='PROCESSED_NAME')}"
             },
         }
     if mod is None:
@@ -183,7 +203,7 @@ def _read_manifests(**ctx) -> dict[str, Any]:
             "inputs": {"processed_path": fea["outputs"]["processed_path"]},
             "outputs": {
                 "table": f"{CONT_REPO}/data/final/{sub_dir}/"
-                         f"{ti.xcom_pull('etl.prepare_args', key='FINAL_BASENAME')}"
+                f"{ti.xcom_pull('etl.prepare_args', key='FINAL_BASENAME')}"
             },
         }
 
@@ -204,7 +224,10 @@ def _check_docker_access(**_):
 
     logger.info("[pipeline] Docker access check starting")
     logger.info(f"[pipeline] AIRFLOW_UID={AIRFLOW_UID}, AIRFLOW_GID={AIRFLOW_GID}")
-    logger.info(f"[pipeline] Simulation d'accès avec UID={uid_effective}, GID={gid_effective}")
+    logger.info(
+        f"[pipeline] Simulation d'accès avec UID={uid_effective}, "
+        f"GID={gid_effective}"
+    )
 
     if not os.path.exists(sock_path):
         logger.error(f"[pipeline] Docker socket missing: {sock_path}")
@@ -236,8 +259,9 @@ def _check_docker_access(**_):
 
     if not (can_read and can_write):
         logger.warning(
-            f"[pipeline] User {uid_effective}:{gid_effective} lacks read/write on {sock_path} "
-            f"(perms={perms}, owner={owner_uid}:{owner_gid})",
+            f"[pipeline] User {uid_effective}:{gid_effective} lacks "
+            f"read/write on {sock_path} (perms={perms}, "
+            f"owner={owner_uid}:{owner_gid})",
         )
         raise AirflowException(
             f"[Docker Check] L'utilisateur simulé {uid_effective}:{gid_effective} "
@@ -253,7 +277,9 @@ def _check_docker_access(**_):
         logger.info("[pipeline] Docker access confirmed")
     except Exception as e:
         logger.error(f"[pipeline] Docker connection failed: {e}")
-        raise AirflowException(f"[Docker Check] Le socket Docker est inaccessible : {e}")
+        raise AirflowException(
+            f"[Docker Check] Le socket Docker est inaccessible : {e}"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -322,6 +348,7 @@ def _prepare_args_common(
 
     env = _make_env(effective_sub_dir, run_id, window)
     env.update({
+        "COUNTER_ID": counter_id,
         "SITE": counter.site,
         "SITE_SHORT": counter_id,
         "ORIENTATION": counter.orientation,
@@ -335,6 +362,7 @@ def _prepare_args_callable(mode: str):
     Build a callable for prepare_args depending on mode (init or daily).
     """
     logger.info(f"[pipeline] prepare_args callable created for mode={mode}")
+
     def _callable(**ctx):
         ti = ctx["ti"]
         exec_date = ctx["data_interval_end"]
@@ -353,7 +381,7 @@ def _prepare_args_callable(mode: str):
 # --------------------------------------------------------------------------- #
 def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
     """
-    Build the ETL task group: prepare_args → ingest → features → models → read_manifests.
+    Build the ETL task group and its Docker-backed ML steps.
     """
     with TaskGroup(group_id="etl", dag=dag) as etl:
         # --- Docker sanity check ---
@@ -393,15 +421,21 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "--orientation",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
                 "--range-start",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='WINDOW')['start'] }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', "
+                "key='WINDOW')['start'] }}",
                 "--range-end",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='WINDOW')['end'] }}",
+                "{{ ti.xcom_pull(task_ids='etl.prepare_args', "
+                "key='WINDOW')['end'] }}",
                 "--timestamp-col",
                 "date_et_heure_de_comptage",
                 "--sub-dir",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
                 "--interim-name",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
+                "--artifact-manifest-root",
+                "{{ var.value.artifact_manifest_root }}",
+                "--artifact-repository-root",
+                "{{ var.value.artifact_repository_root }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
             "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
@@ -430,6 +464,10 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='PROCESSED_NAME') }}",
                 "--timestamp-col",
                 "date_et_heure_de_comptage",
+                "--artifact-manifest-root",
+                "{{ var.value.artifact_manifest_root }}",
+                "--artifact-repository-root",
+                "{{ var.value.artifact_repository_root }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
             "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
@@ -470,6 +508,10 @@ def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='TEST_RATIO') }}",
                 "--grid-iter",
                 "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='GRID_ITER') }}",
+                "--artifact-manifest-root",
+                "{{ var.value.artifact_manifest_root }}",
+                "--artifact-repository-root",
+                "{{ var.value.artifact_repository_root }}",
             ],
             container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
             "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
@@ -521,7 +563,10 @@ def _init_gate_callable(**ctx) -> bool:
     key = f"bike_init_done__{counter_id}"
     logger.info(f"[pipeline] Init gate: counter={counter_id}, key={key}")
     already_done = Variable.get(key, default="0") == "1"
-    logger.info(f"[pipeline] Init gate: counter={counter_id}, already_done={already_done}")
+    logger.info(
+        f"[pipeline] Init gate: counter={counter_id}, "
+        f"already_done={already_done}"
+    )
     return not already_done
 
 
@@ -545,9 +590,15 @@ with DAG(
     tags=["mlops", "init", "bike"],
     params=DAG_PARAMS,
 ) as init_dag:
-    init_gate = ShortCircuitOperator(task_id="init_gate", python_callable=_init_gate_callable)
+    init_gate = ShortCircuitOperator(
+        task_id="init_gate",
+        python_callable=_init_gate_callable,
+    )
     etl = build_etl_group(init_dag, mode="init")
-    mark_done = PythonOperator(task_id="mark_init_done", python_callable=_mark_init_done_callable)
+    mark_done = PythonOperator(
+        task_id="mark_init_done",
+        python_callable=_mark_init_done_callable,
+    )
     api_refresh = HttpOperator(
         task_id="api_refresh",
         http_conn_id="api_dev",

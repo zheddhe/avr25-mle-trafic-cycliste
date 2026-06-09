@@ -196,10 +196,13 @@ services:
       - "${API_HOST_PORT:-10000}:10000"
     restart: unless-stopped
     environment:
-      DATA_FINAL_ROOT: /app/data/final
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
+
     volumes:
       - ./runtime/data/final:/app/data/final:ro
       - ./runtime/logs:/app/logs
+      - ./runtime/artifacts:/app/artifacts
     healthcheck:
       test:
         - CMD-SHELL
