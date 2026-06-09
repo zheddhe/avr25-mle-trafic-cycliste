@@ -49,15 +49,12 @@ rules that guide runtime changes.
 
 ## Next Phase design
 
-Use these documents when implementing or reviewing the active MLOps phase. Keep
-this list short: each document should own an active coordination topic rather than
-one completed implementation slice.
+Use this area only for remaining gaps that are not yet covered by current runtime
+or architecture documentation.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md) | Phase 8 closure target: minimal `docker/prod` execution path without Airflow Docker socket, using internal ML step services and manifest-first API serving. |
-| [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md) | Consolidated manifest-first artifact handoff contract, implemented coverage, and remaining artifact-serving gaps. |
-| [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md) | Remaining production-like Airflow orchestration design that chains typed runner jobs. |
+| [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md) | Remaining improvement axes after Phase 8 closure: security, scale-out, full ETL source chain, object-storage-first handoff, and remote production operations. |
 
 ## Reading order
 
@@ -71,7 +68,5 @@ For runtime work, read:
 For active phase implementation, read:
 
 1. [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md)
-2. [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md)
-3. [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md)
-4. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
-5. The GitHub issue for the current implementation task.
+2. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+3. The GitHub issue for the current implementation task.
