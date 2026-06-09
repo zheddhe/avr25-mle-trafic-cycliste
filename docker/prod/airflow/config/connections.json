@@ -1,5 +1,5 @@
 {
-  "api_dev": {
+  "api_prod": {
     "conn_type": "http",
     "schema": "http",
     "host": "api-prod",
