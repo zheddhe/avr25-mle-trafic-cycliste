@@ -7,11 +7,12 @@ fallback and by the internal FastAPI ML step services.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import PurePosixPath
+from typing import Iterator
 
 from click import Command
-from click.testing import CliRunner
 
 from src.artifacts.schemas import ArtifactType
 from src.ml.jobs.contracts import (
@@ -37,9 +38,6 @@ class MlStepExecutionError(Exception):
 
 class StepCommandExecutor:
     """Execute one allow-listed ML step by reusing existing Click commands."""
-
-    def __init__(self, runner: CliRunner | None = None) -> None:
-        self._runner = runner or CliRunner()
 
     def execute(
         self,
@@ -179,26 +177,21 @@ class StepCommandExecutor:
         args: list[str],
         job_request: StepJobRequest,
     ) -> None:
-        result = self._runner.invoke(
-            command,
-            args,
-            env=_execution_env(job_request),
-            catch_exceptions=True,
-        )
-        if result.exit_code == 0:
-            return
-
-        message = result.output.strip()
-        if not message and result.exception is not None:
-            message = str(result.exception)
-        if not message:
-            message = "ML step execution failed without output."
-
-        raise MlStepExecutionError(
-            code=f"{job_request.job_type.value.upper()}_JOB_FAILED",
-            message=message,
-            retryable=True,
-        )
+        env = _execution_env(job_request)
+        try:
+            with _patched_environ(env):
+                command.main(
+                    args=args,
+                    prog_name=command.name,
+                    standalone_mode=False,
+                )
+        except SystemExit as error:
+            code = error.code if isinstance(error.code, int) else 1
+            if code == 0:
+                return
+            raise _execution_error(job_request, str(error)) from error
+        except Exception as error:
+            raise _execution_error(job_request, str(error)) from error
 
     def _build_manifest_reference(
         self,
@@ -246,6 +239,33 @@ def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
         env["ARTIFACT_MANIFEST_ROOT"] = job_request.manifest_root
 
     return env
+
+
+def _execution_error(
+    job_request: StepJobRequest,
+    message: str,
+) -> MlStepExecutionError:
+    if not message:
+        message = "ML step execution failed without output."
+    return MlStepExecutionError(
+        code=f"{job_request.job_type.value.upper()}_JOB_FAILED",
+        message=message,
+        retryable=True,
+    )
+
+
+@contextmanager
+def _patched_environ(updates: dict[str, str]) -> Iterator[None]:
+    previous = {key: os.environ.get(key) for key in updates}
+    os.environ.update(updates)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _artifact_type_for_job(job_type: MlJobType) -> ArtifactType:
