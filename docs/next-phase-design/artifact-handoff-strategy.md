@@ -36,31 +36,33 @@ Implemented:
 - typed ML step request and status contracts under `src/ml/jobs`;
 - internal runner API boundary and synchronous typed step execution under
   `src/job_runner`;
+- internal ML step services under `src/ml/services`;
 - production-like runtime mounts for generated data and artifact manifests;
-- production-like Airflow services without `/var/run/docker.sock`.
+- production-like Airflow services without `/var/run/docker.sock`;
+- production-like Airflow DAGs chaining runner-backed `ingest`, `features`, and
+  `models` steps before authenticated API refresh.
 
 Open artifact handoff gaps:
 
-- production-like Airflow DAG path chaining step jobs through the runner;
 - API serving from promoted prediction manifests;
 - production-like smoke validation using realistic test fixtures;
 - configuration and placeholder hardening;
 - optional MinIO upload, download, and checksum verification helpers.
 
-The MinIO part is contract-compatible today through optional `s3://` object URIs.
-It is not yet a functional upload, download, verification, or primary serving
-backend.
+The MinIO part is contract-compatible today through optional `s3://` object URIs
+and through MLflow artifact storage. It is not yet the primary serving backend for
+API prediction payloads.
 
 ## Source documents
 
 | Source | Use in this strategy |
 | ------ | -------------------- |
-| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, runner API behavior, and `docker/prod/runtime` ownership. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, runner API behavior, production-like DAGs, and `docker/prod/runtime` ownership. |
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | Repository path ownership and DVC boundary. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Local host exposure and internal-only MinIO policy. |
 | [`../current-runtime-and-operations/dependency-strategy.md`](../current-runtime-and-operations/dependency-strategy.md) | MLflow, MinIO, and runtime dependency compatibility. |
-| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Airflow and runner responsibility boundary. |
-| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Remaining production-like Airflow orchestration design. |
+| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Airflow, runner, and ML step service responsibility boundaries. |
+| [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Remaining runner, observability, and validation gaps. |
 
 ## Why manifest-first
 
@@ -81,56 +83,19 @@ promoted artifact.
 
 ## Implemented artifact package
 
-The reusable artifact package lives under:
+The reusable artifact package lives under `src/artifacts/` and is
+framework-neutral. It does not import Airflow, FastAPI, Docker SDK, MLflow, or
+concrete ML pipeline modules.
 
-```text
-src/artifacts/
-├── __init__.py
-├── checksums.py
-├── exceptions.py
-├── manifest_store.py
-└── schemas.py
-```
+`src/artifacts/schemas.py` exposes the manifest model and constrained enums for
+artifact type, status, storage backend, producer, source, and storage metadata.
+`src/artifacts/manifest_store.py` exposes helpers to write, promote, read, and
+verify local manifests. `src/artifacts/checksums.py` exposes checksum helpers.
 
-The package is framework-neutral. It does not import Airflow, FastAPI, Docker
-SDK, MLflow, or concrete ML pipeline modules.
-
-`src/artifacts/schemas.py` exposes:
-
-- `ArtifactManifest`;
-- `ArtifactProducer`;
-- `ArtifactSource`;
-- `ArtifactStorage`;
-- `ArtifactType`;
-- `ArtifactStatus`;
-- `StorageBackend`;
-- `validate_artifact_manifest`.
-
-`src/artifacts/manifest_store.py` exposes:
-
-- `write_manifest`;
-- `promote_manifest`;
-- `read_manifest`;
-- `read_current_manifest`;
-- `verify_local_payload`.
-
-`src/artifacts/checksums.py` exposes `compute_sha256`. The artifact package also
-exposes explicit exceptions for invalid metadata, missing manifests, missing
-local payloads, and checksum mismatches.
-
-## Manifest validation rules
-
-The manifest model validates:
-
-- required fields: schema version, artifact type, status, run id, counter id,
-  creation timestamp, producer, source, and storage;
-- local-only manifests with repository-relative `local_path` values;
-- hybrid manifests with local paths plus optional `s3://` object URIs;
-- storage backend values through constrained enums;
-- URI-like local paths, absolute paths, and parent traversal;
-- SHA-256 checksums when present;
-- timezone-aware `created_at` timestamps;
-- undeclared fields through strict Pydantic configuration.
+The manifest model validates required fields, local-only manifests with
+repository-relative local paths, hybrid manifests with optional `s3://` object
+URIs, constrained enum values, checksums when present, timezone-aware timestamps,
+and undeclared fields through strict Pydantic configuration.
 
 The first runtime implementation still uses `primary_backend="local"`.
 `object_uri` remains optional and only records the S3-compatible reference when
@@ -222,93 +187,19 @@ s3://<bucket>/artifacts/<artifact_type>/<counter_id>/<run_id>/<file_name>
 Credentials, endpoint URLs, and access keys must remain runtime configuration and
 must not be embedded in manifests.
 
-Current limitation: object URIs are metadata only. The active phase does not yet
-implement artifact upload, download, checksum verification against object
-storage, or object-storage-first API serving.
-
-## Identifier conventions
-
-| Field | Convention | Example |
-| ----- | ---------- | ------- |
-| `run_id` | UTC timestamp plus a stable slug. | `2026-06-06T140000Z-sebastopol-ns` |
-| `counter_id` | Existing project counter identifier. | `Sebastopol_N-S_airflow` |
-| `dataset_version` | DVC revision, source snapshot label, or runtime input version. | `local-dev-dvc` |
-| `model_version` | MLflow run ID, registry version, or local model release label. | `mlflow-run-20260606` |
-
-`run_id` values should be unique per external attempt. Airflow retries should
-include enough context to avoid overwriting previous attempts unless a deliberate
-idempotency rule returns the same job.
-
-## Manifest shape
-
-The canonical JSON shape is implemented by the Pydantic models in
-`src/artifacts/schemas.py`.
-
-```json
-{
-  "schema_version": "1.0",
-  "artifact_type": "predictions",
-  "status": "promoted",
-  "run_id": "2026-06-06T140000Z-sebastopol-ns",
-  "counter_id": "Sebastopol_N-S_airflow",
-  "created_at": "2026-06-06T14:00:00Z",
-  "producer": {
-    "service": "ml-models-prod",
-    "image": "ml-models:prod"
-  },
-  "source": {
-    "raw_file_name": "initial_with_feats.csv",
-    "dataset_version": "local-dev-dvc",
-    "model_version": "mlflow-run-20260606"
-  },
-  "storage": {
-    "primary_backend": "local",
-    "local_path": "docker/prod/runtime/data/final/Sebastopol_N-S_airflow/y_full.csv",
-    "object_uri": "s3://mlflow/artifacts/predictions/Sebastopol_N-S_airflow/2026-06-06T140000Z-sebastopol-ns/y_full.csv",
-    "checksum_sha256": "..."
-  }
-}
-```
-
-Expected storage rules:
-
-- `primary_backend` is `local` for the first implementation.
-- `local_path` is required while `docker/prod/runtime` is the serving backend.
-- `object_uri` is optional and can be omitted for local-only artifacts.
-- `checksum_sha256` should describe the referenced local artifact file, or the
-  canonical object payload once object storage becomes the primary backend.
-
-## Promotion rules
-
-A candidate artifact becomes current only when promotion updates the stable
-manifest pointer.
-
-Implemented promotion sequence:
-
-```text
-validate manifest -> verify local payload -> write run manifest -> replace current.json
-```
-
-Promotion uses a temporary file plus atomic replacement so consumers do not read
-partially written `current.json` files.
-
-Promotion must not happen when:
-
-- the manifest is invalid;
-- the referenced local artifact is missing;
-- the checksum does not match;
-- the artifact status is not eligible for serving;
-- required producer, source, or storage metadata is missing.
+Current limitation: object URIs are metadata only for the artifact handoff path.
+The active phase does not yet implement artifact download, checksum verification
+against object storage, or object-storage-first API serving.
 
 ## Component interactions
 
 | Component | Responsibility in the contract |
 | --------- | ------------------------------ |
 | ML jobs | Produce artifacts, compute checksums, emit candidate manifests. |
-| Runner | Execute one typed step job at a time, persist job status, and return manifest references. |
+| Runner | Execute one typed step job at a time, keep job status, and return manifest references. |
 | Airflow | Submit step jobs, wait for terminal status, chain the ML workflow, and record manifest references. |
-| MLflow | Track runs, metrics, parameters, and model evidence. |
-| MinIO | Optionally store object-backed artifact payloads. |
+| MLflow | Track runs, metrics, parameters, model metadata, and model artifact payloads. |
+| MinIO | Store MLflow artifact payloads and optional future object-backed handoff payloads. |
 | API | Read `current.json`, validate metadata, serve the referenced artifact. |
 | Prometheus/Grafana | Observe freshness, job status, and current artifact metadata. |
 
@@ -327,12 +218,12 @@ training job internals.
 | Add typed step job contracts. | Done |
 | Add the internal runner API boundary. | Done |
 | Execute typed ML step jobs through the runner. | Done |
-| Add production-like Airflow DAG chaining runner steps. | Open |
+| Add production-like Airflow DAG chaining runner steps. | Done |
 | Make the API load the promoted local manifest. | Open |
 | Add production-like smoke validation. | Open |
 | Harden runtime configuration and secrets validation. | Open |
 | Strengthen realistic phase test coverage. | Open |
-| Add optional MinIO upload/download helpers. | Open |
+| Add optional object-storage handoff helpers. | Open |
 | Switch `primary_backend` to object storage. | Deferred |
 
 ## Known technical and functional debt
@@ -348,8 +239,8 @@ stays incremental:
   does not reintroduce implicit latest-file scanning;
 - runner execution should stay typed and allow-listed, not a generic shell
   command runner or full-pipeline scheduler;
-- MinIO is not yet a functional artifact backend despite the optional
-  `object_uri` contract.
+- object storage is not yet a primary artifact handoff or serving backend despite
+  the optional `object_uri` contract.
 
 ## Out of scope for the current implementation wave
 

@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: dev-help dev-compose-config dev-build
+.PHONY: dev-help dev-prepare-runtime dev-compose-config dev-build
 .PHONY: dev-start dev-stop dev-down dev-ps dev-logs dev-clean
 .PHONY: dev-mlops-ingest dev-mlops-features dev-mlops-models
 .PHONY: dev-mlops-pipeline
@@ -31,7 +31,19 @@ dev-help: ## Display local development runtime targets
 		} \
 	' $(MAKEFILE_LIST)
 
-dev-compose-config: ## Validate the local development Compose config
+dev-prepare-runtime: ## Create ignored dev runtime folders
+	@$(call dev_log_target,dev-prepare-runtime)
+	mkdir -p \
+		docker/dev/runtime/data/raw \
+		docker/dev/runtime/data/interim \
+		docker/dev/runtime/data/processed \
+		docker/dev/runtime/data/final \
+		docker/dev/runtime/models \
+		docker/dev/runtime/logs/api \
+		docker/dev/runtime/logs/airflow \
+		docker/dev/runtime/logs/ml
+	cp -f ./data/raw/*.csv docker/prod/runtime/data/raw/
+dev-compose-config: dev-prepare-runtime ## Validate the local development Compose config
 	@$(call dev_log_target,dev-compose-config)
 	@$(dev_check_env)
 	$(dev_compose) --profile all config >/dev/null
@@ -41,9 +53,8 @@ dev-build: ## Build local development Docker images
 	@$(dev_check_env)
 	$(dev_compose) --profile all build
 
-dev-start: ## Start development services for the selected profile
+dev-start: dev-compose-config ## Start development services for the selected profile
 	@$(call dev_log_target,dev-start DEV_PROFILE=$(DEV_PROFILE))
-	@$(dev_check_env)
 	$(dev_compose) --profile $(DEV_PROFILE) up -d
 
 dev-stop: ## Stop development services for the selected profile

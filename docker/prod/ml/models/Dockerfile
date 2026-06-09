@@ -27,11 +27,15 @@ RUN groupadd --gid "${APP_GID}" app && \
         /app/models \
         /app/src/artifacts \
         /app/src/metrics \
-        /app/src/ml/models && \
+        /app/src/ml/models \
+        /app/src/ml/jobs \
+        /app/src/ml/services && \
     chown -R app:app /app
 
 COPY src/artifacts /app/src/artifacts
 COPY src/metrics /app/src/metrics
+COPY src/ml/jobs /app/src/ml/jobs
+COPY src/ml/services /app/src/ml/services
 COPY src/ml/models/artifact_manifest_emission.py \
      /app/src/ml/models/artifact_manifest_emission.py
 COPY src/ml/models/models_utils.py /app/src/ml/models/models_utils.py
@@ -41,4 +45,4 @@ COPY src/ml/models/train_and_predict.py \
 
 USER app
 
-ENTRYPOINT ["python", "-m", "src.ml.models.train_and_predict"]
+CMD ["uvicorn", "src.ml.services.models_main:app", "--host", "0.0.0.0", "--port", "10083"]

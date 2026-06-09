@@ -1,8 +1,7 @@
 # ========================
 # LOCAL DEVELOPMENT RUNTIME
 # ========================
-# This Compose entrypoint is the canonical development runtime. The root
-# docker-compose.yaml is kept as a compatibility entrypoint for existing habits.
+# This Compose entrypoint is the canonical development runtime.
 
 volumes:
   mlflow-postgres-db:
@@ -58,8 +57,8 @@ x-airflow-common: &airflow-common
     airflow-postgres:
       condition: service_healthy
   volumes:
-    - ../../logs:/opt/airflow/logs
-    - ../../data:/opt/airflow/data
+    - ./runtime/logs/airflow:/opt/airflow/logs
+    - ./runtime/data:/opt/airflow/data
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
@@ -71,6 +70,7 @@ services:
   # ========================
   # BUSINESS SERVICES
   # ========================
+  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-ingest-dev:
     image: ml-ingest:dev
     build:
@@ -99,12 +99,13 @@ services:
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
       - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ../../runtime/logs:/app/logs
     networks:
       - airflow_net
       - mlops_net
     profiles: ["ml", "all"]
 
+  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-features-dev:
     image: ml-features:dev
     build:
@@ -131,6 +132,7 @@ services:
       - mlops_net
     profiles: ["ml", "all"]
 
+  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-models-dev:
     image: ml-models:dev
     build:
@@ -185,10 +187,10 @@ services:
       - "${API_HOST_PORT:-10000}:10000"
     restart: unless-stopped
     environment:
-      DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
+      DATA_FINAL_ROOT: /app/data/final
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ./runtime/data/final:/app/data/final:ro
+      - ./runtime/logs:/app/logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -419,8 +421,8 @@ services:
       AIRFLOW_UID: ${AIRFLOW_UID:-50000}
       DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
-      - ../../logs:/opt/airflow/logs
-      - ../../data:/opt/airflow/data
+      - ./runtime/logs/airflow:/opt/airflow/logs
+      - ./runtime/data:/opt/airflow/data
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       - /var/run/docker.sock:/var/run/docker.sock

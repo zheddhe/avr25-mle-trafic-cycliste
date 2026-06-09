@@ -4,7 +4,7 @@
     "schema": "http",
     "host": "api-dev",
     "port": 10000,
-    "login": "remy",
-    "password": "remy"
+    "login": "admin1",
+    "password": "admin1"
   }
 }

@@ -1,4 +1,5 @@
-# src/airflow/dags/bike_traffic_orchestrator_dag.py
+"""Production-like orchestrator DAG for bike traffic pipelines."""
+
 from __future__ import annotations
 
 import logging
@@ -11,19 +12,17 @@ from common.utils import _list_counters_payload
 
 logger = logging.getLogger("airflow.task")
 
-# --------------------------------------------------------------------------- #
-# Orchestrator DAG
-# --------------------------------------------------------------------------- #
 with DAG(
     dag_id="bike_traffic_orchestrator",
-    description="Parent DAG orchestrating dev init and daily DAGs for counters.",
+    description="Parent DAG orchestrating prod init and daily DAGs for counters.",
     start_date=datetime(2025, 9, 20),
     schedule="@daily",
     catchup=False,
     max_active_runs=1,
-    tags=["ops", "orchestration", "bike", "dev"],
+    max_active_tasks=1,
+    tags=["ops", "orchestration", "bike", "prod"],
 ) as dag:
-    logger.info("[orchestrator] DAG loaded")
+    logger.info("[orchestrator] Production-like DAG loaded")
 
     get_counters = PythonOperator(
         task_id="get_counters",
@@ -35,7 +34,6 @@ with DAG(
         trigger_dag_id="bike_traffic_init",
         poke_interval=5,
         wait_for_completion=True,
-        pool="sequential_counters",
     ).expand(conf=get_counters.output)
 
     run_daily = TriggerDagRunOperator.partial(
@@ -43,7 +41,6 @@ with DAG(
         trigger_dag_id="bike_traffic_daily",
         poke_interval=5,
         wait_for_completion=True,
-        pool="sequential_counters",
     ).expand(conf=get_counters.output)
 
     get_counters >> run_init >> run_daily  # type: ignore

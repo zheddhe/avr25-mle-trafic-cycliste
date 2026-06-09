@@ -16,7 +16,7 @@ boundaries are implemented in `docker/prod`.
 | [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, workspaces, and current exceptions. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Host exposure inventory. |
 | [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact promotion contract and open handoff gaps. |
-| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Runner execution design and open execution gaps. |
+| [`../next-phase-design/airflow-job-runner-strategy.md`](../next-phase-design/airflow-job-runner-strategy.md) | Runner execution coordination and remaining validation gaps. |
 
 Communication paths justify permissions, not the opposite. A container, network,
 credential, volume, or elevated runtime capability should exist because a
@@ -26,24 +26,24 @@ documented service dependency needs it.
 
 | Boundary | Development runtime | Production-like runtime |
 | -------- | ------------------- | ----------------------- |
-| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-dev`; reads production-like runtime prediction workspace. |
-| Runner API | Not present. | Internal-only `job-runner-api`; accepts typed job requests and stores statuses in memory. |
+| API serving | Host-exposed `api-dev`; reads dev runtime prediction workspace. | Host-exposed `api-prod`; reads production-like runtime prediction workspace. |
+| Runner API | Not present. | Internal-only `job-runner-api`; accepts typed job requests, delegates to internal ML step services, and stores statuses in memory. |
 | Orchestration | Airflow uses DockerOperator and Docker socket. | Airflow does not mount Docker socket. |
 | Tracking | MLflow, PostgreSQL, and MinIO are visible for local debugging. | MLflow UI/API is host-exposed; PostgreSQL and MinIO stay internal. |
 | Monitoring | Prometheus, Pushgateway, Alertmanager, cAdvisor, Grafana, MailHog UIs are exposed for local debugging. | Grafana is host-exposed; supporting monitoring services stay internal. |
-| Data and artifacts | Root `data`, `models`, and `logs` are writable dev/DVC workspaces. | `docker/prod/runtime` owns generated runtime data, models, logs, and artifacts. |
-| Job execution | Airflow worker can control the Docker daemon through Docker socket. | No production-like service exposes Docker daemon control to Airflow. |
+| Data and artifacts | `docker/dev/runtime` owns Airflow-driven dev runtime outputs; root workspaces stay for DVC/local experimentation. | `docker/prod/runtime` owns generated runtime data, models, logs, and artifacts. |
+| Job execution | Airflow worker can control the Docker daemon through Docker socket. | Airflow submits typed jobs to `job-runner-api`; concrete execution happens inside internal ML step services. |
 
 ## Runtime identities
 
 | Runtime identity | Current model | Boundary notes |
 | ---------------- | ------------- | -------------- |
 | Host operator | Local user running `make` and `docker compose` with Docker group access. | Docker group membership is high privilege and should not be confused with application identity. |
-| `api-dev` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads prediction artifacts and exposes HTTP on port `10000`. |
-| `job-runner-api` | Custom prod-like image; runs as non-root app user. | Exposes internal HTTP on port `10080`, keeps in-memory status, and has no Docker socket mount. |
-| `ml-ingest-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads raw data and writes interim data/logs. |
-| `ml-features-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads interim data and writes processed data/logs. |
-| `ml-models-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads processed data, writes forecasts/models/logs, and logs evidence to MLflow. |
+| `api-dev` / `api-prod` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads prediction artifacts and exposes HTTP on port `10000`. |
+| `job-runner-api` | Custom prod-like image; runs as non-root app user. | Exposes internal HTTP on port `10080`, keeps in-memory status, delegates through HTTP, and has no Docker socket mount. |
+| `ml-ingest-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads raw data and writes interim data/logs. Prod-like service exposes internal HTTP on port `10081`. |
+| `ml-features-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads interim data and writes processed data/logs. Prod-like service exposes internal HTTP on port `10082`. |
+| `ml-models-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads processed data, writes forecasts/models/logs, logs evidence through MLflow, and exposes internal HTTP on port `10083` in prod-like mode. |
 | Airflow services | Upstream Airflow image and supported runtime user model. | Development worker has Docker socket exception; production-like worker does not. |
 | `mlflow-server` | Upstream MLflow image. | Owns access to MLflow PostgreSQL and MinIO backend. |
 | PostgreSQL, Redis, MinIO | Upstream images with private volumes. | Internal stateful services; do not publish DB/broker ports to host. |
@@ -73,7 +73,8 @@ Production-like rule:
 - keep job execution behind typed contracts and controlled service boundaries.
 
 `job-runner-api` does not import the Docker SDK, does not mount the Docker socket,
-and does not expose a generic shell command interface.
+and does not expose a generic shell command interface. It delegates validated job
+requests to internal ML step services over `pipeline_runtime_net`.
 
 ## Host exposure boundary
 
@@ -85,8 +86,8 @@ publishes only operator-facing services by default:
 - MLflow UI/API;
 - Grafana.
 
-`job-runner-api`, MinIO, Prometheus, Pushgateway, Alertmanager, MailHog,
-cAdvisor, Redis, and PostgreSQL remain internal in `docker/prod`.
+`job-runner-api`, ML step services, MinIO, Prometheus, Pushgateway, Alertmanager,
+MailHog, cAdvisor, Redis, and PostgreSQL remain internal in `docker/prod`.
 
 Exact port assignments are documented in
 [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md).
@@ -95,19 +96,28 @@ Exact port assignments are documented in
 
 | Mount or volume | Runtime | Boundary expectation |
 | --------------- | ------- | -------------------- |
-| Root `data` | Dev | DVC and local development data workspace. |
-| Root `models` | Dev | DVC and local development model workspace. |
-| Root `logs` | Dev | Development service and batch logs. |
+| Root `data` | Local/DVC | Local experimentation and DVC data workspace. |
+| Root `models` | Local/DVC | Local experimentation and DVC model workspace. |
+| Root `logs` | Local/DVC | Local developer logs outside Compose runtime ownership. |
+| `docker/dev/runtime/data` | Dev | Airflow-driven development generated data workspace. |
+| `docker/dev/runtime/models` | Dev | Airflow-driven development model workspace. |
+| `docker/dev/runtime/logs` | Dev | Development Compose service and batch logs. |
 | Root raw CSV | Prod-like | Read-only source input into ingestion. |
-| `docker/prod/runtime/data` | Prod-like | Generated runtime data. |
-| `docker/prod/runtime/models` | Prod-like | Runtime model artifacts. |
+| `docker/prod/runtime/data` | Prod-like | Generated runtime data owned by ML step services. |
+| `docker/prod/runtime/models` | Prod-like | Runtime model artifacts owned by `ml-models-prod`. |
 | `docker/prod/runtime/logs` | Prod-like | Runtime service, job, and runner API logs. |
-| `docker/prod/runtime/artifacts` | Prod-like | Manifest-first artifact handoff root. |
+| `docker/prod/runtime/artifacts` | Prod-like | Manifest-first artifact handoff root owned by ML step services. |
 | Service-owned Docker volumes | Dev and prod-like | Stateful backends for PostgreSQL, Redis, MinIO, Prometheus, Grafana, and Alertmanager. |
 
 The runner API currently mounts only its service log path. It has no read or write
-access to ML data, model artifacts, promoted manifests, Docker runtime paths, or
-stateful backend volumes.
+access to ML data, model artifacts, promoted manifests, Docker runtime paths,
+tracking backends, or stateful backend volumes. Concrete ML step services own the
+runtime data, model, log, artifact, and optional tracking mounts they need.
+
+`ml-models-prod` uses MLflow as the functional tracking boundary. It is not an
+application-level MinIO client, but it may need network reachability to the MLflow
+artifact backend when the MLflow client library resolves artifact payload
+locations.
 
 ## Credential and secret review
 
@@ -153,6 +163,8 @@ Current production-like boundary validation should prove:
 
 - Airflow services do not mount `/var/run/docker.sock`;
 - `job-runner-api` is internal-only;
-- `job-runner-api` has no Docker SDK import or Docker socket mount;
+- ML step services are internal-only;
+- `job-runner-api` has no Docker SDK import, Docker socket mount, or broad runtime
+  data/model/artifact mounts;
 - custom prod-like API, runner API, and ML images keep their non-root settings;
 - generated runtime outputs stay under `docker/prod/runtime`.

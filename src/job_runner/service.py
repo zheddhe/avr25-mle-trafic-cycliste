@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
 from src.job_runner.errors import JobNotFoundError
 from src.job_runner.executor import (
     LocalMlJobExecutor,
     MlJobExecutionError,
     MlJobExecutor,
+    ServiceMlJobExecutor,
 )
 from src.job_runner.state import InMemoryJobState
 from src.ml.jobs.contracts import StepJobRequest
@@ -22,7 +25,7 @@ class JobRunnerService:
         executor: MlJobExecutor | None = None,
     ) -> None:
         self._state = state or InMemoryJobState()
-        self._executor = executor or LocalMlJobExecutor()
+        self._executor = executor or build_default_executor()
 
     def submit_job(self, job_request: StepJobRequest) -> JobStatus:
         """Submit a typed ML step request and execute it synchronously."""
@@ -67,3 +70,15 @@ class JobRunnerService:
             raise JobNotFoundError(job_id)
 
         return status
+
+
+def build_default_executor() -> MlJobExecutor:
+    """Build the runner executor selected by runtime configuration."""
+
+    executor_name = os.getenv("JOB_RUNNER_EXECUTOR", "service").strip().lower()
+    if executor_name == "local":
+        return LocalMlJobExecutor()
+    if executor_name == "service":
+        return ServiceMlJobExecutor()
+
+    raise ValueError("JOB_RUNNER_EXECUTOR must be 'service' or 'local'.")
