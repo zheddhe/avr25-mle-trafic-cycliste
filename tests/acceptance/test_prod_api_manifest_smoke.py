@@ -104,7 +104,7 @@ def _request_json(
     username: str,
     password: str,
 ) -> Any:
-    token = base64.b64encode(f"{username}:{password}".encode("utf-8"))
+    token = base64.b64encode(f"{username}:{password}".encode())
     request = urllib.request.Request(
         url=f"{API_URL.rstrip('/')}/{path.lstrip('/')}",
         method=method,

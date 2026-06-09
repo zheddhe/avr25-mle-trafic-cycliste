@@ -1,7 +1,7 @@
 # tests/api/test_app.py
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -173,7 +173,7 @@ def _artifact_metadata() -> CurrentArtifactMetadata:
         run_id="run-a",
         artifact_type="predictions",
         status="promoted",
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
         producer_service="ml-models-prod",
         source=ArtifactSourceMetadata(dataset_version="test"),
         primary_backend="local",
