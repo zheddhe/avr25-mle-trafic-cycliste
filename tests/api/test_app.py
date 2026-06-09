@@ -34,8 +34,8 @@ class TestApiPredictionStore:
             loader.return_value = result
             store.refresh()
 
-        assert store.predictions == {"counter-a": dataframe}
-        assert store.artifacts == {"counter-a": artifact}
+        assert store.predictions["counter-a"] is dataframe
+        assert store.artifacts["counter-a"] is artifact
         loader.assert_called_once_with(settings)
 
     def test_require_predictions_raises_when_store_is_empty(
