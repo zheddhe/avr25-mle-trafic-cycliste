@@ -193,7 +193,7 @@ def _features_args(ti: TaskInstance) -> dict[str, Any]:
     return {
         "interim_input_path": _manifest_or_xcom_path(
             ti,
-            task_id="etl.read_manifests_after_ingest",
+            task_id="etl.ingest",
             manifest_key="INGEST_MANIFEST",
             fallback_key="INTERIM_PATH",
         ),
@@ -207,7 +207,7 @@ def _models_args(ti: TaskInstance) -> dict[str, Any]:
     return {
         "processed_input_path": _manifest_or_xcom_path(
             ti,
-            task_id="etl.read_manifests_after_features",
+            task_id="etl.features",
             manifest_key="FEATURES_MANIFEST",
             fallback_key="PROCESSED_PATH",
         ),
