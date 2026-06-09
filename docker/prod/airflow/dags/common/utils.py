@@ -6,11 +6,6 @@ import json
 import logging
 from pathlib import Path
 
-try:
-    from airflow.sdk import Variable
-except ImportError:  # pragma: no cover - Airflow 2 compatibility fallback.
-    from airflow.models import Variable
-
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger("airflow.task")
@@ -54,31 +49,17 @@ class DagCfg(BaseModel):
     scheduling: SchedulingCfg
 
 
-def _get_variable(name: str, default: str | None = None) -> str | None:
-    try:
-        return Variable.get(name)
-    except Exception:
-        return default
-
-
 def _load_config() -> tuple[DagCfg, str]:
-    """Load DAG configuration from Airflow Variable or mounted JSON file."""
+    """Load the mounted production-like DAG configuration."""
 
     logger.info("[utils] Loading DAG config")
-    cfg_ref = _get_variable("bike_dag_config", DEFAULT_CONFIG_PATH)
-    if cfg_ref is None:
-        raise ValueError("bike_dag_config is not defined")
-
-    raw_config = _read_config_source(cfg_ref)
+    raw_config = _read_config_source(DEFAULT_CONFIG_PATH)
     try:
         cfg = DagCfg.model_validate_json(raw_config)
     except ValidationError as exc:
         raise ValueError(f"Invalid bike DAG config: {exc}") from exc
 
-    default_counter_id = _get_variable("default_counter_id")
-    if not default_counter_id:
-        default_counter_id = next(iter(cfg.counters))
-
+    default_counter_id = next(iter(cfg.counters))
     logger.info(
         "[utils] Config loaded: %s counters, default=%s",
         len(cfg.counters),
@@ -88,11 +69,6 @@ def _load_config() -> tuple[DagCfg, str]:
 
 
 def _read_config_source(cfg_ref: str) -> str:
-    if cfg_ref.strip().startswith("{"):
-        logger.info("[utils] Config source: inline JSON")
-        json.loads(cfg_ref)
-        return cfg_ref
-
     path = Path(cfg_ref)
     logger.info("[utils] Config source: file %s", path)
     if not path.exists():
