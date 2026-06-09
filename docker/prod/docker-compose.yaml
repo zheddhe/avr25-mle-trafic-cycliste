@@ -183,6 +183,7 @@ services:
     networks:
       - pipeline_runtime_net
       - tracking_client_net
+      - tracking_backend_net
     profiles: ["ml", "all", "ptf"]
 
   api-prod:
