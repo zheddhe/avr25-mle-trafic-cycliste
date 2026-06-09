@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /app/src/api /app/src/artifacts /app/data/final \
     /app/artifacts/manifests /app/logs/api
-COPY src/api/main.py /app/src/api/main.py
+COPY src/api /app/src/api
 COPY src/artifacts /app/src/artifacts
 
 EXPOSE 10000
