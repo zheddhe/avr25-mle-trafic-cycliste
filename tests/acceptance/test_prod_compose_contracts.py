@@ -12,6 +12,7 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPOSITORY_ROOT / "docker" / "prod" / "docker-compose.yaml"
 DEFAULT_PROJECT_NAME = "bike-traffic-prod"
+PUSHGATEWAY_ADDR_ENV = "PUSHGATEWAY_ADDR"
 
 AIRFLOW_SERVICES = {
     "airflow-api-server",
@@ -31,6 +32,7 @@ ML_STEP_SERVICES = {
     "ml-features-prod",
     "ml-models-prod",
 }
+PIPELINE_RUNTIME_SERVICES = ML_STEP_SERVICES | {"job-runner-api"}
 
 
 def _compose_command(*args: str) -> list[str]:
@@ -110,15 +112,26 @@ class TestProdComposeContracts:
             ports = services[service_name].get("ports", [])
             assert ports == [], f"{service_name} exposes host ports: {ports}"
 
-    def test_ml_step_services_push_metrics_to_internal_pushgateway(self) -> None:
+    def test_runner_and_ml_step_services_share_runtime_network(self) -> None:
         config = _load_compose_config()
         services = config["services"]
 
+        for service_name in PIPELINE_RUNTIME_SERVICES:
+            networks = services[service_name].get("networks", {})
+            assert "pipeline_runtime_net" in networks, (
+                f"{service_name} is not attached to pipeline_runtime_net: "
+                f"{networks}"
+            )
+
+    def test_ml_step_services_push_metrics_to_internal_pushgateway(self) -> None:
+        config = _load_compose_config()
+        services = config["services"]
+        expected_addr = os.getenv(PUSHGATEWAY_ADDR_ENV)
+
+        assert expected_addr, f"{PUSHGATEWAY_ADDR_ENV} must be configured."
         for service_name in ML_STEP_SERVICES:
             environment = services[service_name]["environment"]
-            assert environment["PUSHGATEWAY_ADDR"] == (
-                "monitoring-pushgateway:9091"
-            )
+            assert environment["PUSHGATEWAY_ADDR"] == expected_addr
             assert environment["DISABLE_METRICS_PUSH"] == "0"
 
     def test_pushgateway_is_scraped_by_prometheus(self) -> None:
