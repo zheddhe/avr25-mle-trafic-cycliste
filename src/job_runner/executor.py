@@ -47,7 +47,9 @@ class ServiceMlJobExecutor:
         lock: threading.Lock | None = None,
     ) -> None:
         self._transport = transport or UrllibMlServiceTransport()
-        self._endpoints = endpoints or _load_service_endpoints()
+        self._endpoints = (
+            endpoints if endpoints is not None else _load_service_endpoints()
+        )
         self._lock = lock or _RUNNER_SERVICE_LOCK
 
     def execute(
