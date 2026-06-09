@@ -96,7 +96,7 @@ services:
       dockerfile: ./docker/prod/ml/ingest/Dockerfile
     restart: unless-stopped
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:-monitoring-pushgateway:9091}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -126,7 +126,7 @@ services:
       dockerfile: ./docker/prod/ml/features/Dockerfile
     restart: unless-stopped
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:-monitoring-pushgateway:9091}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -161,7 +161,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       GIT_PYTHON_REFRESH: quiet
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:-monitoring-pushgateway:9091}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
