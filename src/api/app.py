@@ -270,9 +270,10 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
         predictions = prediction_store.require_predictions()
         if counter_id not in predictions:
+            available_counters = sorted(list(predictions.keys()))
             raise ApiBusinessException(
                 type="CounterUnavailable",
-                message=f"Available counters: {sorted(list(predictions.keys()))}",
+                message=f"Available counters: {available_counters}",
                 date=str(datetime.now()),
             )
 
@@ -328,9 +329,10 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
         artifacts = prediction_store.require_artifacts()
         if counter_id not in artifacts:
+            available_counters = sorted(list(artifacts.keys()))
             raise ApiBusinessException(
                 type="ArtifactUnavailable",
-                message=f"Available counters: {sorted(list(artifacts.keys()))}",
+                message=f"Available counters: {available_counters}",
                 date=str(datetime.now()),
             )
 
