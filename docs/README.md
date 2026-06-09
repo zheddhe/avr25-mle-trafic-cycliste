@@ -1,33 +1,25 @@
 # Project documentation index
 
-This folder is organized so contributors can distinguish current operation,
-implemented architecture, and active next-phase design work.
+This folder separates current operations, implemented architecture,
+documentation assets, and global remaining work.
 
 The root `README.md` stays concise and project-oriented. Detailed runtime,
-architecture, and implementation design decisions live here.
+architecture, and implementation decisions live here.
 
 ## Documentation level rules
 
-Use each documentation area at one level of abstraction:
-
 | Area | Scope | Rule |
 | ---- | ----- | ---- |
-| `current-runtime-and-operations/` | Implemented local commands, workspaces, service exposure, dependencies, and runtime ownership. | Describe what exists on `main` and how to operate it. Do not use this area for backlog, future behavior, or story-specific acceptance notes. |
-| `architecture-references/` | Implemented cross-runtime boundaries, networks, communication paths, and security rules. | Describe the current architecture and its guardrails. Do not add roadmap tables or planned service-to-service paths here. |
-| `next-phase-design/` | Active design and implementation coordination for the ongoing phase. | Keep only remaining design gaps and phase coordination. Do not keep separate implementation-outcome notes once stable wording has been folded into current runtime or architecture docs. |
+| `current-runtime-and-operations/` | Implemented local commands, workspaces, service exposure, dependencies, and runtime ownership. | Describe what exists and how to operate it. |
+| `architecture-references/` | Implemented cross-runtime boundaries, networks, communication paths, and runtime guardrails. | Describe the current architecture. |
+| `assets/` | Documentation-only icons and rendered diagrams. | Store visuals used by Markdown docs only. |
+| `remaining-work/` | Future improvement axes outside the validated local production-like baseline. | Keep global remaining work, not completed story design notes. |
 
-Story-level details belong in GitHub issues and PRs. Documentation may keep
-cross-cutting status only when it helps contributors understand the phase, and it
-should link to the appropriate source document instead of repeating the same
-information in several places.
-
-When a design becomes implemented, move the stable current-state wording to
-`current-runtime-and-operations/` or `architecture-references/`. Keep only the
-remaining design gaps under `next-phase-design/`.
+Story-level details belong in GitHub issues and pull requests. When a design
+becomes implemented, move stable current-state wording to current runtime or
+architecture docs. Remaining gaps belong under `remaining-work/`.
 
 ## Current runtime and operations
-
-Use these documents to run or validate what exists on `main`.
 
 | Document | Purpose |
 | -------- | ------- |
@@ -38,23 +30,24 @@ Use these documents to run or validate what exists on `main`.
 
 ## Architecture references
 
-Use these documents to understand the implemented local MLOps architecture and the
-rules that guide runtime changes.
-
 | Document | Purpose |
 | -------- | ------- |
 | [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md) | Service-to-service communication, runner execution boundary, manifest handoff paths, mount coupling, and current network traffic. |
 | [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket boundary, host exposure, and service privilege rules. |
 | [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md) | Implemented `docker/prod` functional network topology and current service placement. |
 
-## Next Phase design
-
-Use this area only for remaining gaps that are not yet covered by current runtime
-or architecture documentation.
+## Documentation assets
 
 | Document | Purpose |
 | -------- | ------- |
-| [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md) | Remaining improvement axes after Phase 8 closure: security, scale-out, full ETL source chain, object-storage-first handoff, and remote production operations. |
+| [`assets/README.md`](assets/README.md) | Asset ownership rules for icons and rendered diagrams. |
+| [`assets/diagrams/local-prod-architecture-overview.png`](assets/diagrams/local-prod-architecture-overview.png) | Rendered architecture overview used for onboarding. Mermaid diagrams and service tables remain the maintained architecture contract. |
+
+## Remaining work
+
+| Document | Purpose |
+| -------- | ------- |
+| [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md) | Security, scale-out, full ETL source chain, object-storage-first handoff, remote operations, and observability hardening. |
 
 ## Reading order
 
@@ -65,8 +58,7 @@ For runtime work, read:
 3. [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md)
 4. [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md)
 
-For active phase implementation, read:
+For future improvement planning, read:
 
-1. [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md)
+1. [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md)
 2. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
-3. The GitHub issue for the current implementation task.
