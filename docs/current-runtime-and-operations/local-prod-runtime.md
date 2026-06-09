@@ -119,9 +119,30 @@ local production-like runtime. It is not a durable queue, distributed scheduler,
 Docker SDK wrapper, shell command runner, or Kubernetes job controller.
 
 `docker/prod` Airflow services can start without Docker socket access. The
-production-like DAG under `docker/prod/airflow/dags` submits `ingest`, then
-`features`, then `models` jobs to `job-runner-api`, and only triggers API refresh
-after the model step has succeeded.
+production-like DAGs under `docker/prod/airflow/dags` keep the same functional
+shape as the development DAGs:
+
+- `bike_traffic_orchestrator` lists counters from the mounted DAG configuration;
+- `bike_traffic_init` performs historical bootstrap through `job-runner-api`;
+- `bike_traffic_daily` performs daily sliding-window runs through
+  `job-runner-api`.
+
+Both child DAGs submit `ingest`, then `features`, then `models` jobs, and only
+trigger authenticated API refresh through the `api_prod` Airflow connection after
+the model step has succeeded.
+
+## Production-like Airflow configuration
+
+The production-like Airflow configuration is file based:
+
+| File | Purpose |
+| ---- | ------- |
+| `docker/prod/airflow/config/bike_dag_config.json` | Counter and scheduling configuration mounted read-only into Airflow. |
+| `docker/prod/airflow/config/connections.json` | Airflow connections, including `api_prod` for authenticated API refresh. |
+
+`docker/prod` no longer imports `variables.json`. The prod DAG configuration is
+loaded from the mounted JSON file, while the init script removes obsolete
+DockerOperator-era variables if they still exist in a reused Airflow metadata DB.
 
 ## Network topology
 
@@ -132,7 +153,7 @@ The `docker/prod` Compose file implements the functional network design from
 | ------- | ------------------- |
 | `orchestration_net` | Airflow control plane, metadata DB, and broker. |
 | `pipeline_runtime_net` | API refresh, batch job handoff, runner API access, and Pushgateway writes. |
-| `tracking_client_net` | MLflow client calls from model workloads. |
+| `tracking_client_net` | MLflow client API calls from model workloads. |
 | `tracking_backend_net` | MLflow PostgreSQL and MinIO backend isolation. |
 | `observability_net` | Prometheus scrapes, Grafana datasource access, and alert routing. |
 | `dev_support_net` | Local SMTP capture for Airflow and Alertmanager. |
@@ -148,7 +169,7 @@ for local validation by default:
 
 | Service | Reason |
 | ------- | ------ |
-| `api-dev` | Local prediction API, OpenAPI docs, and smoke tests. |
+| `api-prod` | Local prediction API, OpenAPI docs, and smoke tests. |
 | `airflow-api-server` | Local DAG inspection and orchestration UI. |
 | `mlflow-server` | Local tracking inspection while the model registry path matures. |
 | `monitoring-grafana` | Local dashboard entrypoint. |
