@@ -185,7 +185,7 @@ services:
       - tracking_client_net
     profiles: ["ml", "all", "ptf"]
 
-  api-dev:
+  api-prod:
     <<: *prod-security
     image: api:prod
     build:
