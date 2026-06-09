@@ -19,4 +19,4 @@ class TestApiMain:
         main = import_module("src.api.main")
 
         assert isinstance(main.app, FastAPI)
-        assert main.app.title == "API du trafic cycliste"
+        assert main.app.title == "Bike Traffic Prediction API"
