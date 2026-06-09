@@ -11,13 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance
-from airflow.models.param import Param, ParamsDict
 from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
-from airflow.sdk import Variable
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk import DAG, Param, TaskGroup, Variable
 from common.utils import CounterCfg, _load_config
 
 logger = logging.getLogger("airflow.task")
@@ -28,9 +25,7 @@ DATA_ROOT = "/app/data"
 MODEL_ROOT = "/app/models"
 MANIFEST_ROOT = "/app/artifacts/manifests"
 
-DAG_PARAMS: ParamsDict = ParamsDict(
-    {"counter_id": Param(default="", type="string")}
-)
+DAG_PARAMS: dict[str, Param] = {"counter_id": Param(default="", type="string")}
 
 
 def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
