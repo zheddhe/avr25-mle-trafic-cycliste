@@ -7,10 +7,10 @@ fallback and by the internal FastAPI ML step services.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Iterator
 
 from click import Command
 

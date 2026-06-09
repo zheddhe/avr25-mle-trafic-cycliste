@@ -15,8 +15,7 @@ from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance
 from airflow.models.param import Param, ParamsDict
-from airflow.providers.standard.operators.python import PythonOperator
-from airflow.providers.standard.operators.python import ShortCircuitOperator
+from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.sdk import Variable
 from airflow.utils.task_group import TaskGroup
 from common.utils import CounterCfg, _load_config
