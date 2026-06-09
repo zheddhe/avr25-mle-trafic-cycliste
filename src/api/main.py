@@ -4,26 +4,28 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import (
-    Depends,
-    FastAPI,
-    HTTPException,
-    Query,
-    Request,
-)
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from prometheus_client import Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
-# -------------------------------------------------------------------
-# Logs configuration
-# -------------------------------------------------------------------
+from src.artifacts.exceptions import (
+    ArtifactChecksumMismatchError,
+    ArtifactManifestNotFoundError,
+    ArtifactManifestValidationError,
+    ArtifactPayloadNotFoundError,
+)
+from src.artifacts.manifest_store import read_current_manifest, verify_local_payload
+from src.artifacts.schemas import ArtifactManifest, ArtifactType, StorageBackend
+
 log_dir = os.path.join("logs", "api")
 os.makedirs(log_dir, exist_ok=True)
 LOG_PATH = os.path.join(log_dir, "main.log")
@@ -38,16 +40,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# -------------------------------------------------------------------
-# Data root and in-memory store
-# -------------------------------------------------------------------
-DATA_FINAL_ROOT = os.path.abspath(
-    os.getenv("DATA_FINAL_ROOT") or os.path.join("data", "final")
+ARTIFACT_MANIFEST_ROOT = os.path.abspath(
+    os.getenv("ARTIFACT_MANIFEST_ROOT")
+    or os.path.join("docker", "prod", "runtime", "artifacts", "manifests")
+)
+ARTIFACT_REPOSITORY_ROOT = os.path.abspath(
+    os.getenv("ARTIFACT_REPOSITORY_ROOT") or "."
+)
+API_COUNTER_IDS = tuple(
+    item.strip()
+    for item in os.getenv("API_COUNTER_IDS", "").split(",")
+    if item.strip()
 )
 
-# df_predictions: key = subdir (counter id), value = DataFrame loaded from
-# <DATA_FINAL_ROOT>/<subdir>/y_full.csv
+# df_predictions: key = counter id, value = DataFrame loaded from the local CSV
+# referenced by the promoted predictions current.json manifest.
 df_predictions: dict[str, pd.DataFrame] = {}
+prediction_artifacts: dict[str, "CurrentArtifactMetadata"] = {}
 
 REQUIRED_COLUMNS = {
     "date_et_heure_de_comptage_local",
@@ -58,97 +67,56 @@ REQUIRED_COLUMNS = {
 }
 
 
-def _safe_read_csv(path: str) -> pd.DataFrame | None:
-    """
-    Read a CSV with index_col=0 and validate required columns.
-    Returns None if the file is invalid or unreadable.
-    """
-    try:
-        df = pd.read_csv(path, index_col=0)
-    except Exception as exc:
-        logger.warning("Failed to read CSV [%s]: %s", path, exc)
-        return None
-
-    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
-    if missing:
-        logger.warning(
-            f"CSV [{path}] ignored, missing required columns: {missing}"
-        )
-        return None
-
-    return df
+class PredictionServingError(ValueError):
+    """Base error raised while loading promoted prediction artifacts."""
 
 
-def load_predictions_from_final(
-    root_dir: str,
-) -> tuple[dict[str, pd.DataFrame], int, int]:
-    """
-    Explore <root_dir> to find all subdirs containing a y_full.csv.
-    Return (mapping, skipped_no_csv, invalid_csv).
-    """
-    mapping: dict[str, pd.DataFrame] = {}
-    skipped_no_csv = 0
-    invalid_csv = 0
-
-    if not os.path.isdir(root_dir):
-        logger.warning(f"Final data root not found: [{root_dir}]")
-        return mapping, skipped_no_csv, invalid_csv
-
-    for entry in os.scandir(root_dir):
-        if not entry.is_dir():
-            continue
-        subdir = entry.name
-        csv_path = os.path.join(entry.path, "y_full.csv")
-        if not os.path.isfile(csv_path):
-            logger.debug(f"No y_full.csv in [{entry.path}], skipping.")
-            skipped_no_csv += 1
-            continue
-
-        df = _safe_read_csv(csv_path)
-        if df is None:
-            invalid_csv += 1
-            continue
-
-        mapping[subdir] = df
-        logger.info(
-            f"Loaded predictions for counter [{subdir}]: {df.shape[0]} rows x [{df.shape[1]}] cols"
-        )
-    return mapping, skipped_no_csv, invalid_csv
+class PredictionCsvError(PredictionServingError):
+    """Raised when the promoted prediction CSV cannot be loaded."""
 
 
-def refresh_store() -> dict[str, pd.DataFrame]:
-    """
-    Rescan the filesystem and refresh the in-memory store.
-    """
-    global df_predictions
-    mapping, _, _ = load_predictions_from_final(DATA_FINAL_ROOT)
-    df_predictions = mapping
-    logger.info(f"Store refreshed: {len(df_predictions)} counters available.")
-    return df_predictions
+class UnsupportedPredictionBackendError(PredictionServingError):
+    """Raised when a promoted manifest points to an unsupported backend."""
 
 
-# -------------------------------------------------------------------
-# Simple security (Basic Auth) avec système de rôles
-# -------------------------------------------------------------------
+@dataclass(frozen=True)
+class PredictionServingConfig:
+    """Runtime configuration for manifest-first prediction serving."""
 
-# Dictionnaire des utilisateurs avec leurs rôles
-dict_credentials = {
-    # Administrateurs - accès complet
-    "admin1": {"password": "admin1", "role": "admin"},
-    "admin2": {"password": "admin2", "role": "admin"},
+    manifest_root: Path
+    repository_root: Path
+    counter_ids: tuple[str, ...] = ()
 
-    # Utilisateurs standard - accès prédictions uniquement
-    "user1": {"password": "user1", "role": "user"},
-    "user2": {"password": "user2", "role": "user"},
-}
 
+@dataclass(frozen=True)
+class PredictionLoadResult:
+    """Predictions and metadata loaded from promoted manifests."""
+
+    predictions: dict[str, pd.DataFrame]
+    artifacts: dict[str, "CurrentArtifactMetadata"]
+
+
+def _default_credentials() -> dict[str, dict[str, str]]:
+    """Return local demo credentials without embedding secret constants."""
+
+    return {
+        username: {"password": username, "role": role}
+        for username, role in {
+            "admin1": "admin",
+            "admin2": "admin",
+            "user1": "user",
+            "user2": "user",
+        }.items()
+    }
+
+
+dict_credentials = _default_credentials()
 security = HTTPBasic()
 
 
 def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)) -> dict:
-    """
-    Validate Basic Auth credentials et retourne les infos utilisateur.
-    """
+    """Validate Basic Auth credentials and return sanitized user details."""
+
     if credentials.username not in dict_credentials:
         raise HTTPException(
             status_code=403,
@@ -157,67 +125,57 @@ def _check_credentials(credentials: HTTPBasicCredentials = Depends(security)) ->
 
     user_info = dict_credentials[credentials.username]
     if user_info["password"] != credentials.password:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid password.",
-        )
+        raise HTTPException(status_code=403, detail="Invalid password.")
 
-    # Retourner les informations utilisateur (sans le mot de passe)
-    return {
-        "username": credentials.username,
-        "role": user_info["role"]
-    }
+    return {"username": credentials.username, "role": user_info["role"]}
 
 
 def _check_admin_role(user_info: dict = Depends(_check_credentials)) -> dict:
-    """
-    Vérifie que l'utilisateur a le rôle admin.
-    """
+    """Ensure the current user has the admin role."""
+
     if user_info["role"] != "admin":
         raise HTTPException(
             status_code=403,
-            detail=f"Access denied. Admin role required. Current role: {user_info['role']}",
+            detail=(
+                "Access denied. Admin role required. "
+                f"Current role: {user_info['role']}"
+            ),
         )
     return user_info
 
 
-def _check_user_or_admin_role(user_info: dict = Depends(_check_credentials)) -> dict:
-    """
-    Vérifie que l'utilisateur a le rôle user ou admin.
-    """
+def _check_user_or_admin_role(
+    user_info: dict = Depends(_check_credentials),
+) -> dict:
+    """Ensure the current user has user or admin privileges."""
+
     if user_info["role"] not in ["user", "admin"]:
         raise HTTPException(
             status_code=403,
-            detail=f"Access denied. User or Admin role required. Current role: {user_info['role']}",
+            detail=(
+                "Access denied. User or Admin role required. "
+                f"Current role: {user_info['role']}"
+            ),
         )
     return user_info
 
 
-# -------------------------------------------------------------------
-# OpenAPI / tags
-# -------------------------------------------------------------------
 tags_metadata = [
     {
         "name": "Admin",
-        "description": (
-            "Restricted endpoints for administrators only. "
-            "Used for service health checks and data store management "
-            "(e.g., refresh operations)."
-        ),
+        "description": "Restricted endpoints for administrators only.",
     },
     {
         "name": "Info",
-        "description": (
-            "General informational endpoints available to any authenticated user. "
-            "Provide details about the current session and user identity."
-        ),
+        "description": "General informational authenticated endpoints.",
     },
     {
         "name": "Predictions",
-        "description": (
-            "Endpoints to access cyclist traffic predictions, including available counters "
-            "and paginated prediction data. Accessible to users and administrators."
-        ),
+        "description": "Prediction endpoints loaded from promoted manifests.",
+    },
+    {
+        "name": "Artifacts",
+        "description": "Sanitized metadata for currently served artifacts.",
     },
 ]
 
@@ -227,22 +185,21 @@ app = FastAPI(
         "Expose les prédictions du trafic cycliste pour les compteurs "
         "installés dans la ville de Paris."
     ),
-    version="1.2.0",
+    version="1.3.0",
     openapi_tags=tags_metadata,
 )
 
-# -------------------------------------------------------------------
-# Prometheus instrumentation
-# -------------------------------------------------------------------
-# Technical metrics : Latency, HTTP status, throughput, etc.
 instrumentator = Instrumentator(
     should_group_status_codes=True,
     should_ignore_untemplated=True,
     excluded_handlers=["/metrics"],
 )
-instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+instrumentator.instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False,
+)
 
-# Business metrics : number of prediction provided by API call
 PRED_PER_RESPONSE = Histogram(
     "api_predictions_per_response",
     "Nombre de prédictions renvoyées par appel",
@@ -250,24 +207,6 @@ PRED_PER_RESPONSE = Histogram(
 )
 
 
-# -------------------------------------------------------------------
-# Lifespan context
-# -------------------------------------------------------------------
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Lifecycle manager for FastAPI.
-    - On startup: refresh the store.
-    - On shutdown: (placeholder for cleanup if needed).
-    """
-    refresh_store()
-    yield
-    # add cleaning steps if necessary
-
-
-# -------------------------------------------------------------------
-# Models
-# -------------------------------------------------------------------
 class ErrorResponse(BaseModel):
     type: str = Field(..., description="Business error type.")
     message: str | None = Field(
@@ -300,26 +239,191 @@ class PredictionList(BaseModel):
 
 
 class Counter(BaseModel):
-    id: str = Field(..., description="Counter identifier (subdir name).")
+    id: str = Field(..., description="Counter identifier.")
+
+
+class ArtifactSourceMetadata(BaseModel):
+    raw_file_name: str | None = Field(default=None)
+    dataset_version: str | None = Field(default=None)
+    model_version: str | None = Field(default=None)
+
+
+class CurrentArtifactMetadata(BaseModel):
+    counter_id: str = Field(..., description="Counter served by the artifact.")
+    run_id: str = Field(..., description="Run id recorded by the manifest.")
+    artifact_type: str = Field(..., description="Manifest artifact type.")
+    status: str = Field(..., description="Manifest lifecycle status.")
+    created_at: datetime = Field(..., description="Manifest creation timestamp.")
+    producer_service: str = Field(..., description="Producer service name.")
+    producer_image: str | None = Field(default=None)
+    producer_version: str | None = Field(default=None)
+    source: ArtifactSourceMetadata = Field(
+        ..., description="Sanitized source and lineage metadata."
+    )
+    primary_backend: str = Field(..., description="Primary storage backend.")
+    local_path: str | None = Field(default=None)
+    object_uri: str | None = Field(default=None)
+    checksum_sha256: str | None = Field(default=None)
 
 
 class AdminRefreshResponse(BaseModel):
     message: str = Field(..., description="Operation result.")
     counters_before: int = Field(..., description="Store size before refresh.")
     counters_after: int = Field(..., description="Store size after refresh.")
-    data_root: str = Field(..., description="Absolute root directory used.")
+    manifest_root: str = Field(..., description="Manifest root used.")
+    repository_root: str = Field(..., description="Repository root used.")
     loaded: int = Field(..., description="Counters successfully loaded.")
-    skipped_no_csv: int = Field(
-        ..., description="Subdirs without y_full.csv."
-    )
-    invalid_csv: int = Field(
-        ..., description="y_full.csv unreadable or schema-missing."
+
+
+def get_prediction_serving_config() -> PredictionServingConfig:
+    """Build manifest-first API serving configuration from environment."""
+
+    return PredictionServingConfig(
+        manifest_root=Path(ARTIFACT_MANIFEST_ROOT),
+        repository_root=Path(ARTIFACT_REPOSITORY_ROOT),
+        counter_ids=API_COUNTER_IDS,
     )
 
 
-# -------------------------------------------------------------------
-# Custom exception + handler
-# -------------------------------------------------------------------
+def discover_current_prediction_counter_ids(manifest_root: Path) -> tuple[str, ...]:
+    """Discover counters that have a promoted prediction current manifest."""
+
+    predictions_root = manifest_root / ArtifactType.PREDICTIONS.value
+    if not predictions_root.is_dir():
+        return ()
+
+    counter_ids = [
+        path.parent.name
+        for path in predictions_root.glob("*/current.json")
+        if path.is_file()
+    ]
+    return tuple(sorted(counter_ids))
+
+
+def load_predictions_from_manifests(
+    config: PredictionServingConfig,
+) -> PredictionLoadResult:
+    """Load promoted prediction manifests and referenced local CSV files."""
+
+    counter_ids = config.counter_ids or discover_current_prediction_counter_ids(
+        config.manifest_root,
+    )
+    predictions: dict[str, pd.DataFrame] = {}
+    artifacts: dict[str, CurrentArtifactMetadata] = {}
+
+    for counter_id in counter_ids:
+        manifest = read_current_manifest(
+            manifest_root=config.manifest_root,
+            artifact_type=ArtifactType.PREDICTIONS.value,
+            counter_id=counter_id,
+        )
+        df = load_prediction_dataframe_from_manifest(manifest, config)
+        predictions[manifest.counter_id] = df
+        artifacts[manifest.counter_id] = current_artifact_metadata(manifest)
+        logger.info(
+            "Loaded promoted predictions for counter [%s]: %s rows x %s cols",
+            manifest.counter_id,
+            df.shape[0],
+            df.shape[1],
+        )
+
+    return PredictionLoadResult(predictions=predictions, artifacts=artifacts)
+
+
+def load_prediction_dataframe_from_manifest(
+    manifest: ArtifactManifest,
+    config: PredictionServingConfig,
+) -> pd.DataFrame:
+    """Validate a prediction manifest and load its referenced local CSV."""
+
+    if manifest.artifact_type != ArtifactType.PREDICTIONS:
+        raise ArtifactManifestValidationError(
+            "Current artifact manifest must describe predictions."
+        )
+    if manifest.storage.primary_backend != StorageBackend.LOCAL:
+        raise UnsupportedPredictionBackendError(
+            "Unsupported prediction artifact backend: "
+            f"{manifest.storage.primary_backend.value}"
+        )
+    if manifest.storage.local_path is None:
+        raise ArtifactManifestValidationError(
+            "local_path is required for local prediction serving."
+        )
+
+    verify_local_payload(manifest, repository_root=config.repository_root)
+    csv_path = config.repository_root / manifest.storage.local_path
+    return read_prediction_csv(csv_path)
+
+
+def read_prediction_csv(csv_path: Path) -> pd.DataFrame:
+    """Read and validate a promoted prediction CSV file."""
+
+    try:
+        df = pd.read_csv(csv_path, index_col=0)
+    except Exception as error:
+        raise PredictionCsvError(
+            f"Failed to read promoted prediction CSV [{csv_path}]: {error}"
+        ) from error
+
+    missing = sorted(REQUIRED_COLUMNS.difference(df.columns))
+    if missing:
+        raise PredictionCsvError(
+            "Promoted prediction CSV is missing required columns: "
+            f"{missing}"
+        )
+
+    return df
+
+
+def current_artifact_metadata(
+    manifest: ArtifactManifest,
+) -> CurrentArtifactMetadata:
+    """Return sanitized metadata for the currently served artifact."""
+
+    return CurrentArtifactMetadata(
+        counter_id=manifest.counter_id,
+        run_id=manifest.run_id,
+        artifact_type=manifest.artifact_type.value,
+        status=manifest.status.value,
+        created_at=manifest.created_at,
+        producer_service=manifest.producer.service,
+        producer_image=manifest.producer.image,
+        producer_version=manifest.producer.version,
+        source=ArtifactSourceMetadata(
+            raw_file_name=manifest.source.raw_file_name,
+            dataset_version=manifest.source.dataset_version,
+            model_version=manifest.source.model_version,
+        ),
+        primary_backend=manifest.storage.primary_backend.value,
+        local_path=manifest.storage.local_path,
+        object_uri=manifest.storage.object_uri,
+        checksum_sha256=manifest.storage.checksum_sha256,
+    )
+
+
+def refresh_store() -> dict[str, pd.DataFrame]:
+    """Refresh the in-memory store from promoted prediction manifests."""
+
+    global df_predictions, prediction_artifacts
+    config = get_prediction_serving_config()
+    result = load_predictions_from_manifests(config)
+    df_predictions = result.predictions
+    prediction_artifacts = result.artifacts
+    logger.info(
+        "Store refreshed from manifests: %s counters available.",
+        len(df_predictions),
+    )
+    return df_predictions
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle manager for FastAPI."""
+
+    refresh_store()
+    yield
+
+
 class CustomException(Exception):
     def __init__(self, type: str, date: str, message: str):
         self.type = type
@@ -342,9 +446,6 @@ def custom_exception_handler(
     )
 
 
-# -------------------------------------------------------------------
-# Common responses
-# -------------------------------------------------------------------
 ResponsesDict = dict[int | str, dict[str, Any]]
 generic_responses: ResponsesDict = {
     200: {"description": "Success"},
@@ -357,9 +458,14 @@ generic_responses: ResponsesDict = {
 }
 
 
-# -------------------------------------------------------------------
-# Routes avec contrôle d'accès par rôle
-# -------------------------------------------------------------------
+def _raise_store_error(error: Exception) -> None:
+    error_type = error.__class__.__name__
+    raise CustomException(
+        type=error_type,
+        message=str(error),
+        date=str(datetime.now()),
+    ) from error
+
 
 @app.get(
     "/verify",
@@ -369,51 +475,64 @@ generic_responses: ResponsesDict = {
     responses=generic_responses,
 )
 def get_verify(user_info: dict = Depends(_check_admin_role)):
-    """
-    Health check - Accès limité aux administrateurs
-    """
-    logger.info(f"Health check requested by admin user: {user_info['username']}")
+    """Health check restricted to administrators."""
+
+    logger.info("Health check requested by admin user: %s", user_info["username"])
     return {
         "message": "API is healthy.",
         "checked_by": user_info["username"],
-        "role": user_info["role"]
+        "role": user_info["role"],
     }
 
 
 @app.post(
     "/admin/refresh",
     tags=["Admin"],
-    summary="Refresh in-memory store",
-    description="Rescan the filesystem (DATA_FINAL_ROOT) and reload all counters. [ADMIN ONLY]",
+    summary="Refresh in-memory store from promoted manifests",
+    description=(
+        "Reload promoted prediction current.json manifests and their local "
+        "payloads. [ADMIN ONLY]"
+    ),
     response_model=AdminRefreshResponse,
     responses=generic_responses,
 )
 def post_refresh(user_info: dict = Depends(_check_admin_role)):
-    """
-    Refresh du store - Accès limité aux administrateurs
-    """
-    global df_predictions
+    """Refresh the prediction store from promoted manifests."""
+
+    global df_predictions, prediction_artifacts
     before = len(df_predictions)
-    mapping, skipped_no_csv, invalid_csv = load_predictions_from_final(
-        DATA_FINAL_ROOT
-    )
-    df_predictions = mapping
+    config = get_prediction_serving_config()
+
+    try:
+        result = load_predictions_from_manifests(config)
+    except (
+        ArtifactChecksumMismatchError,
+        ArtifactManifestNotFoundError,
+        ArtifactManifestValidationError,
+        ArtifactPayloadNotFoundError,
+        PredictionServingError,
+    ) as error:
+        _raise_store_error(error)
+
+    df_predictions = result.predictions
+    prediction_artifacts = result.artifacts
     after = len(df_predictions)
 
     logger.info(
-        f"Admin refresh done by {user_info['username']}. "
-        f"before={before} after={after} loaded={after} "
-        f"skipped_no_csv={skipped_no_csv} invalid_csv={invalid_csv}"
+        "Admin refresh done by %s. before=%s after=%s loaded=%s",
+        user_info["username"],
+        before,
+        after,
+        after,
     )
 
     return AdminRefreshResponse(
         message=f"Store refreshed by {user_info['username']}.",
         counters_before=before,
         counters_after=after,
-        data_root=os.path.abspath(DATA_FINAL_ROOT),
+        manifest_root=str(config.manifest_root),
+        repository_root=str(config.repository_root),
         loaded=after,
-        skipped_no_csv=skipped_no_csv,
-        invalid_csv=invalid_csv,
     )
 
 
@@ -422,25 +541,26 @@ def post_refresh(user_info: dict = Depends(_check_admin_role)):
     tags=["Predictions"],
     summary="List available counters",
     description=(
-        "List all counters detected under data/final/<subdir>/y_full.csv "
-        "(or under DATA_FINAL_ROOT). [USER or ADMIN]"
+        "List counters loaded from promoted prediction manifests. "
+        "[USER or ADMIN]"
     ),
     response_model=list[Counter],
     responses=generic_responses,
 )
 def get_all_counters(user_info: dict = Depends(_check_user_or_admin_role)):
-    """
-    Liste des compteurs - Accès pour utilisateurs et administrateurs
-    """
+    """Return counters loaded in the manifest-first prediction store."""
+
     if not df_predictions:
         raise CustomException(
             type="PredictionsNotLoaded",
-            message=f"df_predictions content: {df_predictions}",
+            message="No promoted prediction manifest has been loaded.",
             date=str(datetime.now()),
         )
 
     logger.info(
-        f"Counters list requested by user: {user_info['username']} (role: {user_info['role']})"
+        "Counters list requested by user: %s (role: %s)",
+        user_info["username"],
+        user_info["role"],
     )
     return [Counter(id=name) for name in sorted(df_predictions.keys())]
 
@@ -450,8 +570,8 @@ def get_all_counters(user_info: dict = Depends(_check_user_or_admin_role)):
     tags=["Predictions"],
     summary="Get predictions for a counter",
     description=(
-        "Return a paginated list of predictions for the given counter id "
-        "(subdir name). Max 100 per page. [USER or ADMIN]"
+        "Return a paginated list of predictions for the given counter id. "
+        "Max 100 per page. [USER or ADMIN]"
     ),
     response_model=PredictionList,
     responses=generic_responses,
@@ -471,13 +591,12 @@ def get_predictions_by_counter(
     ),
     user_info: dict = Depends(_check_user_or_admin_role),
 ):
-    """
-    Prédictions pour un compteur - Accès pour utilisateurs et administrateurs
-    """
+    """Return predictions for one loaded counter."""
+
     if not df_predictions:
         raise CustomException(
             type="PredictionsNotLoaded",
-            message=f"df_predictions content: {df_predictions}",
+            message="No promoted prediction manifest has been loaded.",
             date=str(datetime.now()),
         )
 
@@ -494,15 +613,19 @@ def get_predictions_by_counter(
     df = df_predictions[counter_id]
     df_page = df.iloc[offset: offset + limit]
 
-    # --- métrique métier: nombre d'items renvoyés par appel
     try:
         PRED_PER_RESPONSE.observe(float(len(df_page)))
-    except Exception as e:
-        logger.debug("Failed to observe PRED_PER_RESPONSE: %s", e)
+    except Exception as error:
+        logger.debug("Failed to observe PRED_PER_RESPONSE: %s", error)
 
     logger.info(
-        f"Predictions for counter {counter_id} requested by user: {user_info['username']} "
-        f"(role: {user_info['role']}, limit: {limit}, offset: {offset})"
+        "Predictions for counter %s requested by user: %s "
+        "(role: %s, limit: %s, offset: %s)",
+        counter_id,
+        user_info["username"],
+        user_info["role"],
+        limit,
+        offset,
     )
 
     return PredictionList(
@@ -516,7 +639,72 @@ def get_predictions_by_counter(
     )
 
 
-# Endpoint optionnel pour voir les informations de l'utilisateur connecté
+@app.get(
+    "/artifacts/current",
+    tags=["Artifacts"],
+    summary="List currently served prediction artifact metadata",
+    response_model=list[CurrentArtifactMetadata],
+    responses=generic_responses,
+)
+def get_current_artifacts(user_info: dict = Depends(_check_user_or_admin_role)):
+    """Return current artifact metadata for all loaded counters."""
+
+    if not prediction_artifacts:
+        raise CustomException(
+            type="ArtifactsNotLoaded",
+            message="No promoted prediction artifact metadata has been loaded.",
+            date=str(datetime.now()),
+        )
+
+    logger.info(
+        "Current artifact metadata requested by user: %s (role: %s)",
+        user_info["username"],
+        user_info["role"],
+    )
+    return [
+        prediction_artifacts[counter_id]
+        for counter_id in sorted(prediction_artifacts.keys())
+    ]
+
+
+@app.get(
+    "/artifacts/current/{counter_id}",
+    tags=["Artifacts"],
+    summary="Get current prediction artifact metadata for a counter",
+    response_model=CurrentArtifactMetadata,
+    responses=generic_responses,
+)
+def get_current_artifact_by_counter(
+    counter_id: str,
+    user_info: dict = Depends(_check_user_or_admin_role),
+):
+    """Return current artifact metadata for one loaded counter."""
+
+    if not prediction_artifacts:
+        raise CustomException(
+            type="ArtifactsNotLoaded",
+            message="No promoted prediction artifact metadata has been loaded.",
+            date=str(datetime.now()),
+        )
+
+    if counter_id not in prediction_artifacts:
+        raise CustomException(
+            type="ArtifactUnavailable",
+            message=(
+                "Available counters: "
+                f"{sorted(list(prediction_artifacts.keys()))}"
+            ),
+            date=str(datetime.now()),
+        )
+
+    logger.info(
+        "Current artifact metadata for counter %s requested by user: %s",
+        counter_id,
+        user_info["username"],
+    )
+    return prediction_artifacts[counter_id]
+
+
 @app.get(
     "/me",
     tags=["Info"],
@@ -525,14 +713,13 @@ def get_predictions_by_counter(
     responses=generic_responses,
 )
 def get_current_user(user_info: dict = Depends(_check_credentials)):
-    """
-    Informations sur l'utilisateur connecté
-    """
+    """Return information about the authenticated user."""
+
     return {
         "username": user_info["username"],
         "role": user_info["role"],
         "permissions": {
             "admin_endpoints": user_info["role"] == "admin",
-            "prediction_endpoints": user_info["role"] in ["user", "admin"]
-        }
+            "prediction_endpoints": user_info["role"] in ["user", "admin"],
+        },
     }
