@@ -1,16 +1,7 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "avr25-mle-trafic-cycliste"
 version = "0.7.0"
 description = "bike trafic science project for MLE April 2025 promotion"
-authors = [
-    { name = "Rémy CANAL", email = "remy.canal@live.fr" },
-    { name = "Elias DJOUADI", email = "elias.djouadi@gmail.com" },
-    { name = "Koldé HOUESSOU", email = "koladehouessou@gmail.com" },
-]
 license = "MIT"
 requires-python = "==3.12.*"
 dependencies = []
@@ -33,7 +24,6 @@ app = [
     "pyproj==3.7.1",
     "scikit-optimize==0.10.2",
     "fastapi==0.116.1",
-    "setuptools==67.8.0",
     "mlflow==3.13.0",
     "click==8.2.1",
     "prometheus-client==0.20.0",
@@ -56,48 +46,24 @@ dev = [
     "dvc-s3==3.2.2",
 ]
 
-[tool.setuptools.packages.find]
-exclude = ["tests*", "logs*"]
-
 [tool.pytest.ini_options]
-addopts = [
-    "--cov",
-    "--cov-report=term",
-]
+addopts = ["--cov", "--cov-report=term"]
 testpaths = ["tests"]
-markers = [
-    "integration: end-to-end pipeline tests",
-]
-env = [
-    "DISABLE_METRICS_PUSH=1",
-]
+markers = ["integration: end-to-end pipeline tests"]
+env = ["DISABLE_METRICS_PUSH=1"]
 
 [tool.coverage.run]
 branch = true
 source = ["src"]
-omit = [
-    "*/__init__.py",
-    "*/.vscode/*",
-    "*/site-packages/*",
-    "*/python_files/*",
-]
+omit = ["*/__init__.py", "*/.vscode/*", "*/site-packages/*", "*/python_files/*"]
 
 [tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "if __name__ == '__main__':",
-]
+exclude_lines = ["pragma: no cover", "if __name__ == '__main__':"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = [
-    ".git",
-    "__pycache__",
-    "build",
-    "dist",
-    ".venv",
-]
+exclude = [".git", "__pycache__", "build", "dist", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
