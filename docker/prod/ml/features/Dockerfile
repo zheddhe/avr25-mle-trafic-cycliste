@@ -40,11 +40,4 @@ COPY src/ml/features/build_features.py /app/src/ml/features/build_features.py
 
 USER app
 
-CMD [
-    "uvicorn",
-    "src.ml.services.features_main:app",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "10082"
-]
+CMD ["uvicorn", "src.ml.services.features_main:app", "--host", "0.0.0.0", "--port", "10082"]

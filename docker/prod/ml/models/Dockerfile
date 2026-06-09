@@ -45,11 +45,4 @@ COPY src/ml/models/train_and_predict.py \
 
 USER app
 
-CMD [
-    "uvicorn",
-    "src.ml.services.models_main:app",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "10083"
-]
+CMD ["uvicorn", "src.ml.services.models_main:app", "--host", "0.0.0.0", "--port", "10083"]

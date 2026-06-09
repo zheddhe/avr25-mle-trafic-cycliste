@@ -41,11 +41,4 @@ COPY src/ml/ingest/import_raw_data.py /app/src/ml/ingest/import_raw_data.py
 
 USER app
 
-CMD [
-    "uvicorn",
-    "src.ml.services.ingest_main:app",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "10081"
-]
+CMD ["uvicorn", "src.ml.services.ingest_main:app", "--host", "0.0.0.0", "--port", "10081"]
