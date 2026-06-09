@@ -26,7 +26,7 @@ documented service dependency needs it.
 
 | Boundary | Development runtime | Production-like runtime |
 | -------- | ------------------- | ----------------------- |
-| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-dev`; reads production-like runtime prediction workspace. |
+| API serving | Host-exposed `api-dev`; reads dev data workspace. | Host-exposed `api-prod`; reads production-like runtime prediction workspace. |
 | Runner API | Not present. | Internal-only `job-runner-api`; accepts typed job requests, delegates to internal ML step services, and stores statuses in memory. |
 | Orchestration | Airflow uses DockerOperator and Docker socket. | Airflow does not mount Docker socket. |
 | Tracking | MLflow, PostgreSQL, and MinIO are visible for local debugging. | MLflow UI/API is host-exposed; PostgreSQL and MinIO stay internal. |
@@ -39,11 +39,11 @@ documented service dependency needs it.
 | Runtime identity | Current model | Boundary notes |
 | ---------------- | ------------- | -------------- |
 | Host operator | Local user running `make` and `docker compose` with Docker group access. | Docker group membership is high privilege and should not be confused with application identity. |
-| `api-dev` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads prediction artifacts and exposes HTTP on port `10000`. |
+| `api-dev` / `api-prod` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads prediction artifacts and exposes HTTP on port `10000`. |
 | `job-runner-api` | Custom prod-like image; runs as non-root app user. | Exposes internal HTTP on port `10080`, keeps in-memory status, delegates through HTTP, and has no Docker socket mount. |
 | `ml-ingest-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads raw data and writes interim data/logs. Prod-like service exposes internal HTTP on port `10081`. |
 | `ml-features-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads interim data and writes processed data/logs. Prod-like service exposes internal HTTP on port `10082`. |
-| `ml-models-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads processed data, writes forecasts/models/logs, logs evidence to MLflow, and exposes internal HTTP on port `10083` in prod-like mode. |
+| `ml-models-*` | Custom dev/prod images; prod-like image runs as non-root app user. | Reads processed data, writes forecasts/models/logs, logs evidence to MLflow, uploads MLflow artifacts to MinIO, and exposes internal HTTP on port `10083` in prod-like mode. |
 | Airflow services | Upstream Airflow image and supported runtime user model. | Development worker has Docker socket exception; production-like worker does not. |
 | `mlflow-server` | Upstream MLflow image. | Owns access to MLflow PostgreSQL and MinIO backend. |
 | PostgreSQL, Redis, MinIO | Upstream images with private volumes. | Internal stateful services; do not publish DB/broker ports to host. |
