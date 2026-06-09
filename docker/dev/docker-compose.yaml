@@ -59,7 +59,8 @@ x-airflow-common: &airflow-common
   volumes:
     - ./runtime/logs/airflow:/opt/airflow/logs
     - ./runtime/data:/opt/airflow/data
-    - ./airflow/dags:/opt/airflow/dags
+    - ./runtime/artifacts:/app/artifacts:ro
+    - ./airflow/dags:/opt/airflow/dags:ro
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
     - airflow_net
@@ -97,9 +98,14 @@ services:
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
+      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: ../..
+      ARTIFACT_PRODUCER_SERVICE: ml-ingest-dev
+      ARTIFACT_PRODUCER_IMAGE: ml-ingest:dev
     volumes:
       - ../../data:/app/data
-      - ../../runtime/logs:/app/logs
+      - ../../logs:/app/logs
+      - ../../artifacts:/app/artifacts
     networks:
       - airflow_net
       - mlops_net
@@ -124,9 +130,14 @@ services:
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
+      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: ../../
+      ARTIFACT_PRODUCER_SERVICE: ml-ingest-dev
+      ARTIFACT_PRODUCER_IMAGE: ml-ingest:dev
     volumes:
       - ../../data:/app/data
       - ../../logs:/app/logs
+      - ../../artifacts:/app/artifacts
     networks:
       - airflow_net
       - mlops_net
@@ -168,10 +179,15 @@ services:
       GIT_PYTHON_REFRESH: quiet
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
+      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: ../..
+      ARTIFACT_PRODUCER_SERVICE: ml-ingest-dev
+      ARTIFACT_PRODUCER_IMAGE: ml-ingest:dev
     volumes:
       - ../../data:/app/data
       - ../../models:/app/models
       - ../../logs:/app/logs
+      - ../../artifacts:/app/artifacts
     networks:
       - airflow_net
       - mlflow_net
@@ -187,10 +203,12 @@ services:
       - "${API_HOST_PORT:-10000}:10000"
     restart: unless-stopped
     environment:
-      DATA_FINAL_ROOT: /app/data/final
+      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: ../..
     volumes:
       - ./runtime/data/final:/app/data/final:ro
       - ./runtime/logs:/app/logs
+      - ./runtime/artifacts:/app/artifacts
     healthcheck:
       test:
         - CMD-SHELL

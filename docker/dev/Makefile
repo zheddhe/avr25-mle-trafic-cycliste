@@ -34,6 +34,7 @@ dev-help: ## Display local development runtime targets
 dev-prepare-runtime: ## Create ignored dev runtime folders
 	@$(call dev_log_target,dev-prepare-runtime)
 	mkdir -p \
+		docker/dev/runtime/artifacts/manifests \
 		docker/dev/runtime/data/raw \
 		docker/dev/runtime/data/interim \
 		docker/dev/runtime/data/processed \
