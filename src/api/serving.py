@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.api.config import ApiSettings
-from src.api.schemas import ArtifactSourceMetadata
+from src.api.schemas import ArtifactSourceMetadata, CurrentArtifactMetadata
 from src.artifacts.exceptions import ArtifactManifestNotFoundError
 from src.artifacts.manifest_store import read_current_manifest, verify_local_payload
 from src.artifacts.schemas import ArtifactManifest, ArtifactType, StorageBackend
@@ -17,9 +17,9 @@ from src.artifacts.schemas import ArtifactManifest, ArtifactType, StorageBackend
 LOGGER = logging.getLogger(__name__)
 
 REQUIRED_PREDICTION_COLUMNS = {
-    "counter_id",
     "date_et_heure_de_comptage_local",
     "date_et_heure_de_comptage_utc",
+    "y_true",
     "y_pred",
     "forecast_mode",
 }
@@ -39,10 +39,10 @@ class UnsupportedPredictionBackendError(PredictionServingError):
 
 @dataclass(frozen=True)
 class PredictionLoadResult:
-    """Loaded prediction dataframe and sanitized artifact metadata."""
+    """Loaded predictions and sanitized artifact metadata."""
 
-    dataframe: pd.DataFrame
-    artifacts: dict[str, ArtifactSourceMetadata]
+    predictions: dict[str, pd.DataFrame]
+    artifacts: dict[str, CurrentArtifactMetadata]
 
 
 def load_predictions_from_manifests(settings: ApiSettings) -> PredictionLoadResult:
@@ -58,8 +58,8 @@ def load_predictions_from_manifests(settings: ApiSettings) -> PredictionLoadResu
             f"{predictions_root}"
         )
 
-    dataframes: list[pd.DataFrame] = []
-    artifacts: dict[str, ArtifactSourceMetadata] = {}
+    predictions: dict[str, pd.DataFrame] = {}
+    artifacts: dict[str, CurrentArtifactMetadata] = {}
     for counter_id in counter_ids:
         manifest = read_current_manifest(
             settings.manifest_root,
@@ -70,17 +70,14 @@ def load_predictions_from_manifests(settings: ApiSettings) -> PredictionLoadResu
             manifest=manifest,
             settings=settings,
         )
-        dataframes.append(dataframe)
-        artifacts[manifest.counter_id] = build_artifact_metadata(
-            manifest=manifest,
-            loaded_rows=len(dataframe),
+        predictions[manifest.counter_id] = dataframe
+        artifacts[manifest.counter_id] = build_artifact_metadata(manifest)
+        LOGGER.info(
+            f"Loaded promoted predictions for counter {manifest.counter_id}: "
+            f"{dataframe.shape[0]} rows x {dataframe.shape[1]} cols"
         )
 
-    combined_dataframe = pd.concat(dataframes, ignore_index=True)
-    return PredictionLoadResult(
-        dataframe=combined_dataframe,
-        artifacts=artifacts,
-    )
+    return PredictionLoadResult(predictions=predictions, artifacts=artifacts)
 
 
 def discover_current_prediction_counter_ids(manifest_root: Path) -> tuple[str, ...]:
@@ -125,29 +122,24 @@ def load_prediction_dataframe_from_manifest(
 
     verify_local_payload(manifest, repository_root=settings.repository_root)
     payload_path = settings.repository_root / manifest.storage.local_path
-    dataframe = read_prediction_csv(payload_path)
-    LOGGER.info(
-        f"Loaded {len(dataframe)} prediction rows for {manifest.counter_id} "
-        f"from {payload_path}"
-    )
-    return dataframe
+    return read_prediction_csv(payload_path)
 
 
 def read_prediction_csv(path: Path) -> pd.DataFrame:
     """Read and validate one prediction CSV payload."""
 
     try:
-        dataframe = pd.read_csv(path)
+        dataframe = pd.read_csv(path, index_col=0)
     except Exception as error:
         raise PredictionCsvError(
             f"Unable to read prediction CSV payload: {path}"
         ) from error
 
-    missing_columns = REQUIRED_PREDICTION_COLUMNS - set(dataframe.columns)
+    missing_columns = sorted(REQUIRED_PREDICTION_COLUMNS - set(dataframe.columns))
     if missing_columns:
         raise PredictionCsvError(
             "Prediction CSV is missing required columns: "
-            f"{sorted(missing_columns)}"
+            f"{missing_columns}"
         )
 
     if dataframe.empty:
@@ -156,20 +148,25 @@ def read_prediction_csv(path: Path) -> pd.DataFrame:
     return dataframe
 
 
-def build_artifact_metadata(
-    *,
-    manifest: ArtifactManifest,
-    loaded_rows: int,
-) -> ArtifactSourceMetadata:
+def build_artifact_metadata(manifest: ArtifactManifest) -> CurrentArtifactMetadata:
     """Build sanitized metadata for one served prediction artifact."""
 
-    return ArtifactSourceMetadata(
-        CounterId=manifest.counter_id,
-        RunId=manifest.run_id,
-        ArtifactType=manifest.artifact_type.value,
-        Status=manifest.status.value,
-        PrimaryBackend=manifest.storage.primary_backend.value,
-        LocalPath=manifest.storage.local_path,
-        ChecksumSha256=manifest.storage.checksum_sha256,
-        LoadedRows=loaded_rows,
+    return CurrentArtifactMetadata(
+        counter_id=manifest.counter_id,
+        run_id=manifest.run_id,
+        artifact_type=manifest.artifact_type.value,
+        status=manifest.status.value,
+        created_at=manifest.created_at,
+        producer_service=manifest.producer.service,
+        producer_image=manifest.producer.image,
+        producer_version=manifest.producer.version,
+        source=ArtifactSourceMetadata(
+            raw_file_name=manifest.source.raw_file_name,
+            dataset_version=manifest.source.dataset_version,
+            model_version=manifest.source.model_version,
+        ),
+        primary_backend=manifest.storage.primary_backend.value,
+        local_path=manifest.storage.local_path,
+        object_uri=manifest.storage.object_uri,
+        checksum_sha256=manifest.storage.checksum_sha256,
     )
