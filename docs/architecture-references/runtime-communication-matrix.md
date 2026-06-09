@@ -55,7 +55,7 @@ The production-like runtime uses functional networks implemented in
 | Airflow services | Airflow API server | Prod-like | Compose DNS, HTTP | Internal Airflow execution API. |
 | Airflow DAG tasks | ML job containers | Dev only | Docker socket / DockerOperator | Current local development ML execution. |
 | Airflow DAG tasks | `job-runner-api` | Prod-like | HTTP on internal network | Submit typed ML step jobs and read runner status. |
-| Airflow DAG tasks | `api-prod` | Prod-like | HTTP on internal network | Refresh API after successful DAG runs. |
+| Airflow DAG tasks | API | Dev and Prod-like | HTTP on internal network | Refresh API after successful DAG runs. |
 | `job-runner-api` | `ml-ingest-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated ingestion job request. |
 | `job-runner-api` | `ml-features-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated feature job request. |
 | `job-runner-api` | `ml-models-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated model job request. |
