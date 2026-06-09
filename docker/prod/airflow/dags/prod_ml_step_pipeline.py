@@ -18,7 +18,7 @@ from airflow.operators.python import PythonOperator
 
 CONFIG_PATH = Path("/opt/airflow/config/bike_dag_config.json")
 JOB_RUNNER_URL = "http://job-runner-api:10080"
-API_URL = "http://api-dev:10000"
+API_URL = "http://api-prod:10000"
 MANIFEST_ROOT = "/app/artifacts/manifests"
 DAG_ID = "prod_ml_step_pipeline"
 
