@@ -23,19 +23,19 @@ or notebook-oriented workspace.
 | Runtime | Entry point | Primary use |
 | ------- | ----------- | ----------- |
 | Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, isolated runtime workspaces, internal runner API checks, and monitoring smoke checks. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, isolated runtime workspaces, internal runner API checks, manifest-first API serving, and monitoring smoke checks. |
 
 Use `docker/dev` when iterating on DAGs, ML CLI containers, service wiring, and
 Airflow-driven operational behavior. Its DAG path mounts `docker/dev/runtime` so
-that Compose-generated data, logs, and models stay isolated from root DVC
-workspaces.
+that Compose-generated data, logs, models, and manifests stay isolated from root
+DVC workspaces.
 
 Use root Python, DVC, notebooks, or explicit local scripts when iterating on
 reproducible experimentation assets under root `data`, `models`, and `logs`.
 
 Use `docker/prod` when validating implemented service boundaries, reduced host
 exposure, non-root application containers, internal service discovery, runner API
-behavior, and isolated runtime workspaces.
+behavior, manifest-first artifact handoff, and isolated runtime workspaces.
 
 Do not use a root-level Compose file. Runtime commands must go through the
 runtime-specific Make targets or an explicit `docker compose -f` command.
@@ -53,6 +53,7 @@ design notes.
 | [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Implemented service traffic, runner boundary, networks, and mounts. |
 | [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and security boundaries. |
 | [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented production-like network topology. |
+| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact handoff contract and remaining artifact gaps. |
 
 ## Operational commands
 
@@ -94,6 +95,7 @@ runtime workspaces under `docker/dev/runtime`:
 | `docker/dev/runtime/data` | Development Compose generated data workspace. |
 | `docker/dev/runtime/models` | Development Compose model workspace. |
 | `docker/dev/runtime/logs` | Development Compose service and batch log workspace. |
+| `docker/dev/runtime/artifacts` | Development Compose manifest-first artifact handoff root. |
 
 The local production-like runtime writes to ignored runtime workspaces under
 `docker/prod/runtime`:
@@ -126,7 +128,8 @@ The production-like runtime contains:
 - internal `ml-ingest-prod`, `ml-features-prod`, and `ml-models-prod` FastAPI
   services for concrete ML step execution;
 - an internal `job-runner-api` service for typed ML step submission, status reads,
-  and failure mapping.
+  and failure mapping;
+- a manifest-first prediction API that serves only promoted prediction manifests.
 
 `job-runner-api` is a FastAPI service listening on container port `10080`. It
 exposes `/health`, `/jobs`, and `/jobs/{job_id}` on internal Docker networks. It
@@ -155,6 +158,33 @@ shape as the development DAGs:
 Both child DAGs submit `ingest`, then `features`, then `models` jobs, and only
 trigger authenticated API refresh through the `api_prod` Airflow connection after
 the model step has succeeded.
+
+## Manifest-first API serving
+
+The prediction API no longer infers the current payload by scanning
+`data/final`. It loads promoted prediction manifests from:
+
+```text
+<manifest_root>/predictions/<counter_id>/current.json
+```
+
+The API runtime is configured with:
+
+| Variable | Purpose |
+| -------- | ------- |
+| `ARTIFACT_MANIFEST_ROOT` | Directory that contains promoted manifests. |
+| `ARTIFACT_REPOSITORY_ROOT` | Base directory used to resolve manifest `storage.local_path` values. |
+| `API_COUNTER_IDS` | Optional comma-separated counter allow-list. When omitted, the API discovers counters with a promoted prediction `current.json`. |
+
+Only `primary_backend="local"` prediction manifests are served today. The API
+verifies the local payload checksum when `storage.checksum_sha256` is present,
+reads the referenced CSV, and exposes sanitized current artifact metadata through
+`/artifacts/current` and `/artifacts/current/{counter_id}`.
+
+If no promoted prediction manifest is available at startup, the API still boots
+so the runtime can become healthy before the first DAG run. Serving endpoints
+return a business error until `/admin/refresh` successfully loads a promoted
+manifest.
 
 ## Production-like Airflow configuration
 
@@ -211,11 +241,12 @@ Alertmanager, MailHog, cAdvisor, Redis, and PostgreSQL services stay internal in
 | `docker/dev/runtime/data` | Dev | Writable | Airflow-driven development generated data workspace. |
 | `docker/dev/runtime/models` | Dev | Writable | Airflow-driven development model workspace. |
 | `docker/dev/runtime/logs` | Dev | Writable | Development Compose service and batch log workspace. |
+| `docker/dev/runtime/artifacts` | Dev | Writable by ML jobs, read-only by API when mounted | Development manifest-first handoff root. |
 | Root source CSV | Prod | Read-only | Required business input for ingestion. |
-| `docker/prod/runtime/data` | Prod | Writable | Production-like generated data workspace. |
+| `docker/prod/runtime/data` | Prod | Writable by ML jobs, read-only by API | Production-like generated data workspace. |
 | `docker/prod/runtime/models` | Prod | Writable | Production-like model workspace. |
 | `docker/prod/runtime/logs` | Prod | Writable | Production-like service and batch log workspace. |
-| `docker/prod/runtime/artifacts` | Prod | Writable by ML jobs | Manifest-first handoff root. |
+| `docker/prod/runtime/artifacts` | Prod | Writable by ML jobs, read-only by API and Airflow | Manifest-first handoff root. |
 | `docker/prod/runtime/logs/job-runner` | Prod | Writable by `job-runner-api` | Runner API service logs. |
 | Airflow DAG/config files | Prod | Read-only | DAG and config placement is explicit for this runtime. |
 | Monitoring configs | Prod | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
