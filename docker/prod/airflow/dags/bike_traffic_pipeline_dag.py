@@ -59,14 +59,12 @@ def _extract_counter_id(ctx: Mapping[str, Any]) -> str | None:
         value = params_obj.get("counter_id")
         if isinstance(value, str) and value:
             return value
-
     dag_run = ctx.get("dag_run")
     conf_obj = getattr(dag_run, "conf", None)
     if isinstance(conf_obj, Mapping):
         value = conf_obj.get("counter_id")
         if isinstance(value, str) and value:
             return value
-
     return None
 
 
@@ -94,7 +92,6 @@ def _prepare_args_callable(mode: str):
                 "end": round(max(0.0, min(100.0, 75.0 + shift)), 2),
             }
             proceed = window["end"] > 75.0
-
         context = _build_context(counter_id, counter, run_id, delta_days, window)
         context["PROCEED"] = proceed
         for key, value in context.items():
@@ -159,8 +156,8 @@ def _build_job_payload(
 ) -> dict[str, Any]:
     base = {
         "job_type": job_type,
-        "run_id": ti.xcom_pull(task_ids="etl.prepare_args", key="RUN_ID"),
-        "counter_id": ti.xcom_pull(task_ids="etl.prepare_args", key="COUNTER_ID"),
+        "run_id": _pull(ti, "RUN_ID"),
+        "counter_id": _pull(ti, "COUNTER_ID"),
         "dag_id": str(ctx["dag"].dag_id),
         "task_id": str(ctx["task"].task_id),
         "try_number": int(ti.try_number),
@@ -178,7 +175,7 @@ def _build_job_payload(
 
 
 def _ingest_args(ti: TaskInstance) -> dict[str, Any]:
-    window = ti.xcom_pull(task_ids="etl.prepare_args", key="WINDOW")
+    window = _pull(ti, "WINDOW")
     return {
         "raw_path": f"{DATA_ROOT}/raw/{_pull(ti, 'RAW_FILE_NAME')}",
         "site": _pull(ti, "SITE"),
@@ -196,6 +193,7 @@ def _features_args(ti: TaskInstance) -> dict[str, Any]:
     return {
         "interim_input_path": _manifest_or_xcom_path(
             ti,
+            task_id="etl.read_manifests_after_ingest",
             manifest_key="INGEST_MANIFEST",
             fallback_key="INTERIM_PATH",
         ),
@@ -209,6 +207,7 @@ def _models_args(ti: TaskInstance) -> dict[str, Any]:
     return {
         "processed_input_path": _manifest_or_xcom_path(
             ti,
+            task_id="etl.read_manifests_after_features",
             manifest_key="FEATURES_MANIFEST",
             fallback_key="PROCESSED_PATH",
         ),
@@ -233,10 +232,11 @@ def _pull(ti: TaskInstance, key: str) -> Any:
 def _manifest_or_xcom_path(
     ti: TaskInstance,
     *,
+    task_id: str,
     manifest_key: str,
     fallback_key: str,
 ) -> str:
-    manifest = ti.xcom_pull(task_ids="etl.read_manifests", key=manifest_key)
+    manifest = ti.xcom_pull(task_ids=task_id, key=manifest_key)
     if isinstance(manifest, Mapping):
         storage = manifest.get("storage")
         if isinstance(storage, Mapping) and storage.get("local_path"):
@@ -271,7 +271,7 @@ def _read_current_manifest(
 
 def _daily_gate_callable(**ctx) -> bool:
     ti: TaskInstance = ctx["ti"]
-    return bool(ti.xcom_pull(task_ids="etl.prepare_args", key="PROCEED"))
+    return bool(_pull(ti, "PROCEED"))
 
 
 def _init_gate_callable(**ctx) -> bool:
