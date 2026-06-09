@@ -123,6 +123,17 @@ class TestProdComposeContracts:
                 f"{networks}"
             )
 
+    def test_ml_step_services_join_observability_network(self) -> None:
+        config = _load_compose_config()
+        services = config["services"]
+
+        for service_name in ML_STEP_SERVICES:
+            networks = services[service_name].get("networks", {})
+            assert "observability_net" in networks, (
+                f"{service_name} is not attached to observability_net: "
+                f"{networks}"
+            )
+
     def test_ml_step_services_push_metrics_to_internal_pushgateway(self) -> None:
         config = _load_compose_config()
         services = config["services"]
