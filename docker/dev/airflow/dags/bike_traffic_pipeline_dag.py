@@ -44,9 +44,18 @@ HOST_REPO = _required_var("host_repo_root")
 AIRFLOW_REPO = _required_var("airflow_repo_root")
 CONT_REPO = _required_var("container_repo_root")
 MOUNTS = [
-    Mount(source=f"{HOST_REPO}/data", target=f"{CONT_REPO}/data", type="bind"),
-    Mount(source=f"{HOST_REPO}/logs", target=f"{CONT_REPO}/logs", type="bind"),
-    Mount(source=f"{HOST_REPO}/models", target=f"{CONT_REPO}/models", type="bind"),
+    Mount(
+        source=f"{HOST_REPO}/docker/dev/runtime/data",
+        target=f"{CONT_REPO}/data", type="bind"
+    ),
+    Mount(
+        source=f"{HOST_REPO}/docker/dev/runtime/logs",
+        target=f"{CONT_REPO}/logs", type="bind"
+    ),
+    Mount(
+        source=f"{HOST_REPO}/docker/dev/runtime/models",
+        target=f"{CONT_REPO}/models", type="bind"
+    ),
 ]
 
 # MLflow / MinIO configuration

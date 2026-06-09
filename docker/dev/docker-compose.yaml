@@ -1,8 +1,7 @@
 # ========================
 # LOCAL DEVELOPMENT RUNTIME
 # ========================
-# This Compose entrypoint is the canonical development runtime. The root
-# docker-compose.yaml is kept as a compatibility entrypoint for existing habits.
+# This Compose entrypoint is the canonical development runtime.
 
 volumes:
   mlflow-postgres-db:
@@ -71,6 +70,7 @@ services:
   # ========================
   # BUSINESS SERVICES
   # ========================
+  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-ingest-dev:
     image: ml-ingest:dev
     build:
@@ -98,13 +98,14 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ./runtime/data:/app/data
-      - ./runtime/logs:/app/logs
+      - ../../data:/app/data
+      - ../../runtime/logs:/app/logs
     networks:
       - airflow_net
       - mlops_net
     profiles: ["ml", "all"]
 
+  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-features-dev:
     image: ml-features:dev
     build:
@@ -124,13 +125,14 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ./runtime/data:/app/data
-      - ./runtime/logs:/app/logs
+      - ../../data:/app/data
+      - ../../logs:/app/logs
     networks:
       - airflow_net
       - mlops_net
     profiles: ["ml", "all"]
 
+  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-models-dev:
     image: ml-models:dev
     build:
@@ -167,9 +169,9 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ./runtime/data:/app/data
-      - ./runtime/models:/app/models
-      - ./runtime/logs:/app/logs
+      - ../../data:/app/data
+      - ../../models:/app/models
+      - ../../logs:/app/logs
     networks:
       - airflow_net
       - mlflow_net
