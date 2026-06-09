@@ -9,8 +9,6 @@ from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from common.utils import _list_counters_payload
 
-DEFAULT_CONFIG_PATH = "/opt/airflow/config/bike_dag_config.json"
-
 logger = logging.getLogger("airflow.task")
 
 # --------------------------------------------------------------------------- #
@@ -18,40 +16,34 @@ logger = logging.getLogger("airflow.task")
 # --------------------------------------------------------------------------- #
 with DAG(
     dag_id="bike_traffic_orchestrator",
-    description="Parent DAG orchestrating init and daily DAGs for all counters.",
+    description="Parent DAG orchestrating dev init and daily DAGs for counters.",
     start_date=datetime(2025, 9, 20),
     schedule="@daily",
     catchup=False,
     max_active_runs=1,
-    tags=["ops", "orchestration", "bike"],
+    tags=["ops", "orchestration", "bike", "dev"],
 ) as dag:
     logger.info("[orchestrator] DAG loaded")
 
-    # Get list of counters from shared config (utils)
     get_counters = PythonOperator(
         task_id="get_counters",
         python_callable=_list_counters_payload,
     )
 
-    # Trigger init DAG for each counter
-    logger.info("[orchestrator] Triggering init DAGs")
     run_init = TriggerDagRunOperator.partial(
         task_id="run_init",
         trigger_dag_id="bike_traffic_init",
-        poke_interval=5,  # 5s poke interval
+        poke_interval=5,
         wait_for_completion=True,
         pool="sequential_counters",
     ).expand(conf=get_counters.output)
 
-    # Trigger daily DAG for each counter
-    logger.info("[orchestrator] Triggering daily DAGs")
     run_daily = TriggerDagRunOperator.partial(
         task_id="run_daily",
         trigger_dag_id="bike_traffic_daily",
-        poke_interval=5,  # 5s poke interval
+        poke_interval=5,
         wait_for_completion=True,
         pool="sequential_counters",
     ).expand(conf=get_counters.output)
 
-    # Orchestration order: counters → init → daily
     get_counters >> run_init >> run_daily  # type: ignore

@@ -13,6 +13,7 @@ from typing import Any
 
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance
+from airflow.models.param import ParamsDict
 from airflow.providers.http.operators.http import HttpOperator
 from airflow.providers.standard.operators.python import (
     PythonOperator,
@@ -28,8 +29,14 @@ DATA_ROOT = "/app/data"
 MODEL_ROOT = "/app/models"
 MANIFEST_ROOT = "/app/artifacts/manifests"
 
-DAG_PARAMS: dict[str, Param] = {"counter_id": Param(default="", type="string")}
-
+DAG_PARAMS: ParamsDict = ParamsDict(
+    {
+        "counter_id": Param(
+            type="string",
+            description="Counter to process for this run (REQUIRED).",
+        )
+    }
+)
 
 def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     request = urllib.request.Request(

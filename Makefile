@@ -240,9 +240,9 @@ mlflow-local: env sync ## Start a host-side MLflow server for local experiments
 		--port $(MLFLOW_HOST_PORT) \
 		--backend-store-uri $(MLFLOW_BACKEND_STORE)
 
-sim-api-req: ## Simulate traffic on /predictions/{counter}
+load-api-req: ## Simulate high traffic on /predictions/{counter}
 	@$(call log_test,sim-api-req)
-	$(UV) run --locked --group test python tests/integration/test_load_api.py \
+	$(UV) run --locked --group test python tests/performance/test_load_api.py \
 		--url "$(URL)" \
 		--n $(N) \
 		--p-ok $(P_OK) \

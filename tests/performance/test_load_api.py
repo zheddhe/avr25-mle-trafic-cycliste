@@ -25,10 +25,6 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
-import pytest
-
-pytestmark = pytest.mark.integration
-
 LOGGER = logging.getLogger("sim_api_req")
 logging.basicConfig(
     level=logging.INFO,
