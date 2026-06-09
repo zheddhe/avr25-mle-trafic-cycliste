@@ -226,11 +226,17 @@ class StepCommandExecutor:
 
 
 def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
+    site_short, orientation = _metrics_label_values(job_request)
     env = {
         "RUN_ID": job_request.run_id,
         "COUNTER_ID": job_request.counter_id,
+        "SITE_SHORT": site_short,
+        "SITE": site_short,
+        "ORIENTATION": orientation,
         "ARTIFACT_PRODUCER_SERVICE": f"ml-{job_request.job_type.value}",
     }
+    if isinstance(job_request, IngestJobRequest):
+        env["SITE"] = job_request.site
     if job_request.dag_id:
         env["AIRFLOW_CTX_DAG_ID"] = job_request.dag_id
     if job_request.task_id:
@@ -239,6 +245,21 @@ def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
         env["ARTIFACT_MANIFEST_ROOT"] = job_request.manifest_root
 
     return env
+
+
+def _metrics_label_values(job_request: StepJobRequest) -> tuple[str, str]:
+    site_short, orientation = _split_counter_id(job_request.counter_id)
+    if isinstance(job_request, IngestJobRequest):
+        orientation = job_request.orientation or orientation
+
+    return site_short, orientation
+
+
+def _split_counter_id(counter_id: str) -> tuple[str, str]:
+    parts = counter_id.split("_")
+    site_short = parts[0] if parts and parts[0] else "NA"
+    orientation = parts[1] if len(parts) >= 2 and parts[1] else "NA"
+    return site_short, orientation
 
 
 def _execution_error(
