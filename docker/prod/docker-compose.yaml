@@ -116,6 +116,7 @@ services:
       start_period: 15s
     networks:
       - pipeline_runtime_net
+      - observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-features-prod:
@@ -146,6 +147,7 @@ services:
       start_period: 15s
     networks:
       - pipeline_runtime_net
+      - observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-models-prod:
@@ -184,6 +186,7 @@ services:
       - pipeline_runtime_net
       - tracking_client_net
       - tracking_backend_net
+      - observability_net
     profiles: ["ml", "all", "ptf"]
 
   api-prod:
