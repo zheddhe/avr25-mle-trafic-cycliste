@@ -54,7 +54,7 @@ accidental broad-network members; they bridge bounded domains.
 | ------- | -------- | ------------ |
 | `airflow-worker` | `orchestration_net`, `pipeline_runtime_net`, `dev_support_net` | Runs orchestration tasks and reaches runtime services that are part of pipeline control. |
 | `job-runner-api` | `pipeline_runtime_net` | Accepts typed ML step submissions, delegates them to internal ML step services, and exposes internal job status reads. |
-| `api-dev` | `pipeline_runtime_net`, `observability_net` | Receives refresh calls and exposes metrics. Host publication remains local ingress. |
+| `api-prod` | `pipeline_runtime_net`, `observability_net` | Receives refresh calls and exposes metrics. Host publication remains local ingress. |
 | `ml-models-prod` | `pipeline_runtime_net`, `tracking_client_net` | Receives typed model job requests and logs model evidence to MLflow. |
 | `mlflow-server` | `tracking_client_net`, `tracking_backend_net`, `observability_net` | Accepts MLflow client calls and owns backend access to PostgreSQL and MinIO. |
 | `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receives batch metrics writes and exposes them for Prometheus scrape. |
@@ -81,7 +81,7 @@ into `docker/prod`.
 
 | Source service | Target service | DNS name | Port | Network | Reason |
 | -------------- | -------------- | -------- | ---- | ------- | ------ |
-| `monitoring-prometheus` | `api-dev` | `api-dev` | `10000` | `observability_net` | FastAPI `/metrics` scrape. |
+| `monitoring-prometheus` | `api-prod` | `api-prod` | `10000` | `observability_net` | FastAPI `/metrics` scrape. |
 | `monitoring-prometheus` | `monitoring-cadvisor` | `monitoring-cadvisor` | `8080` | `observability_net` | Container metric scrape. |
 | `monitoring-prometheus` | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `observability_net` | Batch metric scrape. |
 | `monitoring-grafana` | `monitoring-prometheus` | `monitoring-prometheus` | `9090` | `observability_net` | Provisioned datasource. |
@@ -89,7 +89,7 @@ into `docker/prod`.
 | Airflow services | `airflow-postgres` | `airflow-postgres` | `5432` | `orchestration_net` | Airflow metadata DB and result backend. |
 | Airflow services | `airflow-redis` | `airflow-redis` | `6379` | `orchestration_net` | Celery broker. |
 | Airflow services | `airflow-api-server` | `airflow-api-server` | `8080` | `orchestration_net` | Internal Airflow execution API. |
-| Airflow DAG tasks | `api-dev` | `api-dev` | `10000` | `pipeline_runtime_net` | Authenticated API refresh after successful DAG runs. |
+| Airflow DAG tasks | `api-prod` | `api-prod` | `10000` | `pipeline_runtime_net` | Authenticated API refresh after successful DAG runs. |
 | Airflow DAG tasks | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed step job submission and status reads. |
 | Local runner API callers | `job-runner-api` | `job-runner-api` | `10080` | `pipeline_runtime_net` | Typed job submission and status reads. |
 | `job-runner-api` | `ml-ingest-prod` | `ml-ingest-prod` | `10081` | `pipeline_runtime_net` | Execute validated ingestion jobs. |
@@ -113,7 +113,7 @@ network:
 - MinIO should stay inside the tracking backend boundary unless it becomes an
   explicit artifact handoff boundary with scoped credentials.
 - MailHog should remain local-support-only.
-- `api-dev` should not share Airflow metadata, Redis, MLflow backend, or MinIO
+- `api-prod` should not share Airflow metadata, Redis, MLflow backend, or MinIO
   backend networks.
 - `job-runner-api` should not join tracking or backend networks while its public
   runtime contract remains typed step submission, HTTP delegation, and in-memory
@@ -129,7 +129,7 @@ flowchart LR
     airflow_worker[airflow-worker] --- pipeline[pipeline_runtime_net]
 
     pipeline --- runner[job-runner-api]
-    pipeline --- api[api-dev]
+    pipeline --- api[api-prod]
     pipeline --- ingest[ml-ingest-prod]
     pipeline --- features[ml-features-prod]
     pipeline --- models[ml-models-prod]
