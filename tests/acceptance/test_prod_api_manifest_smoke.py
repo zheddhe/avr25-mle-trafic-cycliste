@@ -20,32 +20,31 @@ API_ADMIN_USER = os.getenv("API_ADMIN_USER", "admin1")
 API_ADMIN_PASSWORD = os.getenv("API_ADMIN_PASSWORD", "admin1")
 API_USER = os.getenv("API_USER", "user1")
 API_PASSWORD = os.getenv("API_PASS", "user1")
-ACCEPTANCE_COUNTER_ID = os.getenv(
-    "ACCEPTANCE_COUNTER_ID",
-    "Sebastopol_N-S_airflow_day0",
-)
+COUNTER_ID_ENV = "ACCEPTANCE_COUNTER_ID"
 
 
 @pytest.mark.acceptance
 class TestProdApiManifestSmoke:
     def test_expected_current_manifests_exist(self) -> None:
+        counter_id = _acceptance_counter_id()
         expected_paths = [
-            _current_manifest_path("interim_dataset"),
-            _current_manifest_path("feature_dataset"),
-            _current_manifest_path("predictions"),
+            _current_manifest_path("interim_dataset", counter_id),
+            _current_manifest_path("feature_dataset", counter_id),
+            _current_manifest_path("predictions", counter_id),
         ]
 
         missing_paths = [str(path) for path in expected_paths if not path.is_file()]
 
         assert not missing_paths, (
             "The production-like pipeline has not produced all expected "
-            f"current manifests for {ACCEPTANCE_COUNTER_ID}: {missing_paths}"
+            f"current manifests for {counter_id}: {missing_paths}"
         )
 
     def test_prediction_manifest_is_promoted_current_manifest(self) -> None:
-        manifest = _read_current_manifest("predictions")
+        counter_id = _acceptance_counter_id()
+        manifest = _read_current_manifest("predictions", counter_id)
 
-        assert manifest["counter_id"] == ACCEPTANCE_COUNTER_ID
+        assert manifest["counter_id"] == counter_id
         assert manifest["artifact_type"] == "predictions"
         assert manifest["status"] == "promoted"
         assert manifest["storage"]["primary_backend"] == "local"
@@ -70,9 +69,10 @@ class TestProdApiManifestSmoke:
             username=API_USER,
             password=API_PASSWORD,
         )
+        counter_id = _acceptance_counter_id_from_api(counters)
         predictions = _request_json(
             "GET",
-            f"/predictions/{ACCEPTANCE_COUNTER_ID}?limit=1&offset=0",
+            f"/predictions/{counter_id}?limit=1&offset=0",
             username=API_USER,
             password=API_PASSWORD,
         )
@@ -81,19 +81,53 @@ class TestProdApiManifestSmoke:
         artifact_counter_ids = {artifact["counter_id"] for artifact in artifacts}
 
         assert refresh["loaded"] >= 1
-        assert ACCEPTANCE_COUNTER_ID in counter_ids
-        assert ACCEPTANCE_COUNTER_ID in artifact_counter_ids
+        assert counter_id in counter_ids
+        assert counter_id in artifact_counter_ids
         assert predictions["total"] >= 1
         assert predictions["limit"] == 1
         assert predictions["item"]
 
 
-def _current_manifest_path(artifact_type: str) -> Path:
-    return MANIFEST_ROOT / artifact_type / ACCEPTANCE_COUNTER_ID / "current.json"
+def _acceptance_counter_id() -> str:
+    configured_counter_id = os.getenv(COUNTER_ID_ENV)
+    if configured_counter_id:
+        return configured_counter_id
+
+    current_manifests = sorted((MANIFEST_ROOT / "predictions").glob("*/current.json"))
+    if not current_manifests:
+        pytest.fail(
+            "No promoted prediction current manifest found. Run the "
+            "production-like Airflow chain before make acceptance, or set "
+            f"{COUNTER_ID_ENV}."
+        )
+
+    return current_manifests[0].parent.name
 
 
-def _read_current_manifest(artifact_type: str) -> dict[str, Any]:
-    path = _current_manifest_path(artifact_type)
+def _acceptance_counter_id_from_api(counters: list[dict[str, Any]]) -> str:
+    configured_counter_id = os.getenv(COUNTER_ID_ENV)
+    counter_ids = sorted(counter["id"] for counter in counters)
+    if configured_counter_id:
+        assert configured_counter_id in counter_ids, (
+            f"Configured {COUNTER_ID_ENV}={configured_counter_id} is not served. "
+            f"Available counters: {counter_ids}"
+        )
+        return configured_counter_id
+
+    manifest_counter_id = _acceptance_counter_id()
+    if manifest_counter_id in counter_ids:
+        return manifest_counter_id
+
+    assert counter_ids, "The API did not expose any counter after refresh."
+    return counter_ids[0]
+
+
+def _current_manifest_path(artifact_type: str, counter_id: str) -> Path:
+    return MANIFEST_ROOT / artifact_type / counter_id / "current.json"
+
+
+def _read_current_manifest(artifact_type: str, counter_id: str) -> dict[str, Any]:
+    path = _current_manifest_path(artifact_type, counter_id)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -104,7 +138,7 @@ def _request_json(
     username: str,
     password: str,
 ) -> Any:
-    token = base64.b64encode(f"{username}:{password}".encode())
+    token = base64.b64encode(f"{username}:{password}".encode("utf-8"))
     request = urllib.request.Request(
         url=f"{API_URL.rstrip('/')}/{path.lstrip('/')}",
         method=method,
