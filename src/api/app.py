@@ -127,11 +127,10 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         yield
 
     app = FastAPI(
-        title="API du trafic cycliste",
+        title="Bike Traffic Prediction API",
         description=(
-            "Expose les prédictions du trafic cycliste pour les compteurs "
-            "installés dans la ville de Paris. Les prédictions sont servies "
-            "depuis les manifests promus uniquement."
+            "Expose bike traffic predictions for counters installed in Paris. "
+            "Predictions are served only from promoted manifests."
         ),
         version="1.3.0",
         openapi_tags=OPENAPI_TAGS,
