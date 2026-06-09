@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from typing import Annotated
 
@@ -35,9 +36,11 @@ class MlStepService:
         self,
         job_type: MlJobType,
         executor: StepCommandExecutor | None = None,
+        lock: threading.Lock | None = None,
     ) -> None:
         self.job_type = job_type
         self._executor = executor or StepCommandExecutor()
+        self._lock = lock or threading.Lock()
 
     def execute(self, job_request: StepJobRequest) -> JobStatus:
         """Execute one job request synchronously and return a terminal status."""
@@ -61,11 +64,12 @@ class MlStepService:
 
         started_at = utc_now()
         try:
-            result = self._executor.execute(
-                job_request,
-                job_id=job_id,
-                started_at=started_at,
-            )
+            with self._lock:
+                result = self._executor.execute(
+                    job_request,
+                    job_id=job_id,
+                    started_at=started_at,
+                )
         except MlStepExecutionError as error:
             return _failed_status(
                 job_request=job_request,
