@@ -49,7 +49,10 @@ dev = [
 [tool.pytest.ini_options]
 addopts = ["--cov", "--cov-report=term"]
 testpaths = ["tests"]
-markers = ["integration: end-to-end pipeline tests"]
+markers = [
+    "integration: component contract tests",
+    "acceptance: production-like smoke tests against running services",
+]
 env = ["DISABLE_METRICS_PUSH=1"]
 
 [tool.coverage.run]
