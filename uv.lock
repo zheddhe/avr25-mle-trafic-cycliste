@@ -434,7 +434,6 @@ app = [
     { name = "pyproj" },
     { name = "scikit-learn" },
     { name = "scikit-optimize" },
-    { name = "setuptools" },
     { name = "uvicorn" },
     { name = "xgboost" },
 ]
@@ -455,7 +454,6 @@ dev = [
     { name = "ruff" },
     { name = "scikit-learn" },
     { name = "scikit-optimize" },
-    { name = "setuptools" },
     { name = "uvicorn" },
     { name = "xgboost" },
 ]
@@ -475,7 +473,6 @@ test = [
     { name = "ruff" },
     { name = "scikit-learn" },
     { name = "scikit-optimize" },
-    { name = "setuptools" },
     { name = "uvicorn" },
     { name = "xgboost" },
 ]
@@ -494,7 +491,6 @@ app = [
     { name = "pyproj", specifier = "==3.7.1" },
     { name = "scikit-learn", specifier = "==1.5.0" },
     { name = "scikit-optimize", specifier = "==0.10.2" },
-    { name = "setuptools", specifier = "==67.8.0" },
     { name = "uvicorn", specifier = "==0.35.0" },
     { name = "xgboost", specifier = "==3.0.2" },
 ]
@@ -515,7 +511,6 @@ dev = [
     { name = "ruff", specifier = ">=0.15,<0.16" },
     { name = "scikit-learn", specifier = "==1.5.0" },
     { name = "scikit-optimize", specifier = "==0.10.2" },
-    { name = "setuptools", specifier = "==67.8.0" },
     { name = "uvicorn", specifier = "==0.35.0" },
     { name = "xgboost", specifier = "==3.0.2" },
 ]
@@ -535,7 +530,6 @@ test = [
     { name = "ruff", specifier = ">=0.15,<0.16" },
     { name = "scikit-learn", specifier = "==1.5.0" },
     { name = "scikit-optimize", specifier = "==0.10.2" },
-    { name = "setuptools", specifier = "==67.8.0" },
     { name = "uvicorn", specifier = "==0.35.0" },
     { name = "xgboost", specifier = "==3.0.2" },
 ]
