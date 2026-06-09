@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -14,6 +15,8 @@ from src.ml.jobs.execution import MlStepExecutionError, StepCommandExecutor
 from src.ml.jobs.status import JobResult, JobStatus
 
 MlJobExecutionError = MlStepExecutionError
+
+_RUNNER_SERVICE_LOCK = threading.Lock()
 
 
 class MlJobExecutor(Protocol):
@@ -41,9 +44,11 @@ class ServiceMlJobExecutor:
         self,
         transport: MlServiceTransport | None = None,
         endpoints: dict[MlJobType, str] | None = None,
+        lock: threading.Lock | None = None,
     ) -> None:
         self._transport = transport or UrllibMlServiceTransport()
         self._endpoints = endpoints or _load_service_endpoints()
+        self._lock = lock or _RUNNER_SERVICE_LOCK
 
     def execute(
         self,
@@ -65,7 +70,11 @@ class ServiceMlJobExecutor:
                 retryable=False,
             )
 
-        status = self._transport.submit(endpoint=endpoint, job_request=job_request)
+        with self._lock:
+            status = self._transport.submit(
+                endpoint=endpoint,
+                job_request=job_request,
+            )
         if status.state.value != "succeeded" or status.result is None:
             raise MlJobExecutionError(
                 code=status.error.code if status.error else "ML_SERVICE_JOB_FAILED",
