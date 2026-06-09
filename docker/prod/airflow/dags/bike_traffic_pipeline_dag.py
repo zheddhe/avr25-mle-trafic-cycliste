@@ -13,14 +13,17 @@ from typing import Any
 
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance
-from airflow.providers.standard.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.providers.http.operators.http import HttpOperator
+from airflow.providers.standard.operators.python import (
+    PythonOperator,
+    ShortCircuitOperator,
+)
 from airflow.sdk import DAG, Param, TaskGroup, Variable
 from common.utils import CounterCfg, _load_config
 
 logger = logging.getLogger("airflow.task")
 
 JOB_RUNNER_URL = "http://job-runner-api:10080"
-API_URL = "http://api-prod:10000"
 DATA_ROOT = "/app/data"
 MODEL_ROOT = "/app/models"
 MANIFEST_ROOT = "/app/artifacts/manifests"
@@ -280,10 +283,6 @@ def _mark_init_done_callable(**ctx) -> None:
     Variable.set(f"bike_init_done__{counter_id}", "1")
 
 
-def _refresh_api() -> dict[str, Any]:
-    return _post_json(f"{API_URL}/admin/refresh", {})
-
-
 def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
     with TaskGroup(group_id="etl", dag=dag) as etl:
         prepare_args = PythonOperator(
@@ -331,6 +330,17 @@ def _read_task(task_id: str, dag: DAG) -> PythonOperator:
     return PythonOperator(task_id=task_id, python_callable=_read_manifests, dag=dag)
 
 
+def _api_refresh_task() -> HttpOperator:
+    return HttpOperator(
+        task_id="api_refresh",
+        http_conn_id="api_prod",
+        endpoint="/admin/refresh",
+        method="POST",
+        response_check=lambda response: response.status_code == 200,
+        log_response=True,
+    )
+
+
 with DAG(
     dag_id="bike_traffic_init",
     description="Production-like historical bootstrap through job-runner-api.",
@@ -351,7 +361,7 @@ with DAG(
         task_id="mark_init_done",
         python_callable=_mark_init_done_callable,
     )
-    api_refresh = PythonOperator(task_id="api_refresh", python_callable=_refresh_api)
+    api_refresh = _api_refresh_task()
     init_gate >> etl >> mark_done >> api_refresh  # type: ignore
 
 
@@ -367,5 +377,5 @@ with DAG(
     params=DAG_PARAMS,
 ) as daily_dag:
     etl = build_etl_group(daily_dag, mode="daily")
-    api_refresh = PythonOperator(task_id="api_refresh", python_callable=_refresh_api)
+    api_refresh = _api_refresh_task()
     etl >> api_refresh  # type: ignore
