@@ -41,4 +41,4 @@ jobs:
 
       - name: Run unit and integration tests
         run: |
-          uv run --group test pytest -m "not acceptation" -v
+          uv run --group test pytest -m "not acceptance" -v
