@@ -1,16 +1,17 @@
 # src/ml/models/mlflow_tracking.py
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 from typing import Any
 
 import mlflow
-import mlflow.sklearn
 from mlflow.exceptions import MlflowException
 from mlflow.models.signature import infer_signature
 
 logger = logging.getLogger(__name__)
+mlflow_sklearn: Any = importlib.import_module("mlflow.sklearn")
 
 
 def configure_mlflow_from_env(
@@ -135,7 +136,7 @@ def log_model_with_signature(
     reg_name = registered_name if effective_registry_enabled else None
 
     try:
-        mlflow.sklearn.log_model(
+        mlflow_sklearn.log_model(
             sk_model=pipe_model,
             name=model_artifact_name,
             signature=signature,  # type: ignore[arg-type]
@@ -145,7 +146,7 @@ def log_model_with_signature(
         logger.warning(
             f"Model registry not available, fallback to artifact-only: {exc}"
         )
-        mlflow.sklearn.log_model(
+        mlflow_sklearn.log_model(
             sk_model=pipe_model,
             name=model_artifact_name,
             signature=signature,  # type: ignore[arg-type]
