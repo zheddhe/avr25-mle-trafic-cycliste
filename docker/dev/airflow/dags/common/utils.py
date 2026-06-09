@@ -1,14 +1,4 @@
-"""
-src/airflow/dags_common/utils.py
------------------
-
-Shared utilities for Airflow DAGs:
-- Pydantic models for DAG configuration
-- Functions to load config and list counters
-- Required-variable helpers that fail fast with clear logging
-
-This file must not declare any DAG object.
-"""
+"""Shared utilities for dev-like Airflow DAGs."""
 
 from __future__ import annotations
 
