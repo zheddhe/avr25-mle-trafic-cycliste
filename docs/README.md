@@ -31,7 +31,7 @@ Use these documents to run or validate what exists on `main`.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`current-runtime-and-operations/local-prod-runtime.md`](current-runtime-and-operations/local-prod-runtime.md) | Current `docker/dev` and `docker/prod` runtime guide, workspace ownership, service exposure, runner API behavior, and validation entrypoints. |
+| [`current-runtime-and-operations/local-prod-runtime.md`](current-runtime-and-operations/local-prod-runtime.md) | Current `docker/dev` and `docker/prod` runtime guide, workspace ownership, service exposure, runner API behavior, manifest-first API serving, and validation entrypoints. |
 | [`current-runtime-and-operations/ports-and-services.md`](current-runtime-and-operations/ports-and-services.md) | Host-exposed ports, local URLs, and internal-only services for dev and production-like runtimes. |
 | [`current-runtime-and-operations/dependency-strategy.md`](current-runtime-and-operations/dependency-strategy.md) | uv groups, custom images, upstream runtime images, healthchecks, and dependency upgrade policy. |
 | [`current-runtime-and-operations/repository-structure.md`](current-runtime-and-operations/repository-structure.md) | Repository ownership rules, generated artifact expectations, DVC boundaries, and dev/prod runtime placement. |
@@ -43,7 +43,7 @@ rules that guide runtime changes.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md) | Service-to-service communication, runner execution boundary, mount coupling, and current network traffic. |
+| [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md) | Service-to-service communication, runner execution boundary, manifest handoff paths, mount coupling, and current network traffic. |
 | [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket boundary, host exposure, and service privilege rules. |
 | [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md) | Implemented `docker/prod` functional network topology and current service placement. |
 
@@ -56,7 +56,7 @@ one completed implementation slice.
 | Document | Purpose |
 | -------- | ------- |
 | [`next-phase-design/phase-8-production-minimal-target.md`](next-phase-design/phase-8-production-minimal-target.md) | Phase 8 closure target: minimal `docker/prod` execution path without Airflow Docker socket, using internal ML step services and manifest-first API serving. |
-| [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md) | Consolidated manifest-first artifact handoff contract, implemented coverage, and open artifact-serving gaps. |
+| [`next-phase-design/artifact-handoff-strategy.md`](next-phase-design/artifact-handoff-strategy.md) | Consolidated manifest-first artifact handoff contract, implemented coverage, and remaining artifact-serving gaps. |
 | [`next-phase-design/airflow-job-runner-strategy.md`](next-phase-design/airflow-job-runner-strategy.md) | Remaining production-like Airflow orchestration design that chains typed runner jobs. |
 
 ## Reading order
