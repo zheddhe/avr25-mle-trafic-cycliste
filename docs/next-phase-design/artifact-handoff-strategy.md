@@ -17,8 +17,8 @@ The project uses a hybrid manifest-first strategy:
 2. `docker/prod/runtime` remains the first local production-like backend.
 3. Optional MinIO object URIs can be recorded when an artifact is also available
    through S3-compatible object storage.
-4. The API, Airflow, and runner path must consume manifests instead of
-   discovering files through implicit `latest` conventions.
+4. The API, Airflow, and runner path consume manifests instead of discovering
+   files through implicit `latest` conventions.
 5. Development and DVC workspaces stay separate from production-like generated
    runtime artifacts.
 
@@ -40,11 +40,12 @@ Implemented:
 - production-like runtime mounts for generated data and artifact manifests;
 - production-like Airflow services without `/var/run/docker.sock`;
 - production-like Airflow DAGs chaining runner-backed `ingest`, `features`, and
-  `models` steps before authenticated API refresh.
+  `models` steps before authenticated API refresh;
+- API prediction serving from promoted `predictions/<counter_id>/current.json`
+  manifests with local payload checksum verification.
 
 Open artifact handoff gaps:
 
-- API serving from promoted prediction manifests;
 - production-like smoke validation using realistic test fixtures;
 - configuration and placeholder hardening;
 - optional MinIO upload, download, and checksum verification helpers.
@@ -57,11 +58,11 @@ API prediction payloads.
 
 | Source | Use in this strategy |
 | ------ | -------------------- |
-| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, runner API behavior, production-like DAGs, and `docker/prod/runtime` ownership. |
+| [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md) | Runtime usage, runner API behavior, manifest-first API serving, production-like DAGs, and `docker/prod/runtime` ownership. |
 | [`../current-runtime-and-operations/repository-structure.md`](../current-runtime-and-operations/repository-structure.md) | Repository path ownership and DVC boundary. |
 | [`../current-runtime-and-operations/ports-and-services.md`](../current-runtime-and-operations/ports-and-services.md) | Local host exposure and internal-only MinIO policy. |
 | [`../current-runtime-and-operations/dependency-strategy.md`](../current-runtime-and-operations/dependency-strategy.md) | MLflow, MinIO, and runtime dependency compatibility. |
-| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Airflow, runner, and ML step service responsibility boundaries. |
+| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Airflow, runner, API, and ML step service responsibility boundaries. |
 | [`airflow-job-runner-strategy.md`](airflow-job-runner-strategy.md) | Remaining runner, observability, and validation gaps. |
 
 ## Why manifest-first
@@ -172,6 +173,23 @@ With the production-like Compose configuration, `manifest_root` is
 
 Local paths stored in manifests should be repository-relative when possible.
 
+## API serving convention
+
+The prediction API reads promoted manifests under:
+
+```text
+<manifest_root>/predictions/<counter_id>/current.json
+```
+
+It serves only local prediction artifacts whose manifest declares
+`primary_backend="local"`. The API resolves `storage.local_path` from the
+configured `ARTIFACT_REPOSITORY_ROOT`, verifies `storage.checksum_sha256` when
+present, and loads the referenced CSV payload.
+
+The API no longer scans `data/final` folders to infer the current prediction. If
+no promoted prediction manifest is available, serving endpoints return a business
+error until `/admin/refresh` can load a valid manifest.
+
 ## Optional MinIO object URI conventions
 
 MinIO is optional in the handoff contract. A manifest can be local-only or hybrid.
@@ -200,7 +218,7 @@ against object storage, or object-storage-first API serving.
 | Airflow | Submit step jobs, wait for terminal status, chain the ML workflow, and record manifest references. |
 | MLflow | Track runs, metrics, parameters, model metadata, and model artifact payloads. |
 | MinIO | Store MLflow artifact payloads and optional future object-backed handoff payloads. |
-| API | Read `current.json`, validate metadata, serve the referenced artifact. |
+| API | Read `current.json`, verify local payload evidence, and serve the referenced prediction artifact. |
 | Prometheus/Grafana | Observe freshness, job status, and current artifact metadata. |
 
 The contract deliberately keeps Airflow out of low-level filesystem discovery,
@@ -219,7 +237,7 @@ training job internals.
 | Add the internal runner API boundary. | Done |
 | Execute typed ML step jobs through the runner. | Done |
 | Add production-like Airflow DAG chaining runner steps. | Done |
-| Make the API load the promoted local manifest. | Open |
+| Make the API load the promoted local manifest. | Done |
 | Add production-like smoke validation. | Open |
 | Harden runtime configuration and secrets validation. | Open |
 | Strengthen realistic phase test coverage. | Open |
@@ -233,8 +251,8 @@ stays incremental:
 
 - realistic integration fixtures derived from the real raw-data schema are still
   needed;
-- unit coverage should be expanded for invalid manifests, runner state errors,
-  API manifest loading failures, and runtime configuration failures;
+- unit coverage should be expanded for runner state errors and runtime
+  configuration failures;
 - `current.json` discovery should stay explicit and counter-scoped so the API
   does not reintroduce implicit latest-file scanning;
 - runner execution should stay typed and allow-listed, not a generic shell
