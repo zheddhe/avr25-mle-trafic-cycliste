@@ -18,7 +18,7 @@ Airflow DAG tasks
   -> job-runner-api
   -> ml-ingest-prod / ml-features-prod / ml-models-prod FastAPI services
   -> promoted artifact manifests under docker/prod/runtime/artifacts
-  -> api-dev refresh and prediction serving from promoted manifests
+  -> api-prod refresh and prediction serving from promoted manifests
 ```
 
 ## Target execution boundary
