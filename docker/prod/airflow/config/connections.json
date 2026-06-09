@@ -2,9 +2,9 @@
   "api_dev": {
     "conn_type": "http",
     "schema": "http",
-    "host": "api-dev",
+    "host": "api-prod",
     "port": 10000,
-    "login": "[replace_me]",
-    "password": "[replace_me]"
+    "login": "admin1",
+    "password": "admin1"
   }
 }

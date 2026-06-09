@@ -30,7 +30,7 @@ def _auth_headers(username: str, password: str) -> dict[str, str]:
 # ---------------------------------------------------------------------
 class TestApiIntegration:
     def test_verify_admin_access(self) -> None:
-        resp = client.get("/verify", headers=_auth_headers("remy", "remy"))
+        resp = client.get("/verify", headers=_auth_headers("admin1", "admin1"))
         assert resp.status_code == 200
         body = resp.json()
         assert body["message"] == "API is healthy."
@@ -56,7 +56,7 @@ class TestApiIntegration:
         assert body["type"] == "PredictionsNotLoaded"
 
     def test_refresh_admin(self) -> None:
-        resp = client.post("/admin/refresh", headers=_auth_headers("remy", "remy"))
+        resp = client.post("/admin/refresh", headers=_auth_headers("admin1", "admin1"))
         assert resp.status_code == 200
         body = resp.json()
         assert "counters_before" in body

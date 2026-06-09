@@ -134,10 +134,8 @@ def refresh_store() -> dict[str, pd.DataFrame]:
 # Dictionnaire des utilisateurs avec leurs rôles
 dict_credentials = {
     # Administrateurs - accès complet
-    "remy": {"password": "remy", "role": "admin"},
-    "elias": {"password": "elias", "role": "admin"},
-    "kolade": {"password": "kolade", "role": "admin"},
-    "sofia": {"password": "sofia", "role": "admin"},
+    "admin1": {"password": "admin1", "role": "admin"},
+    "admin2": {"password": "admin2", "role": "admin"},
 
     # Utilisateurs standard - accès prédictions uniquement
     "user1": {"password": "user1", "role": "user"},
