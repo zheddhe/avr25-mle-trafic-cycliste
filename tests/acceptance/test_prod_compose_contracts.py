@@ -26,6 +26,11 @@ INTERNAL_ONLY_SERVICES = {
     "ml-features-prod",
     "ml-models-prod",
 }
+ML_STEP_SERVICES = {
+    "ml-ingest-prod",
+    "ml-features-prod",
+    "ml-models-prod",
+}
 
 
 def _compose_command(*args: str) -> list[str]:
@@ -104,3 +109,36 @@ class TestProdComposeContracts:
         for service_name in INTERNAL_ONLY_SERVICES:
             ports = services[service_name].get("ports", [])
             assert ports == [], f"{service_name} exposes host ports: {ports}"
+
+    def test_ml_step_services_push_metrics_to_internal_pushgateway(self) -> None:
+        config = _load_compose_config()
+        services = config["services"]
+
+        for service_name in ML_STEP_SERVICES:
+            environment = services[service_name]["environment"]
+            assert environment["PUSHGATEWAY_ADDR"] == (
+                "monitoring-pushgateway:9091"
+            )
+            assert environment["DISABLE_METRICS_PUSH"] == "0"
+
+    def test_pushgateway_is_scraped_by_prometheus(self) -> None:
+        config = _load_compose_config()
+        services = config["services"]
+        prometheus_volumes = services["monitoring-prometheus"].get("volumes", [])
+        pushgateway_networks = services["monitoring-pushgateway"].get(
+            "networks",
+            {},
+        )
+
+        assert "observability_net" in pushgateway_networks
+        assert "pipeline_runtime_net" in pushgateway_networks
+        assert any("prometheus" in volume["source"] for volume in prometheus_volumes)
+
+    def test_prod_grafana_mounts_prod_dashboards(self) -> None:
+        config = _load_compose_config()
+        services = config["services"]
+        volumes = services["monitoring-grafana"].get("volumes", [])
+        serialized_volumes = json.dumps(volumes)
+
+        assert "/docker/prod/grafana/dashboards" in serialized_volumes
+        assert "/docker/dev/grafana/dashboards" not in serialized_volumes
