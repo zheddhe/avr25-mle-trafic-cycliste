@@ -58,8 +58,8 @@ x-airflow-common: &airflow-common
     airflow-postgres:
       condition: service_healthy
   volumes:
-    - ../../logs:/opt/airflow/logs
-    - ../../data:/opt/airflow/data
+    - ./runtime/logs/airflow:/opt/airflow/logs
+    - ./runtime/data:/opt/airflow/data
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
@@ -98,8 +98,8 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/logs:/app/logs
     networks:
       - airflow_net
       - mlops_net
@@ -124,8 +124,8 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/logs:/app/logs
     networks:
       - airflow_net
       - mlops_net
@@ -167,9 +167,9 @@ services:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
       DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
     volumes:
-      - ../../data:/app/data
-      - ../../models:/app/models
-      - ../../logs:/app/logs
+      - ./runtime/data:/app/data
+      - ./runtime/models:/app/models
+      - ./runtime/logs:/app/logs
     networks:
       - airflow_net
       - mlflow_net
@@ -185,10 +185,10 @@ services:
       - "${API_HOST_PORT:-10000}:10000"
     restart: unless-stopped
     environment:
-      DATA_FINAL_ROOT: ${DATA_FINAL_ROOT}
+      DATA_FINAL_ROOT: /app/data/final
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
+      - ./runtime/data/final:/app/data/final:ro
+      - ./runtime/logs:/app/logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -419,8 +419,8 @@ services:
       AIRFLOW_UID: ${AIRFLOW_UID:-50000}
       DOCKER_HOST: unix:///var/run/docker.sock
     volumes:
-      - ../../logs:/opt/airflow/logs
-      - ../../data:/opt/airflow/data
+      - ./runtime/logs/airflow:/opt/airflow/logs
+      - ./runtime/data:/opt/airflow/data
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
       - /var/run/docker.sock:/var/run/docker.sock

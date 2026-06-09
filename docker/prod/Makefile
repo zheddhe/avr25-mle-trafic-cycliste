@@ -41,6 +41,7 @@ prod-prepare-runtime: ## Create ignored local production-like runtime folders
 		docker/prod/runtime/logs/airflow \
 		docker/prod/runtime/logs/job-runner \
 		docker/prod/runtime/logs/ml
+	cp -f ./data/raw/*.csv docker/prod/runtime/data/raw/
 
 prod-compose-config: prod-prepare-runtime ## Validate production-like Compose config
 	@$(call prod_log_target,prod-compose-config)

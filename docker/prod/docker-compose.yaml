@@ -76,6 +76,7 @@ x-airflow-common: &airflow-common
   volumes:
     - ./runtime/logs/airflow:/opt/airflow/logs
     - ./runtime/data:/opt/airflow/data
+    - ./runtime/artifacts:/app/artifacts:ro
     - ./airflow/dags:/opt/airflow/dags:ro
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
@@ -103,8 +104,7 @@ services:
       ARTIFACT_PRODUCER_IMAGE: ml-ingest:prod
     volumes:
       - ./runtime/data:/app/data
-      - ../../data/raw/${RAW_FILE_NAME}:/app/data/raw/${RAW_FILE_NAME}:ro
-      - ./runtime/logs/ml:/app/logs
+      - ./runtime/logs:/app/logs
       - ./runtime/artifacts:/app/artifacts
     healthcheck:
       test:
@@ -134,7 +134,7 @@ services:
       ARTIFACT_PRODUCER_IMAGE: ml-features:prod
     volumes:
       - ./runtime/data:/app/data
-      - ./runtime/logs/ml:/app/logs
+      - ./runtime/logs:/app/logs
       - ./runtime/artifacts:/app/artifacts
     healthcheck:
       test:
@@ -170,7 +170,7 @@ services:
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/models:/app/models
-      - ./runtime/logs/ml:/app/logs
+      - ./runtime/logs:/app/logs
       - ./runtime/artifacts:/app/artifacts
     healthcheck:
       test:
@@ -198,7 +198,7 @@ services:
       DATA_FINAL_ROOT: /app/data/final
     volumes:
       - ./runtime/data/final:/app/data/final:ro
-      - ./runtime/logs/api:/app/logs
+      - ./runtime/logs:/app/logs
     healthcheck:
       test:
         - CMD-SHELL
