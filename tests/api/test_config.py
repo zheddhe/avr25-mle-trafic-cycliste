@@ -14,14 +14,20 @@ from src.api.config import (
 
 
 class TestApiConfig:
-    def test_required_env_returns_configured_value(self, monkeypatch) -> None:
+    def test_required_env_returns_configured_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.setenv("ARTIFACT_MANIFEST_ROOT", " /app/artifacts/manifests ")
 
         value = _required_env("ARTIFACT_MANIFEST_ROOT")
 
         assert value == "/app/artifacts/manifests"
 
-    def test_required_env_raises_when_missing(self, monkeypatch) -> None:
+    def test_required_env_raises_when_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.delenv("ARTIFACT_MANIFEST_ROOT", raising=False)
 
         with pytest.raises(ApiConfigurationError) as exc_info:
@@ -29,7 +35,10 @@ class TestApiConfig:
 
         assert "ARTIFACT_MANIFEST_ROOT" in str(exc_info.value)
 
-    def test_required_env_raises_when_blank(self, monkeypatch) -> None:
+    def test_required_env_raises_when_blank(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.setenv("ARTIFACT_REPOSITORY_ROOT", "  ")
 
         with pytest.raises(ApiConfigurationError) as exc_info:
@@ -37,14 +46,20 @@ class TestApiConfig:
 
         assert "ARTIFACT_REPOSITORY_ROOT" in str(exc_info.value)
 
-    def test_parse_csv_env_ignores_empty_values(self, monkeypatch) -> None:
+    def test_parse_csv_env_ignores_empty_values(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.setenv("API_COUNTER_IDS", "alpha, beta,, gamma, ")
 
         counter_ids = _parse_csv_env("API_COUNTER_IDS")
 
         assert counter_ids == ("alpha", "beta", "gamma")
 
-    def test_parse_csv_env_returns_empty_tuple_when_missing(self, monkeypatch) -> None:
+    def test_parse_csv_env_returns_empty_tuple_when_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.delenv("API_COUNTER_IDS", raising=False)
 
         counter_ids = _parse_csv_env("API_COUNTER_IDS")
@@ -53,7 +68,7 @@ class TestApiConfig:
 
     def test_load_settings_reads_manifest_runtime_environment(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         manifest_root = tmp_path / "artifacts" / "manifests"
@@ -70,7 +85,7 @@ class TestApiConfig:
 
     def test_load_settings_raises_when_manifest_root_is_missing(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         monkeypatch.delenv("ARTIFACT_MANIFEST_ROOT", raising=False)
@@ -80,3 +95,16 @@ class TestApiConfig:
             load_settings()
 
         assert "ARTIFACT_MANIFEST_ROOT" in str(exc_info.value)
+
+    def test_load_settings_raises_when_repository_root_is_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        monkeypatch.setenv("ARTIFACT_MANIFEST_ROOT", str(tmp_path))
+        monkeypatch.delenv("ARTIFACT_REPOSITORY_ROOT", raising=False)
+
+        with pytest.raises(ApiConfigurationError) as exc_info:
+            load_settings()
+
+        assert "ARTIFACT_REPOSITORY_ROOT" in str(exc_info.value)
