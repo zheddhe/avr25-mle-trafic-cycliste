@@ -35,3 +35,6 @@ class TestBuildFeatureDatasetArtifactManifest:
         assert manifest.source.raw_file_name == "initial.csv"
         assert manifest.source.dataset_version == "interim-run-001"
         assert manifest.producer.service == "ml-features-test"
+        assert manifest.storage.local_path == (
+            "data/processed/counter-1/initial_with_feats.csv"
+        )
