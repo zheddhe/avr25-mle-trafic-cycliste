@@ -276,7 +276,7 @@ def _manifest_scope_lock(scope_path: Path) -> Iterator[None]:
 
 
 def _write_lock_owner(file_descriptor: int) -> None:
-    lock_payload = f"pid={os.getpid()}\n".encode("utf-8")
+    lock_payload = f"pid={os.getpid()}\n".encode()
     os.write(file_descriptor, lock_payload)
     os.fsync(file_descriptor)
 
