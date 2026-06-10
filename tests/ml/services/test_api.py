@@ -62,6 +62,9 @@ class TestMlStepService:
         payload = response.json()
         assert payload["state"] == "succeeded"
         assert payload["job_type"] == "ingest"
+        assert payload["result"]["output_paths"] == [
+            "/app/data/interim/counter-001/initial.csv",
+        ]
         assert len(executor.requests) == 1
 
     def test_post_wrong_job_type_is_rejected(self) -> None:
