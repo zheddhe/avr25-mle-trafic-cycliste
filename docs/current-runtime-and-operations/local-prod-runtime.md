@@ -186,6 +186,30 @@ so the runtime can become healthy before the first DAG run. Serving endpoints
 return a business error until `/admin/refresh` successfully loads a promoted
 manifest.
 
+## Manifest promotion reliability
+
+The local filesystem manifest store writes run-scoped manifests under:
+
+```text
+<manifest_root>/<artifact_type>/<counter_id>/<run_id>/manifest.json
+```
+
+Promotion then atomically replaces the stable reader-facing file:
+
+```text
+<manifest_root>/<artifact_type>/<counter_id>/current.json
+```
+
+Promotion is serialized with a scope-local lock under the same artifact type and
+counter id. This keeps same-counter promotion deterministic while allowing
+independent counters to use independent locks.
+
+A failed `current.json` write must leave the previous valid promoted manifest in
+place when one exists. Retrying the same promotion with identical manifest input
+is idempotent and keeps the same promoted path. This contract supports the
+manifest-first API reader, which should observe either the previous valid
+manifest or the newly promoted one, never partial JSON content.
+
 ## Production-like Airflow configuration
 
 The production-like Airflow configuration is file based:

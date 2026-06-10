@@ -1,9 +1,8 @@
 # Phase 9 bounded scale-out execution contract
 
-This document defines the Phase 9 scale-out contract before any runtime
-parallelism is enabled. It is future-state documentation and must not be read as
-implemented runtime behavior until later stories move stable wording to current
-runtime or architecture references.
+This document defines the Phase 9 scale-out contract. It mixes current-state
+notes for implemented Phase 9 slices with future-state rules that must remain in
+force before bounded runtime parallelism is enabled.
 
 ## Scope
 
@@ -13,8 +12,9 @@ Phase 9 targets bounded parallel execution for the local production-like
 The intended outcome is controlled multi-counter execution with explicit
 concurrency, retry, resource-safety, and manifest-promotion rules.
 
-The current production-like baseline remains valid and sequential until the
-implementation stories change it.
+The current production-like orchestration baseline remains sequential until the
+implementation stories change it. Manifest promotion concurrency-safety is now an
+implemented prerequisite for later bounded parallelism.
 
 ## Out of scope
 
@@ -103,8 +103,10 @@ Manifest promotion must preserve the following invariants:
 - promoted manifest paths remain counter-scoped;
 - payload checksum evidence remains valid after promotion.
 
-Later implementation stories should prefer atomic write-and-replace behavior for
-promoted manifests.
+The local filesystem manifest store now implements these invariants with atomic
+write-and-replace behavior and a scope-local promotion lock. The lock scope is
+`<artifact_type>/<counter_id>`, which serializes same-counter promotion without
+blocking independent counters unnecessarily.
 
 ## Failure and retry contract
 
@@ -145,23 +147,36 @@ Phase 9 implementation stories should define:
 No story should introduce unbounded mapped task expansion or unbounded runner
 submissions.
 
-## Expected implementation stories
+## Implemented Phase 9 slices
 
-This contract story does not enable parallel execution by itself. It prepares
-implementation work for:
+The following Phase 9 prerequisite is implemented in the local manifest store:
 
-- manifest promotion concurrency-safety and idempotency;
+- manifest promotion is atomic from the API reader perspective;
+- run-scoped manifests and promoted `current.json` files remain counter-scoped;
+- same artifact type and counter promotions are serialized with a scope-local
+  lock;
+- repeated promotion of identical manifest content is idempotent;
+- failed promoted-manifest writes preserve the previous valid `current.json`;
+- manifest-backed API loading keeps serving the latest promoted artifact.
+
+## Remaining implementation stories
+
+This contract does not enable bounded parallel execution by itself. Remaining
+implementation work includes:
+
 - bounded multi-counter parallel execution;
-- scale-out acceptance validation and operational observability.
+- scale-out acceptance validation and operational observability;
+- stronger API refresh consistency if refreshes become per-counter parallel;
+- explicit resource limits and backpressure behavior for local scale-out.
 
 ## Expected file and test impact
 
-The implementation stories may update:
+The remaining implementation stories may update:
 
 - `docker/prod/airflow/dags/`;
 - `docker/prod/airflow/config/bike_dag_config.json`;
 - `src/job_runner/`;
-- `src/ml/` manifest promotion helpers;
+- `src/ml/` manifest emission callers when concurrency semantics change;
 - `src/api/` refresh behavior when needed;
 - `tests/unit/` for contract-level concurrency and idempotency checks;
 - `tests/integration/` for runner and manifest behavior;
