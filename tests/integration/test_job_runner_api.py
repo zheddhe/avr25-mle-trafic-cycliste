@@ -78,7 +78,7 @@ class FailingExecutor:
 
 
 @pytest.mark.integration
-class TestJobRunnerApi:
+class TestJobRunnerApiIntegration:
     """Integration tests for typed job submission and status retrieval."""
 
     @pytest.fixture
