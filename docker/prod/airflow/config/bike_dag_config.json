@@ -12,7 +12,7 @@
   "counters": {
     "Sebastopol_N-S_airflow": {
       "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
-      "site": "Totem 73 boulevard de Sebastopol",
+      "site": "Totem 73 boulevard de S\u00e9bastopol",
       "orientation": "N-S",
       "interim_name": "initial_airflow.csv",
       "processed_name": "initial_airflow_with_feats.csv",
@@ -27,7 +27,7 @@
     },
     "Sebastopol_S-N_airflow": {
       "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
-      "site": "Totem 73 boulevard de Sebastopol",
+      "site": "Totem 73 boulevard de S\u00e9bastopol",
       "orientation": "S-N",
       "interim_name": "initial_airflow.csv",
       "processed_name": "initial_airflow_with_feats.csv",
