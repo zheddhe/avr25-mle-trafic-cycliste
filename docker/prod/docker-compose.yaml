@@ -112,10 +112,10 @@ services:
       test:
         - CMD-SHELL
         - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10081/health', timeout=5).read()"
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 5s
     networks:
       - pipeline_runtime_net
       - observability_net
@@ -145,10 +145,10 @@ services:
       test:
         - CMD-SHELL
         - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10082/health', timeout=5).read()"
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 5s
     networks:
       - pipeline_runtime_net
       - observability_net
@@ -184,10 +184,10 @@ services:
       test:
         - CMD-SHELL
         - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10083/health', timeout=5).read()"
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 5s
     networks:
       - pipeline_runtime_net
       - tracking_client_net
