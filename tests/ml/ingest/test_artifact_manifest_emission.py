@@ -33,3 +33,4 @@ class TestBuildInterimDatasetArtifactManifest:
         assert manifest.artifact_type == "interim_dataset"
         assert manifest.source.raw_file_name == "bike-counts.csv"
         assert manifest.producer.service == "ml-ingest-test"
+        assert manifest.storage.local_path == "data/interim/counter-1/initial.csv"
