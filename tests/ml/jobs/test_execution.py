@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from src.ml.jobs.contracts import IngestJobRequest, MlJobType
-from src.ml.jobs.execution import _artifact_type_for_job
-from src.ml.jobs.execution import _metrics_label_values
-from src.ml.jobs.execution import _path_parent_name
+from src.ml.jobs.execution import _artifact_type_for_job, _metrics_label_values, _path_parent_name
 
 
 class TestMlJobExecutionHelpers:

@@ -5,9 +5,11 @@ from __future__ import annotations
 import pandas as pd
 from skopt.space import Categorical, Integer
 
-from src.ml.models.models_utils import AutoregressiveFeaturesTransformer
-from src.ml.models.models_utils import _auto_adjust_n_iter
-from src.ml.models.models_utils import _extract_param_ranges
+from src.ml.models.models_utils import (
+    AutoregressiveFeaturesTransformer,
+    _auto_adjust_n_iter,
+    _extract_param_ranges,
+)
 
 
 class TestModelUtilityHelpers:

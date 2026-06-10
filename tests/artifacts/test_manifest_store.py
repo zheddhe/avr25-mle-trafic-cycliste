@@ -9,10 +9,12 @@ import pytest
 
 from src.artifacts.checksums import compute_sha256
 from src.artifacts.exceptions import ArtifactManifestValidationError
-from src.artifacts.manifest_store import promote_manifest
-from src.artifacts.manifest_store import read_current_manifest
-from src.artifacts.manifest_store import read_manifest
-from src.artifacts.manifest_store import write_manifest
+from src.artifacts.manifest_store import (
+    promote_manifest,
+    read_current_manifest,
+    read_manifest,
+    write_manifest,
+)
 from src.artifacts.schemas import ArtifactManifest
 
 

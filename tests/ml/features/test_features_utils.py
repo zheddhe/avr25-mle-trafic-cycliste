@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.ml.features.features_utils import DatetimePeriodicsTransformer
-from src.ml.features.features_utils import extract_datetime_periodic_features
+from src.ml.features.features_utils import (
+    DatetimePeriodicsTransformer,
+    extract_datetime_periodic_features,
+)
 
 
 class TestExtractDatetimePeriodicFeatures:
