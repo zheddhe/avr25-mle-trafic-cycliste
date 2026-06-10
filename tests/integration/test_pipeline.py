@@ -194,7 +194,7 @@ def _params_from_scenario(
 # ---------------------------------------------------------------------
 # The integration test: import -> features -> train/predict
 # ---------------------------------------------------------------------
-class TestPipelineE2E:
+class TestPipelineIntegration:
     @pytest.mark.parametrize("scenario_idx", range(3))
     def test_pipeline_scenarios(
         self,
