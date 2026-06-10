@@ -152,27 +152,6 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
             ).model_dump(),
         )
 
-    @app.get(
-        "/verify",
-        tags=["Admin"],
-        summary="Verify service health",
-        description="Simple service health check. [ADMIN ONLY]",
-        responses=GENERIC_RESPONSES,
-    )
-    def get_verify(
-        user_info: dict[str, str] = Depends(check_admin_role),
-    ) -> dict[str, str]:
-        """Health check restricted to administrators."""
-
-        LOGGER.info(
-            f"Health check requested by admin user: {user_info['username']}"
-        )
-        return {
-            "message": "API is healthy.",
-            "checked_by": user_info["username"],
-            "role": user_info["role"],
-        }
-
     @app.get("/health", tags=["Info"], responses=GENERIC_RESPONSES)
     def get_health() -> dict[str, str]:
         """Healthcheck endpoint used by Docker Compose."""

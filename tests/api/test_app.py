@@ -73,6 +73,28 @@ class TestApiAppFactory:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
+    def test_openapi_schema_does_not_expose_verify_endpoint(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        client = TestClient(create_app(settings=_settings(tmp_path)))
+
+        response = client.get("/openapi.json")
+
+        assert response.status_code == 200
+        assert "/health" in response.json()["paths"]
+        assert "/verify" not in response.json()["paths"]
+
+    def test_verify_endpoint_is_not_available(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        client = TestClient(create_app(settings=_settings(tmp_path)))
+
+        response = client.get("/verify", auth=("admin1", "admin1"))
+
+        assert response.status_code == 404
+
     def test_counters_returns_business_error_when_store_is_empty(
         self,
         tmp_path: Path,
