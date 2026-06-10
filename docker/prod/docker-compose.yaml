@@ -333,13 +333,17 @@ services:
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql://${MLFLOW_POSTGRES_USER:?required}:${MLFLOW_POSTGRES_PASSWORD:?required}@mlflow-postgres:5432/${MLFLOW_POSTGRES_DB:?required}
       MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://mlflow/
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?required}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?required}
+      AWS_DEFAULT_REGION: us-east-1
+      GIT_PYTHON_REFRESH: quiet
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
     ports:
-      - "${MLFLOW_HOST_PORT:-15000}:5000"
+      - "${MLFLOW_HOST_PORT:-13001}:5000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5).read()"
       interval: 10s
       timeout: 5s
       retries: 5
@@ -363,10 +367,10 @@ services:
     volumes:
       - prod-airflow-postgres-db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_POSTGRES_USER:?required}"]
+      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_POSTGRES_USER:?required}"]
       interval: 10s
-      timeout: 5s
       retries: 5
+      start_period: 15s
     networks:
       - orchestration_net
     profiles: ["all", "airflow", "ptf"]
@@ -374,140 +378,163 @@ services:
   airflow-redis:
     image: ${AIRFLOW_REDIS_IMAGE:?required}
     restart: unless-stopped
-    expose:
-      - 6379
+    volumes:
+      - prod-airflow-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    volumes:
-      - prod-airflow-redis-data:/data
+      start_period: 15s
     networks:
       - orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
     <<: *airflow-common
-    command:
-      - bash
-      - -c
-      - |
-        set -euo pipefail
-        echo "Initializing production-like Airflow metadata database"
-        airflow db migrate
-        echo "Importing production-like Airflow connections"
-        airflow connections import /opt/airflow/config/connections.json
-        echo "Cleaning obsolete DockerOperator variables"
-        airflow variables delete docker_network || true
-        airflow variables delete ingestion_image || true
-        airflow variables delete features_image || true
-        airflow variables delete model_image || true
-        echo "Airflow initialization complete"
-    depends_on: *airflow-common-depends-on
+    restart: "no"
+    environment:
+      <<: *airflow-common-env
+    command: ["bash", "/opt/airflow/scripts/airflow-init.sh"]
     volumes:
-      - ./runtime/logs/airflow:/opt/airflow/logs
-      - ./runtime/data:/opt/airflow/data
-      - ./runtime/artifacts:/app/artifacts:ro
-      - ./airflow/dags:/opt/airflow/dags:ro
-      - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      - ./airflow/config/connections.json:/opt/airflow/config/connections.json:ro
+      - ./airflow/config/:/opt/airflow/config/:ro
+      - ./airflow/scripts/airflow-init.sh:/opt/airflow/scripts/airflow-init.sh:ro
     profiles: ["all", "airflow", "ptf"]
 
   airflow-api-server:
     <<: *airflow-common
-    command: api-server
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["api-server"]
     ports:
-      - "${AIRFLOW_API_HOST_PORT:-18080}:8080"
+      - "${AIRFLOW_HOST_PORT:-12080}:8080"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 15s
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-scheduler:
     <<: *airflow-common
-    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["scheduler"]
     healthcheck:
-      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $${HOSTNAME}"]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 15s
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-dag-processor:
     <<: *airflow-common
-    command: dag-processor
-
-  airflow-triggerer:
-    <<: *airflow-common
-    command: triggerer
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["dag-processor"]
     healthcheck:
-      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname $(hostname)"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname $${HOSTNAME}"]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 15s
+    profiles: ["all", "airflow", "ptf"]
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["celery", "worker"]
+    environment:
+      <<: *airflow-common-env
+    healthcheck:
+      test: ["CMD-SHELL", "celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME} || celery --app airflow.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - orchestration_net
       - pipeline_runtime_net
       - dev_support_net
+    profiles: ["all", "airflow", "ptf"]
+
+  airflow-triggerer:
+    <<: *airflow-common
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["triggerer"]
     healthcheck:
-      test:
-        - CMD-SHELL
-        - celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname $${HOSTNAME}"]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 15s
+    profiles: ["all", "airflow", "ptf"]
 
   # ========================
-  # OBSERVABILITY SERVICES
+  # MONITORING SERVICES
   # ========================
   monitoring-prometheus:
     image: ${PROMETHEUS_IMAGE:?required}
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
+      - --storage.tsdb.retention.time=15d
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus:/etc/prometheus:ro
       - prod-prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - observability_net
-    profiles: ["all", "monitoring", "ptf"]
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-grafana:
     image: ${GRAFANA_IMAGE:?required}
     restart: unless-stopped
-    ports:
-      - "${GRAFANA_HOST_PORT:-13000}:3000"
+    depends_on:
+      - monitoring-prometheus
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?required}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?required}
-      GF_USERS_ALLOW_SIGN_UP: "false"
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "${GRAFANA_HOST_PORT:-14300}:3000"
     volumes:
       - prod-grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - observability_net
-    profiles: ["all", "monitoring", "ptf"]
-
-  monitoring-pushgateway:
-    image: ${PUSHGATEWAY_IMAGE:?required}
-    restart: unless-stopped
-    expose:
-      - 9091
-    networks:
-      - pipeline_runtime_net
-      - observability_net
-    profiles: ["all", "monitoring", "ptf"]
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-cadvisor:
     image: ${CADVISOR_IMAGE:?required}
@@ -517,18 +544,43 @@ services:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - observability_net
-    profiles: ["all", "monitoring", "ptf"]
+    profiles: ["monitoring", "all", "ptf"]
+
+  monitoring-pushgateway:
+    image: ${PUSHGATEWAY_IMAGE:?required}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - pipeline_runtime_net
+      - observability_net
+    profiles: ["monitoring", "all", "ptf"]
 
   monitoring-alertmanager:
     image: ${ALERTMANAGER_IMAGE:?required}
     restart: unless-stopped
     volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - prod-alertmanager-data:/alertmanager
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - observability_net
       - dev_support_net
@@ -537,8 +589,12 @@ services:
   monitoring-mailhog:
     image: ${MAILHOG_IMAGE:?required}
     restart: unless-stopped
-    ports:
-      - "${MAILHOG_HOST_PORT:-18025}:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8025 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - dev_support_net
     profiles: ["all", "monitoring", "ptf"]
