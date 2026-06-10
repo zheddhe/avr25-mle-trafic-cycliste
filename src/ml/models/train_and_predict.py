@@ -9,7 +9,6 @@ import click
 import numpy as np
 import pandas as pd
 import pytz
-from mlflow.tracking import MlflowClient
 
 from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.models.artifact_manifest_emission import (
@@ -374,6 +373,8 @@ def _promote_latest_model_alias(
         return
 
     try:
+        from mlflow.tracking import MlflowClient
+
         model_name = f"{site_short}-model"
         client = MlflowClient()
         versions = client.search_model_versions(f"name='{model_name}'")
@@ -419,50 +420,15 @@ def _push_business_metrics(
                     / np.clip(np.abs(y_test), 1e-6, None),
                 ),
             )
-            * 100,
+            * 100.0
         )
-        r2 = float(report["metrics"]["test"].get("R2", np.nan))
-        n_true = int(y_train_pred.size)
-        n_pred = int(y_test_pred.size)
-        day_offset = int(os.getenv("DAY_OFFSET", "0"))
-        last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
-
-        site_env = os.getenv("SITE_SHORT")
-        orientation_env = os.getenv("ORIENTATION")
-        if site_env and orientation_env:
-            site, orientation = site_env, orientation_env
-        else:
-            site, orientation = _extract_site_orientation(sub_dir)
-
-        summary = (
-            f"site={site}, ori={orientation}, RMSE={rmse:.3f}, "
-            f"MAPE={mape:.2f}, R²={r2}, last_ts={last_ts}, "
-            f"n_obs_true={n_true}, n_obs_pred={n_pred}, "
-            f"day_offset={day_offset}"
-        )
-        if os.getenv("DISABLE_METRICS_PUSH", "1") == "1":
-            logger.info(f"Business metrics push skipped: {summary}")
-            return
-
+        drift = float(np.mean(y_test) - np.mean(y_train_pred))
         push_business_metrics(
-            site=site,
-            orientation=orientation,
             rmse=rmse,
             mape=mape,
-            r2=r2,
-            n_obs_true=n_true,
-            n_obs_pred=n_pred,
-            last_ts=last_ts,
-            day_offset=day_offset,
+            data_drift=drift,
+            last_timestamp=df[ts_col_utc].max(),
+            site=sub_dir,
         )
-        logger.info(f"Pushed business metrics to Pushgateway: {summary}")
     except Exception as exc:
-        logger.warning(f"Failed to push business metrics: {exc}")
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except click.ClickException as error:
-        logger.error(str(error))
-        sys.exit(1)
+        logger.warning(f"Business metrics push skipped: {exc}")
