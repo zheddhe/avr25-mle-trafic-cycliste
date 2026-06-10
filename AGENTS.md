@@ -9,6 +9,8 @@
   boundaries matter.
 - Work from `main` and create one branch per issue, story, or bugfix.
 - Open PRs against `main`; never merge without human review.
+- Read this file and `docs/README.md` before planning repository or
+  documentation changes.
 
 ## Code rules
 
