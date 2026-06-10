@@ -1,5 +1,5 @@
 {
-  "title": "Pipeline ML – Business KPIs",
+  "title": "ML Pipeline – Business KPIs",
   "uid": "bike-pipelineml-kpis",
   "timezone": "browser",
   "schemaVersion": 39,
@@ -21,13 +21,13 @@
     ]
   },
   "panels": [
-    { "type": "row", "title": "Informations générales (dernière exécution)", "collapsed": false,
+    { "type": "row", "title": "General information (latest run)", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100
     },
 
     {
       "type": "stat",
-      "title": "Observations réelles",
+      "title": "Actual observations",
       "id": 4,
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -47,7 +47,7 @@
     },
     {
       "type": "stat",
-      "title": "Observations prédites",
+      "title": "Predicted observations",
       "id": 5,
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -67,7 +67,7 @@
     },
     {
       "type": "stat",
-      "title": "Décalage simulé (dayX, jours)",
+      "title": "Simulated offset (dayX, days)",
       "id": 6,
       "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -87,7 +87,7 @@
     },
     {
       "type": "stat",
-      "title": "Fraîcheur réelle (jours) – last",
+      "title": "Actual freshness (days) – last",
       "id": 7,
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -101,7 +101,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
 
-    { "type": "row", "title": "Métriques (dernière exécution)", "collapsed": false,
+    { "type": "row", "title": "Metrics (latest run)", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }, "id": 200
     },
 
@@ -187,12 +187,12 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
 
-    { "type": "row", "title": "Historique des métriques", "collapsed": false,
+    { "type": "row", "title": "Metrics history", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "id": 300
     },
 
     {
-      "type": "timeseries", "title": "MAPE – lissé par minute", "id": 801,
+      "type": "timeseries", "title": "MAPE – 1-minute smoothed", "id": 801,
       "gridPos": { "h": 9, "w": 8, "x": 0, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "refId": "A",
@@ -222,7 +222,7 @@
     },
 
     {
-      "type": "timeseries", "title": "RMSE – lissé par minute", "id": 802,
+      "type": "timeseries", "title": "RMSE – 1-minute smoothed", "id": 802,
       "gridPos": { "h": 9, "w": 8, "x": 8, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "refId": "A",
@@ -252,7 +252,7 @@
     },
 
     {
-      "type": "timeseries", "title": "R² – lissé par minute", "id": 803,
+      "type": "timeseries", "title": "R² – 1-minute smoothed", "id": 803,
       "gridPos": { "h": 9, "w": 8, "x": 16, "y": 15 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "refId": "A",
@@ -281,12 +281,12 @@
       "options": { "legend": { "show": false }, "tooltip": { "mode": "single" } }
     },
 
-    { "type": "row", "title": "Qualité d'exécution (pipeline)", "collapsed": false,
+    { "type": "row", "title": "Pipeline execution quality", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }, "id": 400
     },
 
     {
-      "type": "stat", "title": "Durée Ingest (s) – last", "id": 411,
+      "type": "stat", "title": "Ingest duration (s) – last", "id": 411,
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "expr":
@@ -296,7 +296,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "type": "stat", "title": "Durée Features (s) – last", "id": 412,
+      "type": "stat", "title": "Features duration (s) – last", "id": 412,
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "expr":
@@ -306,7 +306,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "type": "stat", "title": "Durée Models (s) – last", "id": 413,
+      "type": "stat", "title": "Models duration (s) – last", "id": 413,
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 25 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "expr":
@@ -317,7 +317,7 @@
     },
 
     {
-      "type": "stat", "title": "Durée Ingest (s) – moy 24h", "id": 421,
+      "type": "stat", "title": "Ingest duration (s) – 24h avg", "id": 421,
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "expr":
@@ -327,7 +327,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "type": "stat", "title": "Durée Features (s) – moy 24h", "id": 422,
+      "type": "stat", "title": "Features duration (s) – 24h avg", "id": 422,
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "expr":
@@ -337,7 +337,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "type": "stat", "title": "Durée Models (s) – moy 24h", "id": 423,
+      "type": "stat", "title": "Models duration (s) – 24h avg", "id": 423,
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [ { "expr":
@@ -347,13 +347,13 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
 
-    { "type": "row", "title": "Volumes traités – last", "collapsed": false,
+    { "type": "row", "title": "Processed volumes – last", "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 }, "id": 500
     },
 
     {
       "type": "stat",
-      "title": "Observations traitées (ingest)",
+      "title": "Processed observations (ingest)",
       "id": 501,
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 50 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -368,7 +368,7 @@
     },
     {
       "type": "stat",
-      "title": "Observations traitées (features)",
+      "title": "Processed observations (features)",
       "id": 502,
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 50 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -383,7 +383,7 @@
     },
     {
       "type": "stat",
-      "title": "Observations traitées (models)",
+      "title": "Processed observations (models)",
       "id": 503,
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 50 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },

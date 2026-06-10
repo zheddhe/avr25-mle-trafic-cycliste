@@ -215,8 +215,8 @@ def _read_manifests(**ctx) -> dict[str, Any]:
 
 def _check_docker_access(**_):
     """
-    Vérifie que le socket Docker est accessible pour le même utilisateur
-    que celui utilisé par les DockerOperator (AIRFLOW_UID:AIRFLOW_GID).
+    Check that Docker socket is reachable by the user from DockerOperattor
+    (AIRFLOW_UID:AIRFLOW_GID).
     """
     uid_effective = int(AIRFLOW_UID)
     gid_effective = int(AIRFLOW_GID)
@@ -240,19 +240,15 @@ def _check_docker_access(**_):
     owner_uid, owner_gid = st.st_uid, st.st_gid
     logger.info(f"[pipeline] Socket perms={perms}, owner={owner_uid}:{owner_gid}")
 
-    # Vérifie les permissions en fonction des bits d'accès
     can_read = False
     can_write = False
 
-    # Cas 1 : l'utilisateur est propriétaire
     if uid_effective == owner_uid:
         can_read = bool(st.st_mode & 0o400)
         can_write = bool(st.st_mode & 0o200)
-    # Cas 2 : l'utilisateur fait partie du groupe
     elif gid_effective == owner_gid:
         can_read = bool(st.st_mode & 0o040)
         can_write = bool(st.st_mode & 0o020)
-    # Cas 3 : droits "others"
     else:
         can_read = bool(st.st_mode & 0o004)
         can_write = bool(st.st_mode & 0o002)
@@ -264,13 +260,12 @@ def _check_docker_access(**_):
             f"owner={owner_uid}:{owner_gid})",
         )
         raise AirflowException(
-            f"[Docker Check] L'utilisateur simulé {uid_effective}:{gid_effective} "
-            f"n'a pas les droits lecture/écriture sur {sock_path}. "
-            f"Permissions={perms}, propriétaire={owner_uid}:{owner_gid}. "
-            f"Vérifiez que le groupe {gid_effective} correspond bien au groupe docker."
+            f"[Docker Check] simulated user {uid_effective}:{gid_effective} "
+            f"does not have read/write rights on {sock_path}. "
+            f"Permissions={perms}, owner={owner_uid}:{owner_gid}. "
+            f"Check that group {gid_effective} correspond to docker group."
         )
 
-    # Vérifie la connexion Docker réelle
     try:
         client = docker_from_env()
         client.ping()
@@ -278,7 +273,7 @@ def _check_docker_access(**_):
     except Exception as e:
         logger.error(f"[pipeline] Docker connection failed: {e}")
         raise AirflowException(
-            f"[Docker Check] Le socket Docker est inaccessible : {e}"
+            f"[Docker Check] Docker socket unreachable : {e}"
         )
 
 
