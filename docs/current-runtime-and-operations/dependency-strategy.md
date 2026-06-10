@@ -63,6 +63,7 @@ local developer ergonomics and for tools such as the VS Code Docker extension.
 | `AIRFLOW_IMAGE_NAME` | `apache/airflow:3.2.2-python3.12` | `sha256:bbe58e3204d550ab98dbf738a42c0e6663c455357ecd0e2d1440ef9cb6a75f00` |
 | `AIRFLOW_POSTGRES_IMAGE` | `postgres:16` | `sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae` |
 | `AIRFLOW_REDIS_IMAGE` | `redis:latest` | `sha256:aa049e689e141a4358ad1d4562dc49c88a89fbab711fd8fcc33f684c80b26301` |
+| `NGINX_IMAGE` | `nginx:1.27-alpine` | `sha256:6769dc3a703c719c1d2756bda113659be28ae16cf0da58dd5fd823d6b9a050ea` |
 | `MLFLOW_IMAGE` | `ghcr.io/mlflow/mlflow:v3.13.0-full` | `sha256:45bdcc9439dac5c51c160a863e3c1cadae1757de9d6d1b9403e0a648a6f2333b` |
 | `MLFLOW_POSTGRES_IMAGE` | `postgres:16` | `sha256:4b7183ac05f8ef417db21fd72d71047a4238340c261d3cc3ddb6d579ab5071ae` |
 | `MLFLOW_MINIO_IMAGE` | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e` |
@@ -80,6 +81,7 @@ local developer ergonomics and for tools such as the VS Code Docker extension.
 | -------------- | -------------------- |
 | Orchestration services | Uses Airflow, PostgreSQL, and Redis images. |
 | Experimentation services | Uses MLflow, PostgreSQL, MinIO, and MC images. |
+| Internal ML gateway | Uses the required `NGINX_IMAGE` variable for prod-like runner-to-ML routing. |
 | Monitoring services | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor images. |
 | Development helpers | Uses MailHog images. |
 | Custom FastAPI services | Uses Python 3.12 slim images with pinned FastAPI and uvicorn dependencies. |
@@ -94,6 +96,7 @@ it is part of the image.
 | ------- | -------------------- |
 | `api-dev` | Python `urllib` read check on `/docs`. |
 | `job-runner-api` | Python `urllib` read check on `/health`. |
+| `ml-gateway` | Nginx `wget` check on `http://ml-gateway:10090/health` through Compose DNS. |
 | `mlflow-postgres` | `pg_isready` against the MLflow metadata database. |
 | `mlflow-minio` | curl check on `/minio/health/live`. |
 | `mlflow-server` | Python `urllib` read check on `/health`. |
@@ -127,6 +130,7 @@ bulk maintenance action:
 - `prometheus-client`
 - `prometheus-fastapi-instrumentator`
 - Airflow image versions
+- Nginx gateway image version
 - monitoring runtime images
 
 Runtime-sensitive upgrades must be isolated and validated with a dedicated PR or
@@ -150,6 +154,13 @@ FastAPI compatibility checks should include:
 - request validation errors;
 - response model serialization;
 - healthcheck endpoint availability.
+
+Gateway compatibility checks should include:
+
+- `ml-gateway` healthcheck availability on `pipeline_runtime_net`;
+- typed `/ingest/jobs`, `/features/jobs`, and `/models/jobs` routing;
+- Compose scale-up and scale-down with Nginx reload;
+- no host-published gateway port in the production-like runtime.
 
 Monitoring runtime changes should validate at least:
 
@@ -177,6 +188,7 @@ make dev-build
 make prod-build
 make dev-start DEV_PROFILE=ptf
 make prod-start PROD_PROFILE=ptf
+make prod-scale-ml ML_INGEST_REPLICAS=2 ML_FEATURES_REPLICAS=2 ML_MODELS_REPLICAS=2
 make dev-mlops-pipeline
 make dev-logs SERVICE=api-dev
 ```
@@ -189,6 +201,7 @@ Then verify:
 - MLflow runs contain expected parameters, metrics, and artifacts;
 - API `/docs` is reachable;
 - job runner API `/health` is reachable inside `docker/prod`;
+- `ml-gateway` is healthy and reloads after ML service scaling;
 - API prediction endpoints still return the expected schema;
 - Prometheus targets are healthy and ML/API metrics are visible;
 - Grafana starts and loads the provisioned Prometheus datasource;
