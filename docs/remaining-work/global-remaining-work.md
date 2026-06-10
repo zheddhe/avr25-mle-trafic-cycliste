@@ -39,16 +39,29 @@ baseline. Future work should cover:
 - production-grade configuration management;
 - container user, volume permission, and service capability reviews.
 
+Security hardening will be reassessed after Phase 9 scale-out work clarifies the
+runtime concurrency and resource model.
+
 ## Scale-out execution
 
 The current multi-counter orchestration remains intentionally sequential for the
-local production-like path. Future work should address:
+local production-like path.
 
-- safe parallel execution across counters;
-- distributed orchestration when local Compose is no longer enough;
+Phase 9 starts from the bounded local scale-out contract documented in
+[`phase-9-bounded-scale-out-contract.md`](phase-9-bounded-scale-out-contract.md).
+That contract defines the future-state scope before implementation stories
+change the current runtime behavior.
+
+Phase 9 should address:
+
+- safe bounded parallel execution across counters;
 - concurrency control for manifests and promoted `current.json` files;
-- retry and idempotency policies for larger workloads;
-- per-service resource limits and backpressure strategy.
+- retry and idempotency policies for larger local workloads;
+- per-service resource limits and backpressure strategy;
+- acceptance validation and observability for bounded scale-out.
+
+Distributed orchestration remains future work when local Compose is no longer
+enough.
 
 ## Full ETL source chain
 
