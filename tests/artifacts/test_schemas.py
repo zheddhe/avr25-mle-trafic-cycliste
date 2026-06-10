@@ -50,6 +50,7 @@ class TestArtifactManifest:
 
         manifest = ArtifactManifest.model_validate(payload)
 
+        assert manifest.storage.primary_backend == StorageBackend.LOCAL
         assert manifest.storage.object_uri == "s3://mlflow/predictions/file.parquet"
 
     def test_missing_required_field_raises_validation_error(
@@ -70,4 +71,32 @@ class TestArtifactManifest:
         payload["storage"]["primary_backend"] = "filesystem"
 
         with pytest.raises(ValidationError, match="primary_backend"):
+            ArtifactManifest.model_validate(payload)
+
+    @pytest.mark.parametrize(
+        ("field_name", "invalid_value", "message"),
+        [
+            (
+                "local_path",
+                "https://example.com/artifacts/predictions.parquet",
+                "repository-relative",
+            ),
+            (
+                "object_uri",
+                "https://minio/artifacts/predictions.parquet",
+                "s3://",
+            ),
+        ],
+    )
+    def test_invalid_uri_cases_raise_validation_error(
+        self,
+        valid_local_manifest: dict,
+        field_name: str,
+        invalid_value: str,
+        message: str,
+    ) -> None:
+        payload = deepcopy(valid_local_manifest)
+        payload["storage"][field_name] = invalid_value
+
+        with pytest.raises(ValidationError, match=message):
             ArtifactManifest.model_validate(payload)
