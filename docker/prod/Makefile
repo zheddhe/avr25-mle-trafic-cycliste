@@ -4,6 +4,7 @@ SHELL := /bin/bash
 
 .PHONY: prod-help prod-prepare-runtime prod-compose-config prod-build
 .PHONY: prod-start prod-stop prod-down prod-ps prod-logs prod-clean
+.PHONY: prod-scale-ml
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
@@ -11,6 +12,9 @@ PROD_COMPOSE_FILE ?= docker/prod/docker-compose.yaml
 PROD_PROFILE ?= ptf
 PROD_PROJECT_NAME ?= bike-traffic-prod
 SERVICE ?= api-dev
+ML_INGEST_REPLICAS ?= 1
+ML_FEATURES_REPLICAS ?= 1
+ML_MODELS_REPLICAS ?= 1
 
 prod_log_target = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
 prod_check_env = if [ ! -f "$(ENV_FILE)" ]; then echo "Error: $(ENV_FILE) is missing. Run: make env" >&2; exit 1; fi
@@ -56,6 +60,15 @@ prod-build: prod-prepare-runtime ## Build local production-like Docker images
 prod-start: prod-compose-config ## Start local production-like platform services
 	@$(call prod_log_target,prod-start PROD_PROFILE=$(PROD_PROFILE))
 	$(prod_compose) --profile $(PROD_PROFILE) up -d
+
+prod-scale-ml: prod-compose-config ## Scale ML replicas and reload gateway
+	@$(call prod_log_target,prod-scale-ml)
+	$(prod_compose) --profile all up -d \
+		--scale ml-ingest-prod=$(ML_INGEST_REPLICAS) \
+		--scale ml-features-prod=$(ML_FEATURES_REPLICAS) \
+		--scale ml-models-prod=$(ML_MODELS_REPLICAS) \
+		ml-ingest-prod ml-features-prod ml-models-prod ml-gateway
+	$(prod_compose) exec -T ml-gateway nginx -s reload
 
 prod-stop: ## Stop local production-like services for the selected profile
 	@$(call prod_log_target,prod-stop PROD_PROFILE=$(PROD_PROFILE))

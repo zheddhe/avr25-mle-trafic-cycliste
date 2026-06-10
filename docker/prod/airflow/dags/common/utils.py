@@ -41,11 +41,21 @@ class SchedulingCfg(BaseModel):
     daily_increment_pct: float
 
 
+class ConcurrencyCfg(BaseModel):
+    """Bounded local production-like Airflow concurrency limits."""
+
+    orchestrator_max_active_runs: int = Field(default=1, ge=1)
+    orchestrator_max_active_tasks: int = Field(default=2, ge=1)
+    child_max_active_runs: int = Field(default=2, ge=1)
+    child_max_active_tasks: int = Field(default=4, ge=1)
+
+
 class DagCfg(BaseModel):
     """Top-level DAG configuration."""
 
     counters: dict[str, CounterCfg]
     scheduling: SchedulingCfg
+    concurrency: ConcurrencyCfg = Field(default_factory=ConcurrencyCfg)
 
 
 def _load_config() -> tuple[DagCfg, str]:
@@ -65,6 +75,13 @@ def _load_config() -> tuple[DagCfg, str]:
         default_counter_id,
     )
     return cfg, default_counter_id
+
+
+def _load_concurrency_config() -> ConcurrencyCfg:
+    """Load only the bounded Airflow concurrency configuration."""
+
+    cfg, _ = _load_config()
+    return cfg.concurrency
 
 
 def _read_config_source(cfg_ref: str) -> str:

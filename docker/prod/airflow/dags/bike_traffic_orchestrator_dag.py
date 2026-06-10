@@ -8,9 +8,10 @@ from datetime import datetime
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
-from common.utils import _list_counters_payload
+from common.utils import _list_counters_payload, _load_concurrency_config
 
 logger = logging.getLogger("airflow.task")
+concurrency = _load_concurrency_config()
 
 with DAG(
     dag_id="bike_traffic_orchestrator",
@@ -18,8 +19,8 @@ with DAG(
     start_date=datetime(2025, 9, 20),
     schedule="@daily",
     catchup=False,
-    max_active_runs=1,
-    max_active_tasks=1,
+    max_active_runs=concurrency.orchestrator_max_active_runs,
+    max_active_tasks=concurrency.orchestrator_max_active_tasks,
     tags=["ops", "orchestration", "bike", "prod"],
 ) as dag:
     logger.info("[orchestrator] Production-like DAG loaded")

@@ -85,6 +85,7 @@ The following service families are intentionally not published on host ports:
 | `ml-ingest-prod` | Prod-like | `10081` | Internal FastAPI ML step service for validated ingestion jobs. |
 | `ml-features-prod` | Prod-like | `10082` | Internal FastAPI ML step service for validated feature jobs. |
 | `ml-models-prod` | Prod-like | `10083` | Internal FastAPI ML step service for validated model jobs. |
+| `ml-gateway` | Prod-like | `10090` | Internal Nginx gateway between runner API and scaled ML step service replicas. |
 | `job-runner-api` | Prod-like | `10080` | Internal typed job submission and status boundary. |
 | `mlflow-postgres` | Dev and prod-like | `5432` | MLflow internal metadata database. |
 | `mlflow-mc-init` | Dev and prod-like | n/a | One-off MinIO initialization helper. |
@@ -117,6 +118,6 @@ make dev-build
 make prod-build
 ```
 
-`make prod-compose-config` should show `job-runner-api` without a `ports` block
-and should keep `ml-ingest-prod`, `ml-features-prod`, and `ml-models-prod`
-internal-only.
+`make prod-compose-config` should show `job-runner-api` and `ml-gateway` without
+`ports` blocks and should keep `ml-ingest-prod`, `ml-features-prod`, and
+`ml-models-prod` internal-only.

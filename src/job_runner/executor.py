@@ -16,7 +16,8 @@ from src.ml.jobs.status import JobResult, JobStatus
 
 MlJobExecutionError = MlStepExecutionError
 
-_RUNNER_SERVICE_LOCK = threading.Lock()
+JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV = "JOB_RUNNER_MAX_IN_FLIGHT_JOBS"
+DEFAULT_MAX_IN_FLIGHT_JOBS = 2
 
 
 class MlJobExecutor(Protocol):
@@ -38,19 +39,25 @@ class LocalMlJobExecutor(StepCommandExecutor):
 
 
 class ServiceMlJobExecutor:
-    """Execute one allow-listed ML step through internal ML service APIs."""
+    """Execute allow-listed ML steps through internal ML service APIs."""
 
     def __init__(
         self,
         transport: MlServiceTransport | None = None,
         endpoints: dict[MlJobType, str] | None = None,
-        lock: threading.Lock | None = None,
+        max_in_flight_jobs: int | None = None,
+        concurrency_limiter: threading.BoundedSemaphore | None = None,
     ) -> None:
         self._transport = transport or UrllibMlServiceTransport()
         self._endpoints = (
             endpoints if endpoints is not None else _load_service_endpoints()
         )
-        self._lock = lock or _RUNNER_SERVICE_LOCK
+        self.max_in_flight_jobs = _resolve_max_in_flight_jobs(
+            max_in_flight_jobs,
+        )
+        self._concurrency_limiter = concurrency_limiter or threading.BoundedSemaphore(
+            self.max_in_flight_jobs,
+        )
 
     def execute(
         self,
@@ -72,7 +79,7 @@ class ServiceMlJobExecutor:
                 retryable=False,
             )
 
-        with self._lock:
+        with self._concurrency_limiter:
             status = self._transport.submit(
                 endpoint=endpoint,
                 job_request=job_request,
@@ -168,6 +175,36 @@ def _load_service_endpoints() -> dict[MlJobType, str]:
             "http://ml-models-prod:10083",
         ),
     }
+
+
+def _resolve_max_in_flight_jobs(configured_value: int | None = None) -> int:
+    if configured_value is not None:
+        return _validate_positive_int(
+            configured_value,
+            name="max_in_flight_jobs",
+        )
+
+    raw_value = os.getenv(
+        JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV,
+        str(DEFAULT_MAX_IN_FLIGHT_JOBS),
+    )
+    try:
+        parsed_value = int(raw_value)
+    except ValueError as error:
+        raise ValueError(
+            f"{JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV} must be a positive integer."
+        ) from error
+
+    return _validate_positive_int(
+        parsed_value,
+        name=JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV,
+    )
+
+
+def _validate_positive_int(value: int, *, name: str) -> int:
+    if value < 1:
+        raise ValueError(f"{name} must be greater than or equal to 1.")
+    return value
 
 
 def _join_url(base_url: str, path: str) -> str:
