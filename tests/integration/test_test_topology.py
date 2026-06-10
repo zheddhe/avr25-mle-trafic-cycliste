@@ -13,7 +13,7 @@ NON_UNIT_TEST_DIRS = {"acceptance", "integration", "performance"}
 UNIT_TEST_ROOT = Path("tests") / "unit"
 
 
-class TestTestTopology:
+class TestTestTypology:
     """Integration checks for repository test topology consistency."""
 
     def test_source_files_have_mirrored_unit_test_files(self) -> None:
