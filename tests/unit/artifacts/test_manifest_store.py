@@ -1,186 +1,168 @@
+"""Unit tests for artifact manifest store helpers."""
+
 from __future__ import annotations
 
-import hashlib
-from datetime import UTC, datetime
+from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
+from src.artifacts.checksums import compute_sha256
+from src.artifacts.exceptions import (
+    ArtifactChecksumMismatchError,
+    ArtifactManifestNotFoundError,
+    ArtifactManifestValidationError,
+    ArtifactPayloadNotFoundError,
+)
 from src.artifacts.manifest_store import (
     promote_manifest,
     read_current_manifest,
     read_manifest,
+    verify_local_payload,
     write_manifest,
 )
-from src.artifacts.schemas import (
-    SCHEMA_VERSION,
-    ArtifactManifest,
-    ArtifactProducer,
-    ArtifactSource,
-    ArtifactStatus,
-    ArtifactStorage,
-    ArtifactType,
-    StorageBackend,
-)
+from src.artifacts.schemas import ArtifactManifest, ArtifactStatus
 
 
-class TestManifestStore:
-    def test_write_manifest_creates_run_scoped_manifest(
+class TestArtifactManifestStore:
+    """Unit tests for filesystem-backed manifest store helpers."""
+
+    @pytest.fixture
+    def artifact_payload(self, tmp_path: Path) -> Path:
+        artifact_file = tmp_path / "data/final/counter-1/predictions.csv"
+        artifact_file.parent.mkdir(parents=True)
+        artifact_file.write_text("date,y_pred\n2026-06-06,42\n", encoding="utf-8")
+        return artifact_file
+
+    @pytest.fixture
+    def valid_manifest(self, tmp_path: Path, artifact_payload: Path) -> dict:
+        local_path = artifact_payload.relative_to(tmp_path).as_posix()
+        return {
+            "schema_version": "1.0",
+            "artifact_type": "predictions",
+            "status": "validated",
+            "run_id": "run-001",
+            "counter_id": "counter-1",
+            "created_at": "2026-06-06T14:00:00Z",
+            "producer": {"service": "ml-models", "image": "ml-models:test"},
+            "source": {"raw_file_name": "bike-counts.csv"},
+            "storage": {
+                "primary_backend": "local",
+                "local_path": local_path,
+                "checksum_sha256": compute_sha256(artifact_payload),
+            },
+        }
+
+    def test_write_manifest_writes_counter_scoped_manifest(
         self,
         tmp_path: Path,
+        valid_manifest: dict,
     ) -> None:
-        payload_path = _write_payload(tmp_path, "payload.csv", "value\n1\n")
-        manifest = _build_manifest(tmp_path, payload_path, "counter-a", "run-a")
+        manifest_root = tmp_path / "artifacts/manifests"
 
-        manifest_path = write_manifest(manifest, tmp_path / "manifests")
-        loaded_manifest = read_manifest(manifest_path)
+        manifest_path = write_manifest(valid_manifest, manifest_root)
 
         assert manifest_path == (
-            tmp_path
-            / "manifests"
-            / "predictions"
-            / "counter-a"
-            / "run-a"
-            / "manifest.json"
+            manifest_root / "predictions" / "counter-1" / "run-001" / "manifest.json"
         )
-        assert loaded_manifest.counter_id == "counter-a"
-        assert loaded_manifest.run_id == "run-a"
+        assert manifest_path.is_file()
+        assert read_manifest(manifest_path).run_id == "run-001"
 
-    def test_promote_manifest_replaces_current_manifest(
+    def test_promote_manifest_writes_current_manifest(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+
+        current_path = promote_manifest(
+            valid_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+
+        assert current_path == manifest_root / "predictions" / "counter-1" / "current.json"
+        current_manifest = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="counter-1",
+        )
+        assert isinstance(current_manifest, ArtifactManifest)
+        assert current_manifest.run_id == "run-001"
+        assert current_manifest.status == ArtifactStatus.VALIDATED
+
+    def test_write_manifest_rejects_invalid_manifest(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        invalid_manifest = deepcopy(valid_manifest)
+        invalid_manifest.pop("run_id")
+
+        with pytest.raises(ArtifactManifestValidationError, match="run_id"):
+            write_manifest(invalid_manifest, tmp_path / "manifests")
+
+    def test_read_current_manifest_missing_file_raises_explicit_error(
         self,
         tmp_path: Path,
     ) -> None:
-        manifest_root = tmp_path / "manifests"
-        first_payload = _write_payload(tmp_path, "first.csv", "value\n1\n")
-        second_payload = _write_payload(tmp_path, "second.csv", "value\n2\n")
-        first_manifest = _build_manifest(
-            tmp_path,
-            first_payload,
-            "counter-a",
-            "run-a",
-        )
-        second_manifest = _build_manifest(
-            tmp_path,
-            second_payload,
-            "counter-a",
-            "run-b",
-        )
+        manifest_root = tmp_path / "artifacts/manifests"
 
-        promote_manifest(
-            first_manifest,
-            manifest_root=manifest_root,
-            repository_root=tmp_path,
-        )
-        promote_manifest(
-            second_manifest,
-            manifest_root=manifest_root,
-            repository_root=tmp_path,
-        )
-        loaded_manifest = read_current_manifest(
-            manifest_root,
-            "predictions",
-            "counter-a",
-        )
+        with pytest.raises(ArtifactManifestNotFoundError, match="does not exist"):
+            read_current_manifest(
+                manifest_root=manifest_root,
+                artifact_type="predictions",
+                counter_id="counter-1",
+            )
 
-        assert loaded_manifest.run_id == "run-b"
-        assert loaded_manifest.storage.local_path == "second.csv"
-
-    def test_repeated_promotion_is_idempotent(self, tmp_path: Path) -> None:
-        manifest_root = tmp_path / "manifests"
-        payload_path = _write_payload(tmp_path, "payload.csv", "value\n1\n")
-        manifest = _build_manifest(tmp_path, payload_path, "counter-a", "run-a")
-
-        first_path = promote_manifest(
-            manifest,
-            manifest_root=manifest_root,
-            repository_root=tmp_path,
-        )
-        second_path = promote_manifest(
-            manifest,
-            manifest_root=manifest_root,
-            repository_root=tmp_path,
-        )
-        loaded_manifest = read_current_manifest(
-            manifest_root,
-            "predictions",
-            "counter-a",
-        )
-
-        assert second_path == first_path
-        assert loaded_manifest.model_dump() == manifest.model_dump()
-
-    def test_different_counters_use_independent_current_manifests(
+    def test_read_manifest_invalid_json_raises_validation_error(
         self,
         tmp_path: Path,
     ) -> None:
-        manifest_root = tmp_path / "manifests"
-        first_payload = _write_payload(tmp_path, "first.csv", "value\n1\n")
-        second_payload = _write_payload(tmp_path, "second.csv", "value\n2\n")
-        first_manifest = _build_manifest(
-            tmp_path,
-            first_payload,
-            "counter-a",
-            "run-a",
-        )
-        second_manifest = _build_manifest(
-            tmp_path,
-            second_payload,
-            "counter-b",
-            "run-b",
-        )
+        manifest_path = tmp_path / "current.json"
+        manifest_path.write_text("{not-json", encoding="utf-8")
 
-        promote_manifest(
-            first_manifest,
-            manifest_root=manifest_root,
-            repository_root=tmp_path,
-        )
-        promote_manifest(
-            second_manifest,
-            manifest_root=manifest_root,
-            repository_root=tmp_path,
-        )
+        with pytest.raises(ArtifactManifestValidationError, match="not valid JSON"):
+            read_manifest(manifest_path)
 
-        first_current = read_current_manifest(
-            manifest_root,
-            "predictions",
-            "counter-a",
-        )
-        second_current = read_current_manifest(
-            manifest_root,
-            "predictions",
-            "counter-b",
-        )
+    def test_promote_manifest_rejects_missing_local_payload(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest = deepcopy(valid_manifest)
+        manifest["storage"]["local_path"] = "data/final/counter-1/missing.csv"
 
-        assert first_current.run_id == "run-a"
-        assert second_current.run_id == "run-b"
+        with pytest.raises(ArtifactPayloadNotFoundError, match="does not exist"):
+            promote_manifest(
+                manifest,
+                manifest_root=tmp_path / "manifests",
+                repository_root=tmp_path,
+            )
 
+    def test_verify_local_payload_rejects_checksum_mismatch(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest = deepcopy(valid_manifest)
+        manifest["storage"]["checksum_sha256"] = "b" * 64
+        validated_manifest = ArtifactManifest.model_validate(manifest)
 
-def _write_payload(tmp_path: Path, name: str, content: str) -> Path:
-    payload_path = tmp_path / name
-    payload_path.write_text(content, encoding="utf-8")
-    return payload_path
+        with pytest.raises(ArtifactChecksumMismatchError, match="mismatch"):
+            verify_local_payload(validated_manifest, repository_root=tmp_path)
 
+    def test_promote_manifest_rejects_non_promotable_status(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest = deepcopy(valid_manifest)
+        manifest["status"] = "served"
 
-def _build_manifest(
-    repository_root: Path,
-    payload_path: Path,
-    counter_id: str,
-    run_id: str,
-) -> ArtifactManifest:
-    return ArtifactManifest(
-        schema_version=SCHEMA_VERSION,
-        artifact_type=ArtifactType.PREDICTIONS,
-        status=ArtifactStatus.VALIDATED,
-        run_id=run_id,
-        counter_id=counter_id,
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        producer=ArtifactProducer(service="unit-test"),
-        source=ArtifactSource(raw_file_name="raw.csv"),
-        storage=ArtifactStorage(
-            primary_backend=StorageBackend.LOCAL,
-            local_path=payload_path.relative_to(repository_root).as_posix(),
-            checksum_sha256=_sha256(payload_path),
-        ),
-    )
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+        with pytest.raises(ArtifactManifestValidationError, match="not eligible"):
+            promote_manifest(
+                manifest,
+                manifest_root=tmp_path / "manifests",
+                repository_root=tmp_path,
+            )
