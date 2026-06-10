@@ -267,6 +267,7 @@ clean-repo: ## Remove local Python caches and test artifacts only from the repos
 	rm -rf .nox .pytest_cache .ruff_cache .coverage htmlcov build dist mlruns mlflow.db
 	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -prune -exec rm -rf {} +
+	find . -type f -name "coverage*.json" -delete
 	find . -type f -name "*.pyc" -delete
 
 clean-env: ## Remove the uv-managed virtual environment
