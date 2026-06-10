@@ -189,6 +189,28 @@ services:
       - observability_net
     profiles: ["ml", "all", "ptf"]
 
+  ml-gateway:
+    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    restart: unless-stopped
+    depends_on:
+      ml-ingest-prod:
+        condition: service_healthy
+      ml-features-prod:
+        condition: service_healthy
+      ml-models-prod:
+        condition: service_healthy
+    volumes:
+      - ./ml-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:10090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - pipeline_runtime_net
+    profiles: ["ml", "all", "ptf"]
+
   api-prod:
     <<: *prod-security
     image: api:prod
@@ -227,20 +249,16 @@ services:
       dockerfile: ./docker/prod/job-runner/Dockerfile
     restart: unless-stopped
     depends_on:
-      ml-ingest-prod:
-        condition: service_healthy
-      ml-features-prod:
-        condition: service_healthy
-      ml-models-prod:
+      ml-gateway:
         condition: service_healthy
     environment:
       JOB_RUNNER_EXECUTOR: service
       JOB_RUNNER_LOG_ROOT: /app/logs/job-runner
       JOB_RUNNER_MAX_IN_FLIGHT_JOBS: "2"
       JOB_RUNNER_SERVICE_TIMEOUT_SECONDS: "3600"
-      ML_INGEST_SERVICE_URL: http://ml-ingest-prod:10081
-      ML_FEATURES_SERVICE_URL: http://ml-features-prod:10082
-      ML_MODELS_SERVICE_URL: http://ml-models-prod:10083
+      ML_INGEST_SERVICE_URL: http://ml-gateway:10090/ingest
+      ML_FEATURES_SERVICE_URL: http://ml-gateway:10090/features
+      ML_MODELS_SERVICE_URL: http://ml-gateway:10090/models
     volumes:
       - ./runtime/logs/job-runner:/app/logs/job-runner
     healthcheck:
