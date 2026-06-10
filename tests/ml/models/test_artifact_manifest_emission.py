@@ -16,10 +16,35 @@ from src.ml.models.artifact_manifest_emission import (
 class TestBuildPredictionArtifactManifest:
     """Unit tests for build_prediction_artifact_manifest."""
 
+    def test_builds_prediction_artifact_manifest(self, tmp_path: Path) -> None:
+        prediction_path = tmp_path / "data/final/counter-1/y_full.csv"
+        prediction_path.parent.mkdir(parents=True)
+        prediction_path.write_text("value\n1\n", encoding="utf-8")
+        processed_path = tmp_path / "data/processed/counter-1/initial_with_feats.csv"
+        processed_path.parent.mkdir(parents=True)
+        processed_path.write_text("value\n1\n", encoding="utf-8")
+
+        manifest = build_prediction_artifact_manifest(
+            prediction_path=prediction_path,
+            processed_path=processed_path,
+            sub_dir="counter-1",
+            repository_root=tmp_path,
+            run_id="run-001",
+            counter_id="counter-1",
+            model_version="model-run-001",
+            producer_service="ml-models-test",
+        )
+
+        assert manifest.artifact_type == "predictions"
+        assert manifest.source.raw_file_name == "initial_with_feats.csv"
+        assert manifest.source.model_version == "model-run-001"
+        assert manifest.producer.service == "ml-models-test"
+        assert manifest.storage.local_path == "data/final/counter-1/y_full.csv"
+
     def test_builds_valid_manifest_with_relative_local_path(
         self,
         tmp_path: Path,
-    ):
+    ) -> None:
         prediction_path = tmp_path / "data/final/Sebastopol_N-S/y_full.csv"
         prediction_path.parent.mkdir(parents=True)
         prediction_path.write_text("value\n1\n", encoding="utf-8")
@@ -50,16 +75,14 @@ class TestBuildPredictionArtifactManifest:
         assert manifest.producer.service == "ml-models-test"
         assert manifest.producer.image == "ml-models:test"
         assert manifest.storage.primary_backend == "local"
-        assert manifest.storage.local_path == (
-            "data/final/Sebastopol_N-S/y_full.csv"
-        )
+        assert manifest.storage.local_path == "data/final/Sebastopol_N-S/y_full.csv"
         assert manifest.storage.checksum_sha256 is not None
         assert len(manifest.storage.checksum_sha256) == 64
 
     def test_raises_when_absolute_prediction_path_is_outside_repository(
         self,
         tmp_path: Path,
-    ):
+    ) -> None:
         prediction_path = tmp_path / "outside.csv"
         prediction_path.write_text("value\n1\n", encoding="utf-8")
         repository_root = tmp_path / "repo"
@@ -78,7 +101,10 @@ class TestBuildPredictionArtifactManifest:
 class TestEmitPredictionArtifactManifest:
     """Unit tests for emit_prediction_artifact_manifest."""
 
-    def test_returns_none_when_manifest_root_is_missing(self, tmp_path: Path):
+    def test_returns_none_when_manifest_root_is_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
         prediction_path = tmp_path / "prediction.csv"
         prediction_path.write_text("value\n1\n", encoding="utf-8")
 
@@ -92,7 +118,7 @@ class TestEmitPredictionArtifactManifest:
 
         assert manifest is None
 
-    def test_promotes_manifest_and_current_pointer(self, tmp_path: Path):
+    def test_promotes_manifest_and_current_pointer(self, tmp_path: Path) -> None:
         prediction_path = tmp_path / "data/final/Sebastopol_N-S/y_full.csv"
         prediction_path.parent.mkdir(parents=True)
         prediction_path.write_text("value\n1\n", encoding="utf-8")

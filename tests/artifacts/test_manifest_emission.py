@@ -14,7 +14,7 @@ from src.artifacts.schemas import ArtifactType
 class TestBuildArtifactManifest:
     """Unit tests for build_artifact_manifest."""
 
-    def test_builds_valid_interim_dataset_manifest(self, tmp_path: Path):
+    def test_builds_valid_interim_dataset_manifest(self, tmp_path: Path) -> None:
         raw_path = tmp_path / "data/raw/bike-counts.csv"
         raw_path.parent.mkdir(parents=True)
         raw_path.write_text("timestamp,value\n2026-06-07,1\n", encoding="utf-8")
@@ -41,7 +41,7 @@ class TestBuildArtifactManifest:
         assert manifest.storage.local_path == "data/interim/counter-1/initial.csv"
         assert manifest.storage.checksum_sha256 is not None
 
-    def test_builds_valid_feature_dataset_manifest(self, tmp_path: Path):
+    def test_builds_valid_feature_dataset_manifest(self, tmp_path: Path) -> None:
         interim_path = tmp_path / "data/interim/counter-1/initial.csv"
         interim_path.parent.mkdir(parents=True)
         interim_path.write_text("timestamp,value\n2026-06-07,1\n", encoding="utf-8")
@@ -71,10 +71,10 @@ class TestBuildArtifactManifest:
             "data/processed/counter-1/initial_with_feats.csv"
         )
 
-    def test_raises_when_absolute_payload_path_is_outside_repository(
+    def test_raises_when_payload_is_outside_repository(
         self,
         tmp_path: Path,
-    ):
+    ) -> None:
         outside_path = tmp_path / "outside.csv"
         outside_path.write_text("value\n1\n", encoding="utf-8")
         repository_root = tmp_path / "repo"
@@ -94,7 +94,10 @@ class TestBuildArtifactManifest:
 class TestEmitArtifactManifest:
     """Unit tests for emit_artifact_manifest."""
 
-    def test_returns_none_when_manifest_root_is_missing(self, tmp_path: Path):
+    def test_returns_none_when_manifest_root_is_missing(
+        self,
+        tmp_path: Path,
+    ) -> None:
         payload_path = tmp_path / "data/interim/counter-1/initial.csv"
         payload_path.parent.mkdir(parents=True)
         payload_path.write_text("value\n1\n", encoding="utf-8")
@@ -110,7 +113,10 @@ class TestEmitArtifactManifest:
 
         assert manifest is None
 
-    def test_promotes_dataset_manifest_and_current_pointer(self, tmp_path: Path):
+    def test_promotes_dataset_manifest_and_current_pointer(
+        self,
+        tmp_path: Path,
+    ) -> None:
         payload_path = tmp_path / "data/interim/counter-1/initial.csv"
         payload_path.parent.mkdir(parents=True)
         payload_path.write_text("value\n1\n", encoding="utf-8")

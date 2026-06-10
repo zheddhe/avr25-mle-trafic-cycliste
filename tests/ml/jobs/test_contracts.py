@@ -14,6 +14,7 @@ from src.ml.jobs.contracts import (
     IngestJobRequest,
     MlJobType,
     ModelJobRequest,
+    validate_filesystem_path,
 )
 
 
@@ -99,14 +100,17 @@ class TestMlJobRequests:
             },
         }
 
-    def test_active_job_types_do_not_expose_pipeline(self):
+    def test_active_job_types_do_not_expose_pipeline(self) -> None:
         assert {job_type.value for job_type in MlJobType} == {
             "ingest",
             "features",
             "models",
         }
 
-    def test_valid_ingest_request_can_be_instantiated(self, ingest_payload):
+    def test_valid_ingest_request_can_be_instantiated(
+        self,
+        ingest_payload: dict,
+    ) -> None:
         request = IngestJobRequest.model_validate(ingest_payload)
 
         assert request.job_type == MlJobType.INGEST
@@ -115,7 +119,10 @@ class TestMlJobRequests:
         assert request.interim_name == "initial.csv"
         assert request.requested_at == datetime(2026, 6, 7, 17, tzinfo=UTC)
 
-    def test_valid_features_request_can_be_instantiated(self, features_payload):
+    def test_valid_features_request_can_be_instantiated(
+        self,
+        features_payload: dict,
+    ) -> None:
         request = FeatureJobRequest.model_validate(features_payload)
 
         assert request.job_type == MlJobType.FEATURES
@@ -124,15 +131,18 @@ class TestMlJobRequests:
 
     def test_valid_model_request_can_reference_expected_manifest(
         self,
-        model_payload,
-    ):
+        model_payload: dict,
+    ) -> None:
         request = ModelJobRequest.model_validate(model_payload)
 
         assert request.job_type == MlJobType.MODELS
         assert isinstance(request.expected_manifest, ArtifactManifestReference)
         assert request.expected_manifest.artifact_type == "predictions"
 
-    def test_invalid_percent_range_raises_validation_error(self, ingest_payload):
+    def test_invalid_percent_range_raises_validation_error(
+        self,
+        ingest_payload: dict,
+    ) -> None:
         payload = deepcopy(ingest_payload)
         payload["range_start"] = 90.0
         payload["range_end"] = 10.0
@@ -140,16 +150,73 @@ class TestMlJobRequests:
         with pytest.raises(ValidationError, match="range_start"):
             IngestJobRequest.model_validate(payload)
 
-    def test_invalid_path_traversal_raises_validation_error(self, model_payload):
+    def test_invalid_path_traversal_raises_validation_error(
+        self,
+        model_payload: dict,
+    ) -> None:
         payload = deepcopy(model_payload)
         payload["processed_input_path"] = "../data/processed/input.csv"
 
         with pytest.raises(ValidationError, match="parent traversal"):
             ModelJobRequest.model_validate(payload)
 
-    def test_naive_requested_at_raises_validation_error(self, ingest_payload):
+    def test_naive_requested_at_raises_validation_error(
+        self,
+        ingest_payload: dict,
+    ) -> None:
         payload = deepcopy(ingest_payload)
         payload["requested_at"] = "2026-06-07T17:00:00"
 
         with pytest.raises(ValidationError, match="requested_at"):
             IngestJobRequest.model_validate(payload)
+
+    def test_manifest_reference_rejects_invalid_object_uri(self) -> None:
+        with pytest.raises(ValidationError, match="object_uri"):
+            ArtifactManifestReference(
+                artifact_type="predictions",
+                counter_id="counter-001",
+                run_id="run-001",
+                manifest_path="artifacts/manifests/predictions/run/manifest.json",
+                object_uri="https://bucket/predictions.csv",
+            )
+
+    def test_manifest_reference_rejects_embedded_credentials(self) -> None:
+        with pytest.raises(ValidationError, match="credentials"):
+            ArtifactManifestReference(
+                artifact_type="predictions",
+                counter_id="counter-001",
+                run_id="run-001",
+                manifest_path="artifacts/manifests/predictions/run/manifest.json",
+                object_uri="s3://user:secret@bucket/predictions.csv",
+            )
+
+    def test_model_request_rejects_invalid_artifact_object_uri(
+        self,
+        model_payload: dict,
+    ) -> None:
+        payload = deepcopy(model_payload)
+        payload["artifact_object_uri"] = "https://bucket/predictions.csv"
+
+        with pytest.raises(ValidationError, match="artifact_object_uri"):
+            ModelJobRequest.model_validate(payload)
+
+    def test_model_request_rejects_artifact_uri_credentials(
+        self,
+        model_payload: dict,
+    ) -> None:
+        payload = deepcopy(model_payload)
+        payload["artifact_object_uri"] = "s3://user:secret@bucket/predictions.csv"
+
+        with pytest.raises(ValidationError, match="credentials"):
+            ModelJobRequest.model_validate(payload)
+
+    def test_validate_filesystem_path_allows_none(self) -> None:
+        assert validate_filesystem_path(None) is None
+
+    def test_validate_filesystem_path_rejects_empty_value(self) -> None:
+        with pytest.raises(ValueError, match="must not be empty"):
+            validate_filesystem_path("")
+
+    def test_validate_filesystem_path_rejects_uri_scheme(self) -> None:
+        with pytest.raises(ValueError, match="local filesystem"):
+            validate_filesystem_path("s3://bucket/path.csv")

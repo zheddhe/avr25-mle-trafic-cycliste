@@ -6,12 +6,19 @@ import logging
 import os
 from typing import Any
 
-import mlflow
-from mlflow.exceptions import MlflowException
-from mlflow.models.signature import infer_signature
-
 logger = logging.getLogger(__name__)
-mlflow_sklearn: Any = importlib.import_module("mlflow.sklearn")
+
+
+def _get_mlflow() -> Any:
+    """Return the MLflow module only when tracking operations need it."""
+
+    return importlib.import_module("mlflow")
+
+
+def _get_mlflow_sklearn() -> Any:
+    """Return the MLflow sklearn flavor module lazily."""
+
+    return importlib.import_module("mlflow.sklearn")
 
 
 def configure_mlflow_from_env(
@@ -21,9 +28,10 @@ def configure_mlflow_from_env(
     Configure MLflow tracking URI from arg or env.
     Respects MLFLOW_TRACKING_URI if set.
     """
+
     uri = explicit_uri or os.getenv("MLFLOW_TRACKING_URI")
     if uri:
-        mlflow.set_tracking_uri(uri)
+        _get_mlflow().set_tracking_uri(uri)
         logger.info(f"MLflow tracking URI set to [{uri}]")
     else:
         logger.info("MLflow tracking URI not set (using default/local).")
@@ -49,6 +57,8 @@ def start_run(
     """
     Set experiment and start a run with optional tags.
     """
+
+    mlflow = _get_mlflow()
     mlflow.set_experiment(experiment_name)
     ctx = mlflow.start_run(run_name=run_name)
     if tags:
@@ -60,8 +70,11 @@ def _log_params_flat(params: dict[str, Any] | None) -> None:
     """
     Log dict of hyperparams (if present), flattening as needed.
     """
+
     if not params:
         return
+
+    mlflow = _get_mlflow()
     flat = {}
     for k, v in params.items():
         if isinstance(v, dict):
@@ -78,15 +91,15 @@ def log_report_content(
     target_col: str,
 ) -> None:
     """
-    Log metrics (train/test), basic shapes, table of prediction (forecasted or not).
+    Log metrics, shapes, hyperparameters, and model tags to MLflow.
     """
-    # metrics
+
+    mlflow = _get_mlflow()
     metrics = report.get("metrics", {})
     for split, m in metrics.items():
         for k, v in m.items():
             mlflow.log_metric(f"{split}.{k}", float(v))
 
-    # shapes
     xtr, xte = report.get("X_train"), report.get("X_test")
     ytr, yte = report.get("y_train"), report.get("y_test")
     if xtr is not None:
@@ -98,10 +111,8 @@ def log_report_content(
     if yte is not None:
         mlflow.log_param("shape.y_test", f"{yte.shape}")
 
-    # hyperparameters (if any from search)
     _log_params_flat(report.get("params"))
 
-    # model flavor tag
     mlflow.set_tag("model.flavor", "sklearn-pipeline+xgboost")
     mlflow.set_tag("target", target_col)
 
@@ -119,6 +130,11 @@ def log_model_with_signature(
     MLflow 3.x uses ``name`` for model artifact logging. Registry registration
     remains explicit and is disabled for local artifact-only runs by default.
     """
+
+    from mlflow.exceptions import MlflowException
+    from mlflow.models.signature import infer_signature
+
+    mlflow_sklearn = _get_mlflow_sklearn()
     df = sample_input_df.copy()
     try:
         for col in sample_input_df.select_dtypes(include="int").columns:
@@ -163,16 +179,15 @@ def log_local_artifacts(
     """
     Log all produced files/directories as MLflow artifacts.
     """
-    # Data (predictions, splits, etc.)
+
+    mlflow = _get_mlflow()
     final_dir = os.path.join(final_rel_dir, save_subdir)
     if os.path.isdir(final_dir):
         mlflow.log_artifacts(final_dir, artifact_path="data_final")
 
-    # Model/transformer/params/metrics pickles & json
     models_dir = os.path.join(models_rel_dir, save_subdir)
     if os.path.isdir(models_dir):
         mlflow.log_artifacts(models_dir, artifact_path="models_dir")
 
-    # Logs (helpful for debugging)
     if os.path.isdir(logs_rel_dir):
         mlflow.log_artifacts(logs_rel_dir, artifact_path="logs_ml")

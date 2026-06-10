@@ -9,7 +9,6 @@ import click
 import numpy as np
 import pandas as pd
 import pytz
-from mlflow.tracking import MlflowClient
 
 from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.models.artifact_manifest_emission import (
@@ -374,6 +373,8 @@ def _promote_latest_model_alias(
         return
 
     try:
+        from mlflow.tracking import MlflowClient
+
         model_name = f"{site_short}-model"
         client = MlflowClient()
         versions = client.search_model_versions(f"name='{model_name}'")

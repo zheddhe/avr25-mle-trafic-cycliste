@@ -47,6 +47,7 @@ class TestServiceMlJobExecutor:
         assert result.job_id == "runner-job"
         assert result.started_at == started_at
         assert result.run_id == job_request.run_id
+        assert result.output_paths == ("data/interim/counter-a/initial.csv",)
         transport.submit.assert_called_once_with(
             endpoint="http://ml-ingest:10081",
             job_request=job_request,

@@ -24,10 +24,7 @@ class TestArtifactManifest:
             "run_id": "2026-06-06T140000Z-sebastopol-ns",
             "counter_id": "Sebastopol_N-S_airflow",
             "created_at": "2026-06-06T14:00:00Z",
-            "producer": {
-                "service": "ml-models-prod",
-                "image": "ml-models:prod",
-            },
+            "producer": {"service": "ml-models-prod", "image": "ml-models:prod"},
             "source": {
                 "raw_file_name": "bike-counts.csv",
                 "dataset_version": "local-dev-dvc",
@@ -35,48 +32,41 @@ class TestArtifactManifest:
             },
             "storage": {
                 "primary_backend": "local",
-                "local_path": (
-                    "docker/prod/runtime/artifacts/data/final/"
-                    "Sebastopol_N-S_airflow/"
-                    "2026-06-06T140000Z-sebastopol-ns/predictions.parquet"
-                ),
+                "local_path": "data/final/counter/predictions.parquet",
                 "checksum_sha256": VALID_CHECKSUM,
             },
         }
 
-    def test_valid_local_manifest(self, valid_local_manifest):
+    def test_valid_local_manifest(self, valid_local_manifest: dict) -> None:
         manifest = ArtifactManifest.model_validate(valid_local_manifest)
 
         assert manifest.storage.primary_backend == StorageBackend.LOCAL
-        assert manifest.storage.local_path is not None
-        assert manifest.storage.local_path.endswith("predictions.parquet")
+        assert manifest.storage.local_path == "data/final/counter/predictions.parquet"
         assert manifest.storage.object_uri is None
 
-    def test_valid_hybrid_manifest(self, valid_local_manifest):
+    def test_valid_hybrid_manifest(self, valid_local_manifest: dict) -> None:
         payload = deepcopy(valid_local_manifest)
-        payload["storage"]["object_uri"] = (
-            "s3://mlflow/artifacts/predictions/"
-            "Sebastopol_N-S_airflow/"
-            "2026-06-06T140000Z-sebastopol-ns/predictions.parquet"
-        )
+        payload["storage"]["object_uri"] = "s3://mlflow/predictions/file.parquet"
 
         manifest = ArtifactManifest.model_validate(payload)
 
         assert manifest.storage.primary_backend == StorageBackend.LOCAL
-        assert manifest.storage.object_uri is not None
-        assert manifest.storage.object_uri.startswith("s3://mlflow/")
+        assert manifest.storage.object_uri == "s3://mlflow/predictions/file.parquet"
 
     def test_missing_required_field_raises_validation_error(
         self,
-        valid_local_manifest,
-    ):
+        valid_local_manifest: dict,
+    ) -> None:
         payload = deepcopy(valid_local_manifest)
         payload.pop("run_id")
 
         with pytest.raises(ValidationError, match="run_id"):
             ArtifactManifest.model_validate(payload)
 
-    def test_invalid_backend_raises_validation_error(self, valid_local_manifest):
+    def test_invalid_backend_raises_validation_error(
+        self,
+        valid_local_manifest: dict,
+    ) -> None:
         payload = deepcopy(valid_local_manifest)
         payload["storage"]["primary_backend"] = "filesystem"
 
@@ -100,11 +90,11 @@ class TestArtifactManifest:
     )
     def test_invalid_uri_cases_raise_validation_error(
         self,
-        valid_local_manifest,
-        field_name,
-        invalid_value,
-        message,
-    ):
+        valid_local_manifest: dict,
+        field_name: str,
+        invalid_value: str,
+        message: str,
+    ) -> None:
         payload = deepcopy(valid_local_manifest)
         payload["storage"][field_name] = invalid_value
 
