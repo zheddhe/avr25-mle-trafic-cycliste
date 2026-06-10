@@ -3,10 +3,16 @@
     "initial_anchor_date": "2025-09-12",
     "daily_increment_pct": 0.25
   },
+  "concurrency": {
+    "orchestrator_max_active_runs": 1,
+    "orchestrator_max_active_tasks": 2,
+    "child_max_active_runs": 2,
+    "child_max_active_tasks": 4
+  },
   "counters": {
     "Sebastopol_N-S_airflow": {
       "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
-      "site": "Totem 73 boulevard de Sébastopol",
+      "site": "Totem 73 boulevard de Sebastopol",
       "orientation": "N-S",
       "interim_name": "initial_airflow.csv",
       "processed_name": "initial_airflow_with_feats.csv",
@@ -21,7 +27,7 @@
     },
     "Sebastopol_S-N_airflow": {
       "raw_file_name": "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv",
-      "site": "Totem 73 boulevard de Sébastopol",
+      "site": "Totem 73 boulevard de Sebastopol",
       "orientation": "S-N",
       "interim_name": "initial_airflow.csv",
       "processed_name": "initial_airflow_with_feats.csv",
