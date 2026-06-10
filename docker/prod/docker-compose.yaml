@@ -208,7 +208,7 @@ services:
     volumes:
       - ./ml-gateway/nginx.conf:/etc/nginx/conf.d/ml-gateway.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:10090/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://ml-gateway:10090/health"]
       interval: 10s
       timeout: 5s
       retries: 5
