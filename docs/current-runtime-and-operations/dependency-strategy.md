@@ -79,12 +79,10 @@ local developer ergonomics and for tools such as the VS Code Docker extension.
 
 | Service family | Current image policy |
 | -------------- | -------------------- |
-| Orchestration services | Uses Airflow, PostgreSQL, and Redis images. |
+| Orchestration services | Uses NGinx, Airflow, PostgreSQL, and Redis images. |
 | Experimentation services | Uses MLflow, PostgreSQL, MinIO, and MC images. |
-| Internal ML gateway | Uses the required `NGINX_IMAGE` variable for prod-like runner-to-ML routing. |
 | Monitoring services | Uses Prometheus, Grafana, Pushgateway, Alertmanager, and cAdvisor images. |
 | Development helpers | Uses MailHog images. |
-| Custom FastAPI services | Uses Python 3.12 slim images with pinned FastAPI and uvicorn dependencies. |
 
 ## Healthchecks
 
@@ -96,28 +94,28 @@ it is part of the image.
 | ------- | -------------------- |
 | `api-dev` | Python `urllib` read check on `/docs`. |
 | `job-runner-api` | Python `urllib` read check on `/health`. |
-| `ml-gateway` | Nginx `wget` check on `http://ml-gateway:10090/health` through Compose DNS. |
+| `ml-gateway` | `wget` check on `/health`. |
 | `mlflow-postgres` | `pg_isready` against the MLflow metadata database. |
-| `mlflow-minio` | curl check on `/minio/health/live`. |
+| `mlflow-minio` | `curl` check on `/minio/health/live`. |
 | `mlflow-server` | Python `urllib` read check on `/health`. |
 | `airflow-postgres` | `pg_isready` against the Airflow metadata database. |
 | `airflow-redis` | `redis-cli ping`. |
-| `airflow-api-server` | curl check on `/api/v2/monitor/health`. |
+| `airflow-api-server` | `curl` check on `/api/v2/monitor/health`. |
 | `airflow-scheduler` | `airflow jobs check --job-type SchedulerJob`. |
 | `airflow-dag-processor` | `airflow jobs check --job-type DagProcessorJob`. |
 | `airflow-worker` | Celery ping. The dev worker executes the check as the `airflow` user because its entrypoint starts as root only to adjust Docker socket access. |
 | `airflow-triggerer` | `airflow jobs check --job-type TriggererJob`. |
-| `airflow-flower` | curl check on `/` in the dev runtime. |
-| `monitoring-prometheus` | wget check on `/-/ready`. |
-| `monitoring-grafana` | wget check on `/api/health`. |
-| `monitoring-pushgateway` | wget check on `/-/ready`. |
-| `monitoring-alertmanager` | wget check on `/-/ready`. |
-| `monitoring-cadvisor` | wget check on `/healthz`. |
-| `monitoring-mailhog` | wget check on `/`. |
+| `airflow-flower` | `curl` check on `/` in the dev runtime. |
+| `monitoring-prometheus` | `wget` check on `/-/ready`. |
+| `monitoring-grafana` | `wget` check on `/api/health`. |
+| `monitoring-pushgateway` | `wget` check on `/-/ready`. |
+| `monitoring-alertmanager` | `wget` check on `/-/ready`. |
+| `monitoring-cadvisor` | `wget` check on `/healthz`. |
+| `monitoring-mailhog` | `wget` check on `/`. |
 
 ## Runtime-sensitive dependencies
 
-The following dependencies are runtime-sensitive and should not be upgraded as a
+The following dependencies are runtime-sensitive onboarded within custom images and should not be upgraded as a
 bulk maintenance action:
 
 - `pandas`
@@ -129,12 +127,6 @@ bulk maintenance action:
 - `mlflow`
 - `prometheus-client`
 - `prometheus-fastapi-instrumentator`
-- Airflow image versions
-- Nginx gateway image version
-- monitoring runtime images
-
-Runtime-sensitive upgrades must be isolated and validated with a dedicated PR or
-explicit validation section.
 
 ## Compatibility checks
 
@@ -155,25 +147,6 @@ FastAPI compatibility checks should include:
 - response model serialization;
 - healthcheck endpoint availability.
 
-Gateway compatibility checks should include:
-
-- `ml-gateway` healthcheck availability on `pipeline_runtime_net`;
-- typed `/ingest/jobs`, `/features/jobs`, and `/models/jobs` routing;
-- Compose scale-up and scale-down with Nginx reload;
-- no host-published gateway port in the production-like runtime.
-
-Monitoring runtime changes should validate at least:
-
-- Prometheus configuration parsing;
-- Prometheus targets under `/targets`;
-- API metrics scraping;
-- Pushgateway scraping;
-- cAdvisor scraping;
-- Grafana datasource provisioning;
-- Grafana dashboard loading;
-- Alertmanager configuration loading;
-- MailHog alert notification capture when alert routing is tested.
-
 ## Regression checklist for runtime dependency changes
 
 Before merging a runtime dependency upgrade, validate at least:
@@ -182,32 +155,22 @@ Before merging a runtime dependency upgrade, validate at least:
 make sync
 make lint
 make tests
-make dev-compose-config
 make prod-compose-config
-make dev-build
 make prod-build
-make dev-start DEV_PROFILE=ptf
 make prod-start PROD_PROFILE=ptf
 make prod-scale-ml ML_INGEST_REPLICAS=2 ML_FEATURES_REPLICAS=2 ML_MODELS_REPLICAS=2
-make dev-mlops-pipeline
-make dev-logs SERVICE=api-dev
+make acceptance
 ```
 
 Then verify:
 
+- Docker Compose services start without dependency resolution errors.
 - prediction files are produced under root `data/final` for the development runtime;
 - production-like generated artifacts stay under `docker/prod/runtime`;
-- model artifacts are produced under root `models` for the development runtime;
 - MLflow runs contain expected parameters, metrics, and artifacts;
-- API `/docs` is reachable;
-- job runner API `/health` is reachable inside `docker/prod`;
-- `ml-gateway` is healthy and reloads after ML service scaling;
 - API prediction endpoints still return the expected schema;
-- Prometheus targets are healthy and ML/API metrics are visible;
 - Grafana starts and loads the provisioned Prometheus datasource;
 - Grafana dashboards load with current Prometheus metrics;
-- Prometheus metrics are not pushed during local tests when `DISABLE_METRICS_PUSH=1`;
-- Docker Compose services start without dependency resolution errors.
 
 ## Upgrade policy
 
