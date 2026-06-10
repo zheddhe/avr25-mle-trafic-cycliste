@@ -16,7 +16,7 @@ class TestBuildPredictionArtifactManifest:
         prediction_path = tmp_path / "data/final/counter-1/y_full.csv"
         prediction_path.parent.mkdir(parents=True)
         prediction_path.write_text("value\n1\n", encoding="utf-8")
-        processed_path = tmp_path / "data/processed/counter-1/input.csv"
+        processed_path = tmp_path / "data/processed/counter-1/initial_with_feats.csv"
         processed_path.parent.mkdir(parents=True)
         processed_path.write_text("value\n1\n", encoding="utf-8")
 
@@ -27,11 +27,12 @@ class TestBuildPredictionArtifactManifest:
             repository_root=tmp_path,
             run_id="run-001",
             counter_id="counter-1",
-            model_version="model-v1",
+            model_version="model-run-001",
             producer_service="ml-models-test",
         )
 
         assert manifest.artifact_type == "predictions"
-        assert manifest.source.raw_file_name == "input.csv"
-        assert manifest.source.model_version == "model-v1"
+        assert manifest.source.raw_file_name == "initial_with_feats.csv"
+        assert manifest.source.model_version == "model-run-001"
         assert manifest.producer.service == "ml-models-test"
+        assert manifest.storage.local_path == "data/final/counter-1/y_full.csv"
