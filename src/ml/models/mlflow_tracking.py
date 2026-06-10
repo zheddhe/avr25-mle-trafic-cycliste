@@ -190,4 +190,4 @@ def log_local_artifacts(
         mlflow.log_artifacts(models_dir, artifact_path="models_dir")
 
     if os.path.isdir(logs_rel_dir):
-        mlflow.log_artifacts(logs_dir=logs_rel_dir, artifact_path="logs_ml")
+        mlflow.log_artifacts(logs_rel_dir, artifact_path="logs_ml")
