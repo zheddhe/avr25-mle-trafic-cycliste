@@ -95,6 +95,8 @@ services:
       context: ../..
       dockerfile: ./docker/prod/ml/ingest/Dockerfile
     restart: unless-stopped
+    deploy:
+      replicas: ${ML_INGEST_REPLICAS:?required}
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
@@ -126,6 +128,8 @@ services:
       context: ../..
       dockerfile: ./docker/prod/ml/features/Dockerfile
     restart: unless-stopped
+    deploy:
+      replicas: ${ML_FEATURES_REPLICAS:?required}
     environment:
       PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
@@ -157,6 +161,8 @@ services:
       context: ../..
       dockerfile: ./docker/prod/ml/models/Dockerfile
     restart: unless-stopped
+    deploy:
+      replicas: ${ML_MODELS_REPLICAS:?required}
     environment:
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
       MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
@@ -200,7 +206,7 @@ services:
       ml-models-prod:
         condition: service_healthy
     volumes:
-      - ./ml-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ml-gateway/nginx.conf:/etc/nginx/conf.d/ml-gateway.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:10090/health"]
       interval: 10s
