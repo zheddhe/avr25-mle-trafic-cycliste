@@ -125,20 +125,19 @@ class TestApiIntegration:
 
     def test_verify_admin_access(self, tmp_path: Path) -> None:
         with _build_client(tmp_path) as client:
-            response = client.get(
-                "/verify",
+            response = client.post(
+                "/admin/refresh",
                 headers=_auth_headers("admin1", "admin1"),
             )
 
         assert response.status_code == 200
         body = response.json()
-        assert body["message"] == "API is healthy."
-        assert body["role"] == "admin"
+        assert body["message"] == "Store refreshed by admin1."
 
     def test_verify_forbidden_for_user(self, tmp_path: Path) -> None:
         with _build_client(tmp_path) as client:
-            response = client.get(
-                "/verify",
+            response = client.post(
+                "/admin/refresh",
                 headers=_auth_headers("user1", "user1"),
             )
 
