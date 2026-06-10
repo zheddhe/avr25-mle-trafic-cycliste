@@ -60,7 +60,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Synthèse (dernière heure)",
+      "title": "Summary (last hour)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -72,10 +72,18 @@
     },
     {
       "type": "stat",
-      "title": "Fenêtre temporelle",
+      "title": "Time window",
       "id": 99,
-      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -83,13 +91,23 @@
           "instant": true
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0 } },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
     },
-
     {
       "type": "stat",
-      "title": "Disponibilité – 1h",
+      "title": "Availability – 1h",
       "id": 1,
       "gridPos": {
         "h": 6,
@@ -138,7 +156,7 @@
     },
     {
       "type": "stat",
-      "title": "Requêtes/s – (lissé sur fenêtre temporelle)",
+      "title": "Requests/s – smoothed over time window",
       "id": 2,
       "gridPos": {
         "h": 6,
@@ -171,7 +189,7 @@
     },
     {
       "type": "stat",
-      "title": "Taux d'erreur (5xx) – (lissé sur fenêtre temporelle)",
+      "title": "Error rate (5xx) – smoothed over time window",
       "id": 3,
       "gridPos": {
         "h": 6,
@@ -220,7 +238,7 @@
     },
     {
       "type": "stat",
-      "title": "Prédictions/req – moy (lissé sur fenêtre temporelle)",
+      "title": "Predictions/req – avg, smoothed over time window",
       "id": 4,
       "gridPos": {
         "h": 6,
@@ -253,7 +271,7 @@
     },
     {
       "type": "row",
-      "title": "Latence (quantiles sur rate_interval_s)",
+      "title": "Latency (quantiles over rate_interval_s)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -265,7 +283,7 @@
     },
     {
       "type": "stat",
-      "title": "p50 latence – (lissé sur fenêtre temporelle)",
+      "title": "p50 latency – smoothed over time window",
       "id": 10,
       "gridPos": {
         "h": 6,
@@ -298,7 +316,7 @@
     },
     {
       "type": "stat",
-      "title": "p90 latence – (lissé sur fenêtre temporelle)",
+      "title": "p90 latency – smoothed over time window",
       "id": 11,
       "gridPos": {
         "h": 6,
@@ -331,7 +349,7 @@
     },
     {
       "type": "stat",
-      "title": "p99 latence – (lissé sur fenêtre temporelle)",
+      "title": "p99 latency – smoothed over time window",
       "id": 12,
       "gridPos": {
         "h": 6,
@@ -364,7 +382,7 @@
     },
     {
       "type": "row",
-      "title": "Débit & erreurs",
+      "title": "Throughput and errors",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -376,7 +394,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Requêtes/s – par code (lissé sur fenêtre temporelle)",
+      "title": "Requests/s – by status code, smoothed over time window",
       "id": 20,
       "gridPos": {
         "h": 8,
@@ -414,7 +432,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Requêtes/s – total (lissé sur fenêtre temporelle)",
+      "title": "Requests/s – total, smoothed over time window",
       "id": 21,
       "gridPos": {
         "h": 8,
@@ -448,7 +466,7 @@
     },
     {
       "type": "bargauge",
-      "title": "Top 5 endpoints (Requêtes/s)",
+      "title": "Top 5 endpoints (requests/s)",
       "id": 22,
       "gridPos": {
         "h": 6,
@@ -472,7 +490,7 @@
     },
     {
       "type": "row",
-      "title": "Prédictions renvoyées",
+      "title": "Returned predictions",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -484,7 +502,7 @@
     },
     {
       "type": "stat",
-      "title": "Prédictions/req – moy (lissé sur fenêtre temporelle)",
+      "title": "Predictions/req – avg, smoothed over time window",
       "id": 30,
       "gridPos": {
         "h": 6,
@@ -517,7 +535,7 @@
     },
     {
       "type": "stat",
-      "title": "Prédictions/req – p90 (lissé sur fenêtre temporelle)",
+      "title": "Predictions/req – p90, smoothed over time window",
       "id": 31,
       "gridPos": {
         "h": 6,
@@ -550,7 +568,7 @@
     },
     {
       "type": "stat",
-      "title": "Prédictions/s – (lissé sur fenêtre temporelle)",
+      "title": "Predictions/s – smoothed over time window",
       "id": 32,
       "gridPos": {
         "h": 6,
@@ -583,7 +601,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Prédictions/req – moyenne (24h) (lissé sur fenêtre temporelle)",
+      "title": "Predictions/req – average (24h), smoothed over time window",
       "id": 33,
       "gridPos": {
         "h": 8,
@@ -617,7 +635,7 @@
     },
     {
       "type": "row",
-      "title": "Détails – endpoint /predictions",
+      "title": "Details – /predictions endpoint",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -629,7 +647,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Requêtes/s – /predictions/* (lissé sur fenêtre temporelle)",
+      "title": "Requests/s – /predictions/*, smoothed over time window",
       "id": 40,
       "gridPos": {
         "h": 8,
@@ -663,7 +681,7 @@
     },
     {
       "type": "timeseries",
-      "title": "p90 latence – /predictions/* (lissé sur fenêtre temporelle)",
+      "title": "p90 latency – /predictions/*, smoothed over time window",
       "id": 41,
       "gridPos": {
         "h": 8,
