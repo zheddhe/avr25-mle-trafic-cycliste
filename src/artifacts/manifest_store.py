@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -24,6 +27,9 @@ from src.artifacts.schemas import ArtifactManifest, ArtifactStatus
 
 CURRENT_MANIFEST_NAME = "current.json"
 RUN_MANIFEST_NAME = "manifest.json"
+PROMOTION_LOCK_NAME = ".promotion.lock"
+DEFAULT_LOCK_TIMEOUT_SECONDS = 30.0
+LOCK_POLL_INTERVAL_SECONDS = 0.05
 
 _PROMOTABLE_STATUSES = {
     ArtifactStatus.PRODUCED,
@@ -74,6 +80,9 @@ def promote_manifest(
 
         <manifest_root>/<artifact_type>/<counter_id>/current.json
 
+    Promotions are serialized per artifact type and counter id. Different
+    counter scopes use different lock files and can progress independently.
+
     Args:
         manifest: Validated manifest model or raw manifest payload.
         manifest_root: Directory that owns counter-scoped manifests.
@@ -83,8 +92,8 @@ def promote_manifest(
         Path to the promoted ``current.json`` manifest.
 
     Raises:
-        ArtifactManifestValidationError: if the manifest is invalid or not
-            eligible for promotion.
+        ArtifactManifestValidationError: if the manifest is invalid, not
+            eligible for promotion, or its scope lock cannot be acquired.
         ArtifactPayloadNotFoundError: propagated from the checksum helper when
             the referenced local payload is missing.
         ArtifactChecksumMismatchError: if checksum metadata does not match.
@@ -94,12 +103,14 @@ def promote_manifest(
     _ensure_promotable_status(validated_manifest)
     verify_local_payload(validated_manifest, repository_root=repository_root)
 
-    write_manifest(validated_manifest, manifest_root=manifest_root)
-    current_path = _build_current_manifest_path(
+    scope_path = _build_artifact_scope_path(
         manifest_root=manifest_root,
         manifest=validated_manifest,
     )
-    _write_json_atomic(current_path, _dump_manifest(validated_manifest))
+    with _manifest_scope_lock(scope_path):
+        write_manifest(validated_manifest, manifest_root=manifest_root)
+        current_path = scope_path / CURRENT_MANIFEST_NAME
+        _write_json_atomic(current_path, _dump_manifest(validated_manifest))
 
     return current_path
 
@@ -232,19 +243,90 @@ def _dump_manifest(manifest: ArtifactManifest) -> str:
     return manifest.model_dump_json(indent=2) + "\n"
 
 
+@contextmanager
+def _manifest_scope_lock(scope_path: Path) -> Iterator[None]:
+    """Acquire a process-independent lock for one artifact/counter scope."""
+
+    scope_path.mkdir(parents=True, exist_ok=True)
+    lock_path = scope_path / PROMOTION_LOCK_NAME
+    deadline = time.monotonic() + DEFAULT_LOCK_TIMEOUT_SECONDS
+    file_descriptor: int | None = None
+
+    while file_descriptor is None:
+        try:
+            file_descriptor = os.open(
+                lock_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o644,
+            )
+        except FileExistsError as error:
+            if time.monotonic() >= deadline:
+                raise ArtifactManifestValidationError(
+                    "Timed out waiting for artifact manifest promotion lock: "
+                    f"{lock_path}"
+                ) from error
+            time.sleep(LOCK_POLL_INTERVAL_SECONDS)
+
+    try:
+        _write_lock_owner(file_descriptor)
+        yield
+    finally:
+        os.close(file_descriptor)
+        _remove_lock_file(lock_path)
+
+
+def _write_lock_owner(file_descriptor: int) -> None:
+    lock_payload = f"pid={os.getpid()}\n".encode("utf-8")
+    os.write(file_descriptor, lock_payload)
+    os.fsync(file_descriptor)
+
+
+def _remove_lock_file(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        return
+
+
 def _write_json_atomic(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        "w",
-        delete=False,
-        dir=path.parent,
-        encoding="utf-8",
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    ) as tmp_file:
-        tmp_file.write(content)
-        tmp_file.flush()
-        os.fsync(tmp_file.fileno())
-        tmp_path = Path(tmp_file.name)
+    tmp_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            "w",
+            delete=False,
+            dir=path.parent,
+            encoding="utf-8",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+        ) as tmp_file:
+            tmp_file.write(content)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+            tmp_path = Path(tmp_file.name)
 
-    os.replace(tmp_path, path)
+        os.replace(tmp_path, path)
+        tmp_path = None
+        _fsync_directory(path.parent)
+    finally:
+        if tmp_path is not None:
+            _remove_temporary_file(tmp_path)
+
+
+def _remove_temporary_file(tmp_path: Path) -> None:
+    try:
+        tmp_path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        file_descriptor = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+
+    try:
+        os.fsync(file_descriptor)
+    finally:
+        os.close(file_descriptor)
