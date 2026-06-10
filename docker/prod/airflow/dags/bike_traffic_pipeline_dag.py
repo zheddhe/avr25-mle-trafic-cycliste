@@ -20,9 +20,10 @@ from airflow.providers.standard.operators.python import (
     ShortCircuitOperator,
 )
 from airflow.sdk import DAG, Param, TaskGroup, Variable
-from common.utils import CounterCfg, _load_config
+from common.utils import CounterCfg, _load_concurrency_config, _load_config
 
 logger = logging.getLogger("airflow.task")
+concurrency = _load_concurrency_config()
 
 JOB_RUNNER_URL = "http://job-runner-api:10080"
 DATA_ROOT = "/app/data"
@@ -37,6 +38,7 @@ DAG_PARAMS: ParamsDict = ParamsDict(
         )
     }
 )
+
 
 def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     request = urllib.request.Request(
@@ -353,8 +355,8 @@ with DAG(
     start_date=datetime(2025, 9, 1),
     schedule=None,
     catchup=False,
-    max_active_runs=1,
-    max_active_tasks=1,
+    max_active_runs=concurrency.child_max_active_runs,
+    max_active_tasks=concurrency.child_max_active_tasks,
     tags=["mlops", "init", "bike", "prod"],
     params=DAG_PARAMS,
 ) as init_dag:
@@ -377,8 +379,8 @@ with DAG(
     start_date=datetime(2025, 9, 1),
     schedule=None,
     catchup=False,
-    max_active_runs=1,
-    max_active_tasks=1,
+    max_active_runs=concurrency.child_max_active_runs,
+    max_active_tasks=concurrency.child_max_active_tasks,
     tags=["mlops", "daily", "bike", "prod"],
     params=DAG_PARAMS,
 ) as daily_dag:
