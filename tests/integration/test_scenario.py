@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.integration
+
 RAW_FILE_NAME = "comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv"
 
 SITE_TEST = {
