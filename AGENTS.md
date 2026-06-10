@@ -32,14 +32,19 @@
 
 ## Documentation
 
+- Read `docs/README.md` before proposing documentation changes.
 - Keep the root `README.md` concise and project-oriented.
-- Put runtime commands and workspace ownership in
-  `docs/current-runtime-and-operations/`.
-- Put cross-runtime architecture rules in `docs/architecture-references/`.
-- Put Phase 8 target designs and implementation notes in
-  `docs/next-phase-design/`.
-- When a design becomes implemented, update wording from future-state to
-  current-state and leave remaining gaps explicit.
+- Put implemented runtime commands, workspace ownership, service exposure, and
+  operating instructions in `docs/current-runtime-and-operations/`.
+- Put implemented cross-runtime architecture rules, communication paths, network
+  topology, and runtime guardrails in `docs/architecture-references/`.
+- Put future improvement axes, active phase contracts, and not-yet-implemented
+  design targets in `docs/remaining-work/`.
+- Do not document planned runtime or architecture impact as current state before
+  the related feature is implemented.
+- Story-level details belong in GitHub issues and pull requests.
+- When a design becomes implemented, move stable wording from future-state docs
+  to current runtime or architecture docs, and leave remaining gaps explicit.
 
 ## Runtime and artifacts
 
