@@ -13,7 +13,7 @@ architecture, and implementation decisions live here.
 | `current-runtime-and-operations/` | Implemented local commands, workspaces, service exposure, dependencies, and runtime ownership. | Describe what exists and how to operate it. |
 | `architecture-references/` | Implemented cross-runtime boundaries, networks, communication paths, and runtime guardrails. | Describe the current architecture. |
 | `assets/` | Documentation-only icons and rendered diagrams. | Store visuals used by Markdown docs only. |
-| `remaining-work/` | Future improvement axes outside the validated local production-like baseline. | Keep global remaining work, not completed story design notes. |
+| `remaining-work/` | Future improvement axes, active phase contracts, and not-yet-implemented design targets outside the validated local production-like baseline. | Keep global remaining work and future-state contracts here until implementation is validated. |
 
 Story-level details belong in GitHub issues and pull requests. When a design
 becomes implemented, move stable current-state wording to current runtime or
@@ -48,6 +48,7 @@ architecture docs. Remaining gaps belong under `remaining-work/`.
 | Document | Purpose |
 | -------- | ------- |
 | [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md) | Security, scale-out, full ETL source chain, object-storage-first handoff, remote operations, and observability hardening. |
+| [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md) | Future-state Phase 9 contract for bounded local production-like scale-out before implementation changes current runtime behavior. |
 
 ## Reading order
 
@@ -61,4 +62,5 @@ For runtime work, read:
 For future improvement planning, read:
 
 1. [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md)
-2. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+2. [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md)
+3. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
