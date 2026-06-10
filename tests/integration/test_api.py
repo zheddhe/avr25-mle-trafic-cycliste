@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 
 from src.api.app import create_app
 from src.api.config import ApiSettings
+from src.api.serving import load_predictions_from_manifests
 from src.artifacts.checksums import compute_sha256
+from src.artifacts.manifest_store import promote_manifest
 
 COUNTER_ID = "Sebastopol_N-S"
 RUN_ID = "api-integration-run"
@@ -47,19 +49,41 @@ def _write_prediction_payload(repository_root: Path) -> Path:
     return payload_path
 
 
-def _write_current_manifest(
+def _write_single_prediction_payload(
+    repository_root: Path,
+    file_name: str,
+    y_pred: float,
+) -> Path:
+    payload_path = repository_root / "data" / "final" / COUNTER_ID / file_name
+    payload_path.parent.mkdir(parents=True, exist_ok=True)
+    dataframe = pd.DataFrame(
+        [
+            {
+                "date_et_heure_de_comptage_local": "2026-01-01T00:00:00+01:00",
+                "date_et_heure_de_comptage_utc": "2025-12-31T23:00:00+00:00",
+                "y_true": 1,
+                "y_pred": y_pred,
+                "forecast_mode": False,
+            }
+        ]
+    )
+    dataframe.to_csv(payload_path)
+    return payload_path
+
+
+def _build_prediction_manifest(
     *,
-    manifest_root: Path,
     repository_root: Path,
     payload_path: Path,
+    run_id: str,
     counter_id: str = COUNTER_ID,
-) -> Path:
+) -> dict:
     local_path = payload_path.relative_to(repository_root).as_posix()
-    manifest = {
+    return {
         "schema_version": "1.0",
         "artifact_type": "predictions",
-        "status": "promoted",
-        "run_id": RUN_ID,
+        "status": "validated",
+        "run_id": run_id,
         "counter_id": counter_id,
         "created_at": "2026-06-06T14:00:00+00:00",
         "producer": {
@@ -78,6 +102,22 @@ def _write_current_manifest(
             "checksum_sha256": compute_sha256(payload_path),
         },
     }
+
+
+def _write_current_manifest(
+    *,
+    manifest_root: Path,
+    repository_root: Path,
+    payload_path: Path,
+    counter_id: str = COUNTER_ID,
+) -> Path:
+    manifest = _build_prediction_manifest(
+        repository_root=repository_root,
+        payload_path=payload_path,
+        run_id=RUN_ID,
+        counter_id=counter_id,
+    )
+    manifest["status"] = "promoted"
     current_path = manifest_root / "predictions" / counter_id / "current.json"
     current_path.parent.mkdir(parents=True, exist_ok=True)
     current_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -198,6 +238,55 @@ class TestApiIntegration:
             "artifacts",
             "manifests",
         ]
+
+    def test_manifest_first_loading_uses_latest_promoted_artifact(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        repository_root = tmp_path / "repository"
+        manifest_root = repository_root / "artifacts" / "manifests"
+        first_payload = _write_single_prediction_payload(
+            repository_root,
+            "first.csv",
+            1.0,
+        )
+        second_payload = _write_single_prediction_payload(
+            repository_root,
+            "second.csv",
+            2.0,
+        )
+        first_manifest = _build_prediction_manifest(
+            repository_root=repository_root,
+            payload_path=first_payload,
+            run_id="run-a",
+        )
+        second_manifest = _build_prediction_manifest(
+            repository_root=repository_root,
+            payload_path=second_payload,
+            run_id="run-b",
+        )
+
+        promote_manifest(
+            first_manifest,
+            manifest_root=manifest_root,
+            repository_root=repository_root,
+        )
+        promote_manifest(
+            second_manifest,
+            manifest_root=manifest_root,
+            repository_root=repository_root,
+        )
+        result = load_predictions_from_manifests(
+            ApiSettings(
+                manifest_root=manifest_root,
+                repository_root=repository_root,
+                counter_ids=(COUNTER_ID,),
+            )
+        )
+
+        dataframe = result.predictions[COUNTER_ID]
+        assert result.artifacts[COUNTER_ID].run_id == "run-b"
+        assert dataframe.iloc[0]["y_pred"] == 2.0
 
     def test_refresh_admin_reports_missing_manifest(self, tmp_path: Path) -> None:
         with _build_empty_client(tmp_path) as client:
