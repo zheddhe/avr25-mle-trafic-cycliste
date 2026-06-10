@@ -15,6 +15,8 @@ from src.artifacts.exceptions import (
     ArtifactPayloadNotFoundError,
 )
 from src.artifacts.manifest_store import (
+    CURRENT_MANIFEST_NAME,
+    PROMOTION_LOCK_NAME,
     promote_manifest,
     read_current_manifest,
     read_manifest,
@@ -63,7 +65,11 @@ class TestArtifactManifestStore:
         manifest_path = write_manifest(valid_manifest, manifest_root)
 
         assert manifest_path == (
-            manifest_root / "predictions" / "counter-1" / "run-001" / "manifest.json"
+            manifest_root
+            / "predictions"
+            / "counter-1"
+            / "run-001"
+            / "manifest.json"
         )
         assert manifest_path.is_file()
         assert read_manifest(manifest_path).run_id == "run-001"
@@ -81,7 +87,9 @@ class TestArtifactManifestStore:
             repository_root=tmp_path,
         )
 
-        assert current_path == manifest_root / "predictions" / "counter-1" / "current.json"
+        assert current_path == (
+            manifest_root / "predictions" / "counter-1" / "current.json"
+        )
         current_manifest = read_current_manifest(
             manifest_root=manifest_root,
             artifact_type="predictions",
@@ -90,6 +98,195 @@ class TestArtifactManifestStore:
         assert isinstance(current_manifest, ArtifactManifest)
         assert current_manifest.run_id == "run-001"
         assert current_manifest.status == ArtifactStatus.VALIDATED
+
+    def test_promote_manifest_replaces_current_manifest(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+        next_payload = _write_artifact_payload(
+            tmp_path,
+            "data/final/counter-1/predictions-next.csv",
+            "date,y_pred\n2026-06-07,43\n",
+        )
+        next_manifest = _replace_manifest_payload(
+            valid_manifest,
+            tmp_path,
+            next_payload,
+            run_id="run-002",
+        )
+
+        promote_manifest(
+            valid_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+        promote_manifest(
+            next_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+        current_manifest = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="counter-1",
+        )
+
+        assert current_manifest.run_id == "run-002"
+        assert current_manifest.storage.local_path == (
+            "data/final/counter-1/predictions-next.csv"
+        )
+
+    def test_repeated_promotion_is_idempotent(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+
+        first_path = promote_manifest(
+            valid_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+        second_path = promote_manifest(
+            valid_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+        current_manifest = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="counter-1",
+        )
+
+        assert second_path == first_path
+        assert current_manifest.run_id == "run-001"
+        assert current_manifest.model_dump() == ArtifactManifest.model_validate(
+            valid_manifest
+        ).model_dump()
+
+    def test_different_counters_use_independent_current_manifests(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+        counter_2_payload = _write_artifact_payload(
+            tmp_path,
+            "data/final/counter-2/predictions.csv",
+            "date,y_pred\n2026-06-06,84\n",
+        )
+        counter_2_manifest = _replace_manifest_payload(
+            valid_manifest,
+            tmp_path,
+            counter_2_payload,
+            run_id="run-002",
+            counter_id="counter-2",
+        )
+
+        promote_manifest(
+            valid_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+        promote_manifest(
+            counter_2_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+
+        first_current = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="counter-1",
+        )
+        second_current = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="counter-2",
+        )
+        assert first_current.run_id == "run-001"
+        assert second_current.run_id == "run-002"
+
+    def test_failed_current_write_preserves_previous_manifest(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+        next_payload = _write_artifact_payload(
+            tmp_path,
+            "data/final/counter-1/predictions-next.csv",
+            "date,y_pred\n2026-06-07,43\n",
+        )
+        next_manifest = _replace_manifest_payload(
+            valid_manifest,
+            tmp_path,
+            next_payload,
+            run_id="run-002",
+        )
+        promote_manifest(
+            valid_manifest,
+            manifest_root=manifest_root,
+            repository_root=tmp_path,
+        )
+
+        import src.artifacts.manifest_store as manifest_store
+
+        real_write_json_atomic = manifest_store._write_json_atomic
+
+        def fail_on_current_write(path: Path, content: str) -> None:
+            if path.name == CURRENT_MANIFEST_NAME:
+                raise OSError("simulated current write failure")
+            real_write_json_atomic(path, content)
+
+        monkeypatch.setattr(
+            manifest_store,
+            "_write_json_atomic",
+            fail_on_current_write,
+        )
+
+        with pytest.raises(OSError, match="simulated current write failure"):
+            promote_manifest(
+                next_manifest,
+                manifest_root=manifest_root,
+                repository_root=tmp_path,
+            )
+
+        current_manifest = read_current_manifest(
+            manifest_root=manifest_root,
+            artifact_type="predictions",
+            counter_id="counter-1",
+        )
+        assert current_manifest.run_id == "run-001"
+
+    def test_same_counter_conflict_times_out_without_current_manifest(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+        scope_path = manifest_root / "predictions" / "counter-1"
+        scope_path.mkdir(parents=True)
+        (scope_path / PROMOTION_LOCK_NAME).write_text("locked\n", encoding="utf-8")
+
+        import src.artifacts.manifest_store as manifest_store
+
+        monkeypatch.setattr(manifest_store, "DEFAULT_LOCK_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr(manifest_store, "LOCK_POLL_INTERVAL_SECONDS", 0.001)
+
+        with pytest.raises(ArtifactManifestValidationError, match="promotion lock"):
+            promote_manifest(
+                valid_manifest,
+                manifest_root=manifest_root,
+                repository_root=tmp_path,
+            )
+
+        assert not (scope_path / CURRENT_MANIFEST_NAME).exists()
 
     def test_write_manifest_rejects_invalid_manifest(
         self,
@@ -166,3 +363,29 @@ class TestArtifactManifestStore:
                 manifest_root=tmp_path / "manifests",
                 repository_root=tmp_path,
             )
+
+
+def _write_artifact_payload(tmp_path: Path, relative_path: str, content: str) -> Path:
+    payload_path = tmp_path / relative_path
+    payload_path.parent.mkdir(parents=True, exist_ok=True)
+    payload_path.write_text(content, encoding="utf-8")
+    return payload_path
+
+
+def _replace_manifest_payload(
+    manifest: dict,
+    repository_root: Path,
+    payload_path: Path,
+    *,
+    run_id: str,
+    counter_id: str | None = None,
+) -> dict:
+    updated_manifest = deepcopy(manifest)
+    updated_manifest["run_id"] = run_id
+    if counter_id is not None:
+        updated_manifest["counter_id"] = counter_id
+    updated_manifest["storage"]["local_path"] = (
+        payload_path.relative_to(repository_root).as_posix()
+    )
+    updated_manifest["storage"]["checksum_sha256"] = compute_sha256(payload_path)
+    return updated_manifest
