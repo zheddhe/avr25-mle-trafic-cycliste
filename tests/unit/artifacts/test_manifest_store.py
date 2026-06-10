@@ -51,8 +51,18 @@ class TestManifestStore:
         manifest_root = tmp_path / "manifests"
         first_payload = _write_payload(tmp_path, "first.csv", "value\n1\n")
         second_payload = _write_payload(tmp_path, "second.csv", "value\n2\n")
-        first_manifest = _build_manifest(tmp_path, first_payload, "counter-a", "run-a")
-        second_manifest = _build_manifest(tmp_path, second_payload, "counter-a", "run-b")
+        first_manifest = _build_manifest(
+            tmp_path,
+            first_payload,
+            "counter-a",
+            "run-a",
+        )
+        second_manifest = _build_manifest(
+            tmp_path,
+            second_payload,
+            "counter-a",
+            "run-b",
+        )
 
         promote_manifest(
             first_manifest,
@@ -64,7 +74,11 @@ class TestManifestStore:
             manifest_root=manifest_root,
             repository_root=tmp_path,
         )
-        loaded_manifest = read_current_manifest(manifest_root, "predictions", "counter-a")
+        loaded_manifest = read_current_manifest(
+            manifest_root,
+            "predictions",
+            "counter-a",
+        )
 
         assert loaded_manifest.run_id == "run-b"
         assert loaded_manifest.storage.local_path == "second.csv"
@@ -84,7 +98,11 @@ class TestManifestStore:
             manifest_root=manifest_root,
             repository_root=tmp_path,
         )
-        loaded_manifest = read_current_manifest(manifest_root, "predictions", "counter-a")
+        loaded_manifest = read_current_manifest(
+            manifest_root,
+            "predictions",
+            "counter-a",
+        )
 
         assert second_path == first_path
         assert loaded_manifest.model_dump() == manifest.model_dump()
@@ -96,8 +114,18 @@ class TestManifestStore:
         manifest_root = tmp_path / "manifests"
         first_payload = _write_payload(tmp_path, "first.csv", "value\n1\n")
         second_payload = _write_payload(tmp_path, "second.csv", "value\n2\n")
-        first_manifest = _build_manifest(tmp_path, first_payload, "counter-a", "run-a")
-        second_manifest = _build_manifest(tmp_path, second_payload, "counter-b", "run-b")
+        first_manifest = _build_manifest(
+            tmp_path,
+            first_payload,
+            "counter-a",
+            "run-a",
+        )
+        second_manifest = _build_manifest(
+            tmp_path,
+            second_payload,
+            "counter-b",
+            "run-b",
+        )
 
         promote_manifest(
             first_manifest,
@@ -110,8 +138,19 @@ class TestManifestStore:
             repository_root=tmp_path,
         )
 
-        assert read_current_manifest(manifest_root, "predictions", "counter-a").run_id == "run-a"
-        assert read_current_manifest(manifest_root, "predictions", "counter-b").run_id == "run-b"
+        first_current = read_current_manifest(
+            manifest_root,
+            "predictions",
+            "counter-a",
+        )
+        second_current = read_current_manifest(
+            manifest_root,
+            "predictions",
+            "counter-b",
+        )
+
+        assert first_current.run_id == "run-a"
+        assert second_current.run_id == "run-b"
 
 
 def _write_payload(tmp_path: Path, name: str, content: str) -> Path:
