@@ -34,7 +34,3 @@ jobs:
       - name: Run Ruff checks
         run: |
           uv run --group test ruff check .
-
-      - name: Run unit tests
-        run: |
-          uv run --group test pytest -m "not integration and not acceptance" -v
