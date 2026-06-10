@@ -1,19 +1,24 @@
 # tests/job_runner/test_executor.py
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from threading import Lock
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 import pytest
 
 from src.job_runner.executor import (
+    DEFAULT_MAX_IN_FLIGHT_JOBS,
+    JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV,
     MlJobExecutionError,
     ServiceMlJobExecutor,
     UrllibMlServiceTransport,
     _join_url,
     _json_bytes,
+    _resolve_max_in_flight_jobs,
 )
 from src.job_runner.service import build_default_executor
 from src.ml.jobs.contracts import IngestJobRequest
@@ -35,7 +40,7 @@ class TestServiceMlJobExecutor:
         executor = ServiceMlJobExecutor(
             transport=transport,
             endpoints={job_request.job_type: "http://ml-ingest:10081"},
-            lock=Lock(),
+            max_in_flight_jobs=1,
         )
 
         result = executor.execute(
@@ -58,7 +63,7 @@ class TestServiceMlJobExecutor:
         executor = ServiceMlJobExecutor(
             transport=Mock(),
             endpoints={},
-            lock=Lock(),
+            max_in_flight_jobs=1,
         )
 
         with pytest.raises(MlJobExecutionError) as exc_info:
@@ -86,7 +91,7 @@ class TestServiceMlJobExecutor:
         executor = ServiceMlJobExecutor(
             transport=transport,
             endpoints={job_request.job_type: "http://ml-ingest:10081"},
-            lock=Lock(),
+            max_in_flight_jobs=1,
         )
 
         with pytest.raises(MlJobExecutionError) as exc_info:
@@ -99,6 +104,125 @@ class TestServiceMlJobExecutor:
         assert exc_info.value.code == "INGEST_FAILED"
         assert exc_info.value.message == "raw file missing"
         assert exc_info.value.retryable is False
+
+    def test_execute_allows_bounded_parallel_service_dispatch(self) -> None:
+        job_request = _ingest_request()
+        first_call_started = threading.Event()
+        release_calls = threading.Event()
+        observed_in_flight = 0
+        max_observed_in_flight = 0
+        in_flight_lock = threading.Lock()
+
+        def submit(endpoint: str, job_request: IngestJobRequest) -> JobStatus:
+            nonlocal max_observed_in_flight
+            nonlocal observed_in_flight
+            assert endpoint == "http://ml-ingest:10081"
+            assert job_request.counter_id == "counter-a"
+            with in_flight_lock:
+                observed_in_flight += 1
+                max_observed_in_flight = max(
+                    max_observed_in_flight,
+                    observed_in_flight,
+                )
+                first_call_started.set()
+            release_calls.wait(timeout=5)
+            with in_flight_lock:
+                observed_in_flight -= 1
+            return _job_status(
+                job_id="service-job",
+                state=JobState.SUCCEEDED,
+                result=_job_result(job_id="service-job"),
+            )
+
+        transport = Mock()
+        transport.submit.side_effect = submit
+        executor = ServiceMlJobExecutor(
+            transport=transport,
+            endpoints={job_request.job_type: "http://ml-ingest:10081"},
+            max_in_flight_jobs=2,
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(
+                executor.execute,
+                job_request,
+                job_id="runner-job-a",
+                started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            assert first_call_started.wait(timeout=5)
+            second = pool.submit(
+                executor.execute,
+                job_request,
+                job_id="runner-job-b",
+                started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            time.sleep(0.05)
+            release_calls.set()
+
+            assert first.result().job_id == "runner-job-a"
+            assert second.result().job_id == "runner-job-b"
+
+        assert max_observed_in_flight == 2
+
+    def test_execute_respects_configured_parallel_dispatch_limit(self) -> None:
+        job_request = _ingest_request()
+        first_call_started = threading.Event()
+        release_calls = threading.Event()
+        observed_in_flight = 0
+        max_observed_in_flight = 0
+        in_flight_lock = threading.Lock()
+
+        def submit(endpoint: str, job_request: IngestJobRequest) -> JobStatus:
+            nonlocal max_observed_in_flight
+            nonlocal observed_in_flight
+            assert endpoint == "http://ml-ingest:10081"
+            assert job_request.counter_id == "counter-a"
+            with in_flight_lock:
+                observed_in_flight += 1
+                max_observed_in_flight = max(
+                    max_observed_in_flight,
+                    observed_in_flight,
+                )
+                first_call_started.set()
+            release_calls.wait(timeout=5)
+            with in_flight_lock:
+                observed_in_flight -= 1
+            return _job_status(
+                job_id="service-job",
+                state=JobState.SUCCEEDED,
+                result=_job_result(job_id="service-job"),
+            )
+
+        transport = Mock()
+        transport.submit.side_effect = submit
+        executor = ServiceMlJobExecutor(
+            transport=transport,
+            endpoints={job_request.job_type: "http://ml-ingest:10081"},
+            max_in_flight_jobs=1,
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(
+                executor.execute,
+                job_request,
+                job_id="runner-job-a",
+                started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            assert first_call_started.wait(timeout=5)
+            second = pool.submit(
+                executor.execute,
+                job_request,
+                job_id="runner-job-b",
+                started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            time.sleep(0.05)
+            assert max_observed_in_flight == 1
+            release_calls.set()
+
+            assert first.result().job_id == "runner-job-a"
+            assert second.result().job_id == "runner-job-b"
+
+        assert max_observed_in_flight == 1
 
 
 class TestUrllibMlServiceTransport:
@@ -186,6 +310,26 @@ class TestRunnerExecutorConfiguration:
             build_default_executor()
 
         assert "JOB_RUNNER_EXECUTOR" in str(exc_info.value)
+
+    def test_default_max_in_flight_jobs_is_conservative(self) -> None:
+        assert DEFAULT_MAX_IN_FLIGHT_JOBS == 2
+
+    def test_resolve_max_in_flight_jobs_reads_environment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV, "3")
+
+        assert _resolve_max_in_flight_jobs() == 3
+
+    def test_resolve_max_in_flight_jobs_rejects_invalid_environment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV, "0")
+
+        with pytest.raises(ValueError, match=JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV):
+            _resolve_max_in_flight_jobs()
 
 
 def test_join_url_normalizes_slashes() -> None:
