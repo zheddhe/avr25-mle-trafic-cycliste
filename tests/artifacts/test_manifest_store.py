@@ -8,14 +8,20 @@ from pathlib import Path
 import pytest
 
 from src.artifacts.checksums import compute_sha256
-from src.artifacts.exceptions import ArtifactManifestValidationError
+from src.artifacts.exceptions import (
+    ArtifactChecksumMismatchError,
+    ArtifactManifestNotFoundError,
+    ArtifactManifestValidationError,
+    ArtifactPayloadNotFoundError,
+)
 from src.artifacts.manifest_store import (
     promote_manifest,
     read_current_manifest,
     read_manifest,
+    verify_local_payload,
     write_manifest,
 )
-from src.artifacts.schemas import ArtifactManifest
+from src.artifacts.schemas import ArtifactManifest, ArtifactStatus
 
 
 class TestArtifactManifestStore:
@@ -59,6 +65,7 @@ class TestArtifactManifestStore:
         assert manifest_path == (
             manifest_root / "predictions" / "counter-1" / "run-001" / "manifest.json"
         )
+        assert manifest_path.is_file()
         assert read_manifest(manifest_path).run_id == "run-001"
 
     def test_promote_manifest_writes_current_manifest(
@@ -82,6 +89,7 @@ class TestArtifactManifestStore:
         )
         assert isinstance(current_manifest, ArtifactManifest)
         assert current_manifest.run_id == "run-001"
+        assert current_manifest.status == ArtifactStatus.VALIDATED
 
     def test_write_manifest_rejects_invalid_manifest(
         self,
@@ -93,3 +101,68 @@ class TestArtifactManifestStore:
 
         with pytest.raises(ArtifactManifestValidationError, match="run_id"):
             write_manifest(invalid_manifest, tmp_path / "manifests")
+
+    def test_read_current_manifest_missing_file_raises_explicit_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        manifest_root = tmp_path / "artifacts/manifests"
+
+        with pytest.raises(ArtifactManifestNotFoundError, match="does not exist"):
+            read_current_manifest(
+                manifest_root=manifest_root,
+                artifact_type="predictions",
+                counter_id="counter-1",
+            )
+
+    def test_read_manifest_invalid_json_raises_validation_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        manifest_path = tmp_path / "current.json"
+        manifest_path.write_text("{not-json", encoding="utf-8")
+
+        with pytest.raises(ArtifactManifestValidationError, match="not valid JSON"):
+            read_manifest(manifest_path)
+
+    def test_promote_manifest_rejects_missing_local_payload(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest = deepcopy(valid_manifest)
+        manifest["storage"]["local_path"] = "data/final/counter-1/missing.csv"
+
+        with pytest.raises(ArtifactPayloadNotFoundError, match="does not exist"):
+            promote_manifest(
+                manifest,
+                manifest_root=tmp_path / "manifests",
+                repository_root=tmp_path,
+            )
+
+    def test_verify_local_payload_rejects_checksum_mismatch(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest = deepcopy(valid_manifest)
+        manifest["storage"]["checksum_sha256"] = "b" * 64
+        validated_manifest = ArtifactManifest.model_validate(manifest)
+
+        with pytest.raises(ArtifactChecksumMismatchError, match="mismatch"):
+            verify_local_payload(validated_manifest, repository_root=tmp_path)
+
+    def test_promote_manifest_rejects_non_promotable_status(
+        self,
+        tmp_path: Path,
+        valid_manifest: dict,
+    ) -> None:
+        manifest = deepcopy(valid_manifest)
+        manifest["status"] = "served"
+
+        with pytest.raises(ArtifactManifestValidationError, match="not eligible"):
+            promote_manifest(
+                manifest,
+                manifest_root=tmp_path / "manifests",
+                repository_root=tmp_path,
+            )
