@@ -59,7 +59,7 @@ The production-like runtime uses functional networks implemented in
 | `job-runner-api` | `ml-ingest-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated ingestion job request. |
 | `job-runner-api` | `ml-features-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated feature job request. |
 | `job-runner-api` | `ml-models-prod` | Prod-like | HTTP on `pipeline_runtime_net` | Execute one validated model job request. |
-| ML step services | Runtime artifact manifests | Dev and prod-like | Filesystem mount | Write and promote artifact manifests under the configured manifest root. |
+| ML step services | Runtime artifact manifests | Dev and prod-like | Filesystem mount | Write run-scoped manifests and promote counter-scoped `current.json` files. |
 | API | Promoted prediction manifests | Dev and prod-like | Filesystem mount | Read `predictions/<counter_id>/current.json` and verify local payload evidence. |
 | API | Prediction payload CSV | Dev and prod-like | Filesystem mount | Load the manifest-referenced local prediction payload. |
 | ML step services | Pushgateway | Dev and prod-like | HTTP | Batch metric push when enabled. |
@@ -94,6 +94,18 @@ The API does not scan `data/final` for the newest `y_full.csv`. It reads the
 promoted prediction manifest, checks that the storage backend is local, resolves
 `storage.local_path` from the configured repository root, verifies the checksum
 when available, and then loads the referenced CSV.
+
+Manifest promotion is concurrency-safe for the implemented local filesystem
+backend. The writer first persists a run-scoped manifest under the artifact type,
+counter id, and run id, then atomically replaces the counter-scoped
+`current.json`. Promotion is serialized only for the same artifact type and
+counter id through a scope-local lock file, so independent counters do not share
+the same promotion lock.
+
+Readers should therefore observe either the previous valid `current.json` or the
+new valid `current.json`; they should not observe a partially written promoted
+manifest. Re-running the same promotion with identical manifest content is
+idempotent and leaves the same promoted path in place.
 
 ## Runner execution boundary
 
@@ -159,6 +171,8 @@ widening must be documented with the runtime impact.
 - Do not add Docker socket mounts to production-like Airflow services.
 - Do not copy the broad `mlops_net` development model into `docker/prod`.
 - Do not reintroduce implicit latest-file or folder scanning in API serving.
+- Keep artifact promotion serialized per artifact type and counter id.
+- Keep promoted `current.json` replacement atomic for filesystem readers.
 - Prefer explicit functional networks over pairwise networks unless sensitive
   state or privileged control surfaces require isolation.
 - Keep host exposure in `../current-runtime-and-operations/ports-and-services.md`
