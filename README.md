@@ -3,12 +3,19 @@
 [![CI Main](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions/workflows/ci_main.yml/badge.svg)](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions)
 [![CI Branch](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions/workflows/ci_branch.yml/badge.svg)](https://github.com/zheddhe/avr25-mle-trafic-cycliste/actions)
 
-Machine learning and MLOps project for daily refreshed bike traffic prediction in Paris.
+Machine learning and MLOps project for daily refreshed bike traffic prediction in
+Paris.
 
 The project was developed as part of the April 2025 Machine Learning Engineering
 training program. It combines data processing, time-series modelling, API
 serving, orchestration, tracking, monitoring, and local production-like runtime
 validation.
+
+![Local production-like architecture overview](docs/assets/diagrams/local-prod-architecture-overview.png)
+
+This rendered diagram is an onboarding illustration. The maintained architecture
+contract is documented in Mermaid diagrams, service tables, and runtime contract
+notes under [`docs/`](docs/).
 
 ## Project scope
 
@@ -26,48 +33,53 @@ The implementation currently provides:
 - Airflow orchestration for multi-counter workflows;
 - MLflow tracking with PostgreSQL and MinIO;
 - Prometheus, Grafana, Pushgateway, Alertmanager, cAdvisor, and MailHog;
-- explicit `docker/dev` and `docker/prod` Compose runtimes.
-
-Architecture diagrams are available under `references/`.
+- explicit `docker/dev` and `docker/prod` Compose runtimes;
+- production-like smoke validation for runtime, API, manifests, and monitoring
+  wiring.
 
 ## Repository layout
 
 ```text
 avr25-mle-trafic-cycliste/
 ├── README.md           <- Project entrypoint
-├── Makefile            <- Repository setup, validation, local execution, and runtime Make inclusion
+├── Makefile            <- Setup, validation, local execution, and runtime targets
 ├── .env.template       <- Versioned local runtime variable template
-├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, and Ruff config
+├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, Ruff
 ├── uv.lock             <- uv lockfile for reproducible local validation
 ├── data/               <- Development and DVC data workspace
 ├── logs/               <- Development runtime logs
 ├── models/             <- Development and DVC model artifacts
-├── references/         <- Diagrams and external explanatory material
 ├── src/                <- API and ML pipeline source code
 ├── docker/             <- Dev/prod container architecture and runtime assets
-├── docs/               <- Runtime, architecture, and Phase 8 design documentation
-└── tests/              <- Unit and integration tests
+├── docs/               <- Runtime, architecture, assets, and remaining work docs
+└── tests/              <- Unit, integration, and acceptance tests
 ```
+
+Documentation assets such as icons and rendered diagrams live under
+[`docs/assets/`](docs/assets/). Runtime outputs, model artifacts, data payloads,
+and generated reports must not be stored there.
 
 Start with [`docs/README.md`](docs/README.md) for the documentation map.
 
 ## Documentation map
 
-The documentation is intentionally split into three groups:
+The documentation is intentionally split into four groups:
 
 | Area | Folder | Purpose |
 | ---- | ------ | ------- |
-| Current runtime and operations | `docs/current-runtime-and-operations/` | How to run, validate, and reason about what exists on `main`. |
+| Current runtime and operations | `docs/current-runtime-and-operations/` | How to run, validate, and reason about implemented local runtimes. |
 | Architecture references | `docs/architecture-references/` | Runtime communication, security boundaries, and implemented network topology. |
-| Next Phase design | `docs/next-phase-design/` | Phase 8 target contracts and implementation guidance. |
+| Documentation assets | `docs/assets/` | Versioned icons and rendered diagrams used by Markdown documentation. |
+| Remaining work | `docs/remaining-work/` | Future improvement axes that are deliberately outside the validated local production-like baseline. |
 
 Key entrypoints:
 
 - [`docs/current-runtime-and-operations/local-prod-runtime.md`](docs/current-runtime-and-operations/local-prod-runtime.md)
+- [`docs/current-runtime-and-operations/ports-and-services.md`](docs/current-runtime-and-operations/ports-and-services.md)
 - [`docs/current-runtime-and-operations/repository-structure.md`](docs/current-runtime-and-operations/repository-structure.md)
 - [`docs/architecture-references/runtime-communication-matrix.md`](docs/architecture-references/runtime-communication-matrix.md)
-- [`docs/next-phase-design/artifact-handoff-strategy.md`](docs/next-phase-design/artifact-handoff-strategy.md)
-- [`docs/next-phase-design/airflow-job-runner-strategy.md`](docs/next-phase-design/airflow-job-runner-strategy.md)
+- [`docs/architecture-references/local-prod-network-topology.md`](docs/architecture-references/local-prod-network-topology.md)
+- [`docs/remaining-work/global-remaining-work.md`](docs/remaining-work/global-remaining-work.md)
 
 ## First setup
 
@@ -120,8 +132,20 @@ Common repository-level checks:
 make sync
 make lock-check
 make lint
+make unit
+make integration
 make tests
 make checks
+```
+
+Production-like acceptance tests require the local production-like runtime and
+its required environment values:
+
+```bash
+make prod-compose-config
+make prod-build
+make prod-start
+make acceptance
 ```
 
 Useful cleanup targets:
@@ -141,8 +165,8 @@ The project has two explicit runtime entrypoints.
 
 | Runtime | Compose file | Make targets | Main purpose |
 | ------- | ------------ | ------------ | ------------ |
-| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debugging, broad host visibility, DVC/local workspaces, current Airflow DockerOperator jobs. |
-| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, runner-backed ML steps, and manifest-first API serving. |
+| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debugging, broad host visibility, DVC/local workspaces, and current Airflow DockerOperator jobs. |
+| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, runner-backed ML steps, manifest-first API serving, and acceptance validation. |
 
 Development runtime:
 
@@ -192,7 +216,7 @@ Pipeline steps can emit and promote artifact manifests when
 local/DVC runs unchanged by default while allowing production-like runtimes to
 publish validated artifact metadata and checksums.
 
-The prediction API now serves from promoted prediction manifests. It reads
+The prediction API serves from promoted prediction manifests. It reads
 `predictions/<counter_id>/current.json`, resolves the referenced local payload
 through `ARTIFACT_REPOSITORY_ROOT`, verifies the checksum when present, and no
 longer scans `data/final` to infer the current prediction file.
@@ -219,33 +243,38 @@ FastAPI services. The API is refreshed only after the model step has produced an
 promoted prediction artifacts.
 
 Monitoring uses Prometheus, Grafana, Pushgateway, cAdvisor, Alertmanager, and
-MailHog. Batch metric push is controlled through `DISABLE_METRICS_PUSH` in
-`.env`.
+MailHog. Batch metrics are pushed from ML step services to Pushgateway and then
+scraped by Prometheus. Production-like Grafana dashboards are provisioned from
+`docker/prod/grafana/dashboards`.
 
-## Phase 8 direction
+## Current baseline and remaining work
 
-Phases 6 and 7 established the documentation baseline, runtime boundaries, and
-`docker/dev` / `docker/prod` split.
+The local production-like baseline now covers the validated path:
 
-Phase 8 focuses on:
+```text
+Airflow DAG task
+  -> job-runner-api
+  -> ml-ingest-prod / ml-features-prod / ml-models-prod
+  -> promoted prediction manifest
+  -> authenticated API refresh
+  -> FastAPI serving from the promoted manifest payload
+  -> Prometheus and Grafana observability
+```
 
-- manifest-first hybrid artifact handoff;
-- typed pipeline job contracts;
-- internal `job-runner-api`;
-- runner-based execution for `docker/prod`;
-- production-like Airflow DAGs without Docker socket;
-- manifest-first API serving;
-- production-like smoke validation;
-- runtime configuration and secret validation.
-
-See [`docs/next-phase-design/`](docs/next-phase-design/) for the design inputs.
+Known remaining work is tracked as global improvement axes rather than as a
+phase-specific design target. See
+[`docs/remaining-work/global-remaining-work.md`](docs/remaining-work/global-remaining-work.md)
+for security hardening, scale-out execution, full ETL source chain,
+object-storage-first artifact serving, remote deployment, and production
+operations.
 
 ## Collaboration
 
 - Create one branch per story or bugfix.
 - Open a pull request against `main`.
 - Keep story-specific implementation notes in the pull request body.
-- Update the relevant documentation group when a target design becomes current state.
+- Update the relevant documentation group when a target design becomes current
+  state.
 
 Contributors:
 

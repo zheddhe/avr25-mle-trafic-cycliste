@@ -6,7 +6,7 @@ SHELL := /bin/bash
 .PHONY: help bootstrap docker-install env setup git-setup dvc-setup
 .PHONY: repo-setup
 .PHONY: env-compose env-local env-dagshub
-.PHONY: sync lock-check lint tests checks
+.PHONY: sync lock-check lint unit integration tests acceptance checks
 .PHONY: dvc-pipeline
 .PHONY: local-ingest local-features local-models local-pipeline mlflow-local
 .PHONY: sim-api-req
@@ -176,11 +176,21 @@ lint: ## Run Ruff checks
 	@$(call log_test,lint)
 	$(UV) run --locked --group test ruff check .
 
-tests: ## Run unit and integration test scope
+unit: ## Run isolated unit tests only
 	@$(call log_test,unit-test)
-	$(UV) run --locked --group test pytest -m "not integration" -v
+	$(UV) run --locked --group test pytest \
+		-m "not integration and not acceptance" -v
+
+integration: ## Run component-contract integration tests only
 	@$(call log_test,integration-test)
 	$(UV) run --locked --group test pytest -m "integration" -v
+
+tests: unit integration ## Run unit and integration test scopes
+
+acceptance: ## Run production-like smoke tests against running services
+	@$(call log_test,acceptance-test)
+	$(UV) run --locked --group test pytest \
+		-m "acceptance" --no-cov -v
 
 checks: lock-check lint tests ## Run local checks
 
@@ -263,8 +273,6 @@ clean-env: ## Remove the uv-managed virtual environment
 	@$(call log_test,clean-env)
 	rm -rf .venv
 
-clean-docker: ## Remove Docker artifacts, including system, images and volumes unused
+clean-docker: ## Remove stopped containers, dangling images, and build cache
 	@$(call log_test,clean-docker)
-	docker image prune -f
 	docker system prune -f
-	docker volume prune -f

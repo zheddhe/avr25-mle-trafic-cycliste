@@ -96,7 +96,7 @@ services:
       dockerfile: ./docker/prod/ml/ingest/Dockerfile
     restart: unless-stopped
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -116,6 +116,7 @@ services:
       start_period: 15s
     networks:
       - pipeline_runtime_net
+      - observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-features-prod:
@@ -126,7 +127,7 @@ services:
       dockerfile: ./docker/prod/ml/features/Dockerfile
     restart: unless-stopped
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -146,6 +147,7 @@ services:
       start_period: 15s
     networks:
       - pipeline_runtime_net
+      - observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-models-prod:
@@ -161,7 +163,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       GIT_PYTHON_REFRESH: quiet
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -184,6 +186,7 @@ services:
       - pipeline_runtime_net
       - tracking_client_net
       - tracking_backend_net
+      - observability_net
     profiles: ["ml", "all", "ptf"]
 
   api-prod:
@@ -521,7 +524,7 @@ services:
     volumes:
       - prod-grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ../dev/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
       interval: 10s

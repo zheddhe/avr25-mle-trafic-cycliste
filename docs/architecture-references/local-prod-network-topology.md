@@ -36,10 +36,10 @@ A network is justified when at least one of these statements is true:
 | Network | Responsibility | Current members |
 | ------- | -------------- | --------------- |
 | `orchestration_net` | Airflow control plane, metadata DB, broker, and internal Airflow execution API. | Airflow API, scheduler, DAG processor, triggerer, worker, init, PostgreSQL, Redis. |
-| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, runner API, ML step services, and batch metric writes. | Airflow worker, API, job runner API, ML step services, Pushgateway. |
+| `pipeline_runtime_net` | Runtime control and data-pipeline handoff between orchestration, API refresh, runner API, and ML step services. | Airflow worker, API, job runner API, ML step services, Pushgateway. |
 | `tracking_client_net` | MLflow tracking API calls from model workloads. | `ml-models-prod` and `mlflow-server`. |
 | `tracking_backend_net` | Private MLflow metadata and artifact backend access. | `ml-models-prod`, `mlflow-server`, `mlflow-postgres`, `mlflow-minio`, `mlflow-mc-init`. |
-| `observability_net` | Monitoring, dashboard, alert routing, and scrape access to selected metric endpoints. | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics endpoint. |
+| `observability_net` | Monitoring, dashboard, alert routing, scrape access, and ML step metric push to Pushgateway. | Prometheus, Grafana, Alertmanager, cAdvisor, Pushgateway, API metrics endpoint, ML step services. |
 | `dev_support_net` | Local support services that should not be part of the production-like core. | MailHog, Airflow services that send local email, Alertmanager in local email mode. |
 
 `artifact_handoff_net` is not implemented. The current handoff strategy uses
@@ -55,7 +55,9 @@ accidental broad-network members; they bridge bounded domains.
 | `airflow-worker` | `orchestration_net`, `pipeline_runtime_net`, `dev_support_net` | Runs orchestration tasks and reaches runtime services that are part of pipeline control. |
 | `job-runner-api` | `pipeline_runtime_net` | Accepts typed ML step submissions, delegates them to internal ML step services, and exposes internal job status reads. |
 | `api-prod` | `pipeline_runtime_net`, `observability_net` | Receives refresh calls and exposes metrics. Host publication remains local ingress. |
-| `ml-models-prod` | `pipeline_runtime_net`, `tracking_client_net`, `tracking_backend_net` | Receives typed model job requests, logs tracking evidence through MLflow, and can reach the MLflow artifact backend when the MLflow client needs it. |
+| `ml-ingest-prod` | `pipeline_runtime_net`, `observability_net` | Receives typed ingestion job requests and pushes batch metrics. |
+| `ml-features-prod` | `pipeline_runtime_net`, `observability_net` | Receives typed feature job requests and pushes batch metrics. |
+| `ml-models-prod` | `pipeline_runtime_net`, `tracking_client_net`, `tracking_backend_net`, `observability_net` | Receives typed model job requests, logs tracking evidence through MLflow, reaches the MLflow artifact backend, and pushes batch metrics. |
 | `mlflow-server` | `tracking_client_net`, `tracking_backend_net`, `observability_net` | Accepts MLflow tracking API calls and owns backend access to PostgreSQL and MinIO. |
 | `monitoring-pushgateway` | `pipeline_runtime_net`, `observability_net` | Receives batch metrics writes and exposes them for Prometheus scrape. |
 | `monitoring-alertmanager` | `observability_net`, `dev_support_net` | Receives Prometheus alerts and sends local development email. |
@@ -95,31 +97,12 @@ into `docker/prod`.
 | `job-runner-api` | `ml-ingest-prod` | `ml-ingest-prod` | `10081` | `pipeline_runtime_net` | Execute validated ingestion jobs. |
 | `job-runner-api` | `ml-features-prod` | `ml-features-prod` | `10082` | `pipeline_runtime_net` | Execute validated feature jobs. |
 | `job-runner-api` | `ml-models-prod` | `ml-models-prod` | `10083` | `pipeline_runtime_net` | Execute validated model jobs. |
-| ML step services | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `pipeline_runtime_net` | Push batch job metrics. |
+| ML step services | `monitoring-pushgateway` | `monitoring-pushgateway` | `9091` | `observability_net` | Push batch job metrics. |
 | `ml-models-prod` | `mlflow-server` | `mlflow-server` | `5000` | `tracking_client_net` | Log runs, metrics, params, model metadata, and registry changes through MLflow. |
 | `ml-models-prod` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | Reach the MLflow artifact backend when the MLflow client resolves artifact payload locations. |
 | `mlflow-server` | `mlflow-postgres` | `mlflow-postgres` | `5432` | `tracking_backend_net` | MLflow backend store. |
 | `mlflow-server` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | MLflow artifact store. |
 | `mlflow-mc-init` | `mlflow-minio` | `mlflow-minio` | `9000` | `tracking_backend_net` | Bootstrap the MLflow bucket. |
-
-## Services that should not share a broad network
-
-The following services should not be colocated on a single broad production-like
-network:
-
-- Airflow PostgreSQL and Redis should not share a platform network with API,
-  Grafana, Prometheus, MLflow, or MailHog.
-- MLflow PostgreSQL should not share a platform network with Airflow, API,
-  monitoring, or local email services.
-- MinIO should stay inside the tracking backend boundary unless it becomes an
-  explicit artifact handoff boundary with scoped credentials.
-- MailHog should remain local-support-only.
-- `api-prod` should not share Airflow metadata, Redis, MLflow backend, or MinIO
-  backend networks.
-- `job-runner-api` should not join tracking or backend networks while its public
-  runtime contract remains typed step submission, HTTP delegation, and in-memory
-  status tracking.
-- Docker socket access should not be introduced in the production-like runtime.
 
 ## Topology sketch
 
@@ -139,6 +122,9 @@ flowchart LR
     runner --> ingest
     runner --> features
     runner --> models
+    ingest -. metrics .-> pushgateway
+    features -. metrics .-> pushgateway
+    models -. metrics .-> pushgateway
     models --> mlflow[mlflow-server]
     models -. MLflow artifact backend .-> minio[(mlflow-minio)]
     mlflow --> mlflow_db[(mlflow-postgres)]
@@ -166,5 +152,6 @@ The production-like network config should show `job-runner-api` on
 `pipeline_runtime_net` without host-published ports, Docker socket mounts,
 tracking backend access, Airflow metadata network access, or broad runtime data
 mounts. It should also show the internal ML step services on
-`pipeline_runtime_net`, with `ml-models-prod` joining `tracking_client_net` and
-`tracking_backend_net` for MLflow tracking and artifact-backend reachability.
+`pipeline_runtime_net` and `observability_net`, with `ml-models-prod` also joining
+`tracking_client_net` and `tracking_backend_net` for MLflow tracking and
+artifact-backend reachability.
