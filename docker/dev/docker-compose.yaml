@@ -71,128 +71,153 @@ services:
   # ========================
   # BUSINESS SERVICES
   # ========================
-  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-ingest-dev:
     image: ml-ingest:dev
     build:
       context: ../..
       dockerfile: ./docker/dev/ml/ingest/Dockerfile
-    command:
-      - --raw-path
-      - /app/data/raw/${RAW_FILE_NAME}
-      - --site
-      - ${SITE}
-      - --orientation
-      - ${ORIENTATION}
-      - --range-start
-      - "${RANGE_START}"
-      - --range-end
-      - "${RANGE_END}"
-      - --timestamp-col
-      - date_et_heure_de_comptage
-      - --sub-dir
-      - ${SUB_DIR}
-      - --interim-name
-      - ${INTERIM_NAME}
-    restart: "no"
+    restart: unless-stopped
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
-      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
-      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
-      ARTIFACT_REPOSITORY_ROOT: ../..
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH:-1}
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-ingest-dev
       ARTIFACT_PRODUCER_IMAGE: ml-ingest:dev
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
-      - ../../artifacts:/app/artifacts
+      - ./runtime/data:/app/data
+      - ./runtime/logs:/app/logs
+      - ./runtime/artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10081/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
-      - airflow_net
       - mlops_net
     profiles: ["ml", "all"]
 
-  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-features-dev:
     image: ml-features:dev
     build:
       context: ../..
       dockerfile: ./docker/dev/ml/features/Dockerfile
-    command:
-      - --interim-path
-      - /app/data/interim/${SUB_DIR}/${INTERIM_NAME}
-      - --sub-dir
-      - ${SUB_DIR}
-      - --processed-name
-      - ${PROCESSED_NAME}
-      - --timestamp-col
-      - date_et_heure_de_comptage
-    restart: "no"
+    restart: unless-stopped
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
-      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
-      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
-      ARTIFACT_REPOSITORY_ROOT: ../../
-      ARTIFACT_PRODUCER_SERVICE: ml-ingest-dev
-      ARTIFACT_PRODUCER_IMAGE: ml-ingest:dev
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH:-1}
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
+      ARTIFACT_PRODUCER_SERVICE: ml-features-dev
+      ARTIFACT_PRODUCER_IMAGE: ml-features:dev
     volumes:
-      - ../../data:/app/data
-      - ../../logs:/app/logs
-      - ../../artifacts:/app/artifacts
+      - ./runtime/data:/app/data
+      - ./runtime/logs:/app/logs
+      - ./runtime/artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10082/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
-      - airflow_net
       - mlops_net
     profiles: ["ml", "all"]
 
-  # local docker launch only, dev DAGs refines its properties through variables.json config
   ml-models-dev:
     image: ml-models:dev
     build:
       context: ../..
       dockerfile: ./docker/dev/ml/models/Dockerfile
-    command:
-      - --processed-path
-      - /app/data/processed/${SUB_DIR}/${PROCESSED_NAME}
-      - --sub-dir
-      - ${SUB_DIR}
-      - --target-col
-      - comptage_horaire
-      - --ts-col-utc
-      - date_et_heure_de_comptage_utc
-      - --ts-col-local
-      - date_et_heure_de_comptage_local
-      - --ar
-      - "${AR}"
-      - --mm
-      - "${MM}"
-      - --roll
-      - "${ROLL}"
-      - --test-ratio
-      - "${TEST_RATIO}"
-      - --grid-iter
-      - "${GRID_ITER}"
-    restart: "no"
+    restart: unless-stopped
     environment:
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?required}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?required}
       GIT_PYTHON_REFRESH: quiet
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR}
-      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH}
-      ARTIFACT_MANIFEST_ROOT: ../../artifacts/manifests
-      ARTIFACT_REPOSITORY_ROOT: ../..
-      ARTIFACT_PRODUCER_SERVICE: ml-ingest-dev
-      ARTIFACT_PRODUCER_IMAGE: ml-ingest:dev
+      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      DISABLE_METRICS_PUSH: ${DISABLE_METRICS_PUSH:-1}
+      ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
+      ARTIFACT_REPOSITORY_ROOT: /app
+      ARTIFACT_PRODUCER_SERVICE: ml-models-dev
+      ARTIFACT_PRODUCER_IMAGE: ml-models:dev
     volumes:
-      - ../../data:/app/data
-      - ../../models:/app/models
-      - ../../logs:/app/logs
-      - ../../artifacts:/app/artifacts
+      - ./runtime/data:/app/data
+      - ./runtime/models:/app/models
+      - ./runtime/logs:/app/logs
+      - ./runtime/artifacts:/app/artifacts
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10083/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
-      - airflow_net
       - mlflow_net
       - mlops_net
     profiles: ["ml", "all"]
+
+  ml-gateway:
+    image: ${NGINX_IMAGE:?required}
+    restart: unless-stopped
+    depends_on:
+      ml-ingest-dev:
+        condition: service_healthy
+      ml-features-dev:
+        condition: service_healthy
+      ml-models-dev:
+        condition: service_healthy
+    volumes:
+      - ./ml-gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "nginx -t && wget -q --spider http://localhost:10090/health"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - mlops_net
+    profiles: ["ml", "all"]
+
+  job-runner-api:
+    image: job-runner-api:dev
+    build:
+      context: ../..
+      dockerfile: ./docker/dev/job-runner/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      ml-gateway:
+        condition: service_healthy
+    environment:
+      JOB_RUNNER_EXECUTOR: service
+      JOB_RUNNER_MAX_IN_FLIGHT_JOBS: ${JOB_RUNNER_MAX_IN_FLIGHT_JOBS:-2}
+      JOB_RUNNER_SERVICE_TIMEOUT_SECONDS: ${JOB_RUNNER_SERVICE_TIMEOUT_SECONDS:-3600}
+      JOB_RUNNER_INGEST_URL: http://ml-gateway:10090/ingest/jobs
+      JOB_RUNNER_FEATURES_URL: http://ml-gateway:10090/features/jobs
+      JOB_RUNNER_MODELS_URL: http://ml-gateway:10090/models/jobs
+    volumes:
+      - ./runtime/logs/job-runner:/app/logs
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:10080/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - mlops_net
+    profiles: ["ml", "airflow", "all"]
 
   api-dev:
     image: api:dev
@@ -429,31 +454,12 @@ services:
       airflow-init:
         condition: service_completed_successfully
     command: ["celery", "worker"]
-    entrypoint: ["/opt/airflow/scripts/airflow-entrypoint.sh"]
-    user: "0:0"
-    group_add:
-      - ${AIRFLOW_GID:-0}
-    environment:
-      <<: *airflow-common-env
-      AIRFLOW_GID: ${AIRFLOW_GID:-0}
-      AIRFLOW_UID: ${AIRFLOW_UID:-50000}
-      DOCKER_HOST: unix:///var/run/docker.sock
-    volumes:
-      - ./runtime/logs/airflow:/opt/airflow/logs
-      - ./runtime/data:/opt/airflow/data
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./airflow/scripts/airflow-entrypoint.sh:/opt/airflow/scripts/airflow-entrypoint.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "runuser --preserve-environment --user airflow -- /home/airflow/.local/bin/celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME} || runuser --preserve-environment --user airflow -- /home/airflow/.local/bin/celery --app airflow.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
+      test: ["CMD-SHELL", "celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME} || celery --app airflow.executors.celery_executor.app inspect ping -d celery@$${HOSTNAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    networks:
-      - airflow_net
-      - mlops_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-triggerer:
