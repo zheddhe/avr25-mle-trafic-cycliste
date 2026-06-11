@@ -7,7 +7,6 @@ from datetime import datetime
 
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sdk import DAG
-
 from common.utils import _list_counters_payload, _load_concurrency_config
 
 logger = logging.getLogger("airflow.task")
