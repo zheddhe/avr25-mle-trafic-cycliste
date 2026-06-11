@@ -90,29 +90,16 @@ env: ## Create a local .env file from .env.template if missing
 env-compose: ## Print shell exports for Docker Compose MLflow mode
 	@$(check_env)
 	@$(load_env); \
-	: "$${MLFLOW_TRACKING_URI_COMPOSE:?Missing MLFLOW_TRACKING_URI_COMPOSE}"; \
-	: "$${MLFLOW_S3_ENDPOINT_URL_COMPOSE:?Missing MLFLOW_S3_ENDPOINT_URL_COMPOSE}"; \
-	: "$${AWS_ACCESS_KEY_ID_COMPOSE:?Missing AWS_ACCESS_KEY_ID_COMPOSE}"; \
-	: "$${AWS_SECRET_ACCESS_KEY_COMPOSE:?Missing AWS_SECRET_ACCESS_KEY_COMPOSE}"; \
-	: "$${AWS_DEFAULT_REGION_COMPOSE:?Missing AWS_DEFAULT_REGION_COMPOSE}"; \
-	printf 'export MLFLOW_TRACKING_URI=%q\n' "$${MLFLOW_TRACKING_URI_COMPOSE}"; \
-	printf 'export MLFLOW_S3_ENDPOINT_URL=%q\n' "$${MLFLOW_S3_ENDPOINT_URL_COMPOSE}"; \
-	printf 'export AWS_ACCESS_KEY_ID=%q\n' "$${AWS_ACCESS_KEY_ID_COMPOSE}"; \
-	printf 'export AWS_SECRET_ACCESS_KEY=%q\n' "$${AWS_SECRET_ACCESS_KEY_COMPOSE}"; \
-	printf 'export AWS_DEFAULT_REGION=%q\n' "$${AWS_DEFAULT_REGION_COMPOSE}"; \
+	printf 'unset MLFLOW_TRACKING_URI\n'; \
 	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
-	printf 'unset MLFLOW_TRACKING_PASSWORD\n'
+	printf 'unset MLFLOW_TRACKING_PASSWORD\n';
 
 env-local: ## Print shell exports for host-local MLflow backend mode
 	@$(check_env)
 	@$(load_env); \
 	printf 'unset MLFLOW_TRACKING_URI\n'; \
-	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
 	printf 'unset MLFLOW_TRACKING_USERNAME\n'; \
-	printf 'unset MLFLOW_TRACKING_PASSWORD\n'; \
-	printf 'unset AWS_ACCESS_KEY_ID\n'; \
-	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
-	printf 'unset AWS_DEFAULT_REGION\n'
+	printf 'unset MLFLOW_TRACKING_PASSWORD\n';
 
 env-dagshub: ## Print shell exports for DagsHub MLflow mode
 	@$(check_env)
@@ -122,11 +109,7 @@ env-dagshub: ## Print shell exports for DagsHub MLflow mode
 	: "$${MLFLOW_TRACKING_PASSWORD_DAGSHUB:?Missing MLFLOW_TRACKING_PASSWORD_DAGSHUB}"; \
 	printf 'export MLFLOW_TRACKING_URI=%q\n' "$${MLFLOW_TRACKING_URI_DAGSHUB}"; \
 	printf 'export MLFLOW_TRACKING_USERNAME=%q\n' "$${MLFLOW_TRACKING_USERNAME_DAGSHUB}"; \
-	printf 'export MLFLOW_TRACKING_PASSWORD=%q\n' "$${MLFLOW_TRACKING_PASSWORD_DAGSHUB}"; \
-	printf 'unset MLFLOW_S3_ENDPOINT_URL\n'; \
-	printf 'unset AWS_ACCESS_KEY_ID\n'; \
-	printf 'unset AWS_SECRET_ACCESS_KEY\n'; \
-	printf 'unset AWS_DEFAULT_REGION\n'
+	printf 'export MLFLOW_TRACKING_PASSWORD=%q\n' "$${MLFLOW_TRACKING_PASSWORD_DAGSHUB}";
 
 git-setup: env ## Configure local Git identity from .env
 	@$(call log_test,git-setup)

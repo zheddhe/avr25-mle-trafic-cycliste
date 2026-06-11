@@ -11,6 +11,8 @@ from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOpe
 from common.utils import _list_counters_payload, _load_concurrency_config
 
 logger = logging.getLogger("airflow.task")
+logger.info("[orchestrator] Production DAG loaded")
+
 concurrency = _load_concurrency_config()
 
 with DAG(

@@ -22,23 +22,23 @@ volumes:
     name: prod-alertmanager-data
 
 networks:
-  orchestration_net:
-    name: orchestration_net
+  prod_orchestration_net:
+    name: prod_orchestration_net
     driver: bridge
-  pipeline_runtime_net:
-    name: pipeline_runtime_net
+  prod_pipeline_runtime_net:
+    name: prod_pipeline_runtime_net
     driver: bridge
-  tracking_client_net:
-    name: tracking_client_net
+  prod_tracking_client_net:
+    name: prod_tracking_client_net
     driver: bridge
-  tracking_backend_net:
-    name: tracking_backend_net
+  prod_tracking_backend_net:
+    name: prod_tracking_backend_net
     driver: bridge
-  observability_net:
-    name: observability_net
+  prod_observability_net:
+    name: prod_observability_net
     driver: bridge
-  dev_support_net:
-    name: dev_support_net
+  prod_support_net:
+    name: prod_support_net
     driver: bridge
 
 x-prod-security: &prod-security
@@ -80,8 +80,8 @@ x-airflow-common: &airflow-common
     - ./airflow/dags:/opt/airflow/dags:ro
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
-    - orchestration_net
-    - dev_support_net
+    - prod_orchestration_net
+    - prod_support_net
   profiles: ["all", "airflow", "ptf"]
 
 services:
@@ -98,7 +98,7 @@ services:
     deploy:
       replicas: ${ML_INGEST_REPLICAS:?required}
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      PUSHGATEWAY_ADDR: monitoring-pushgateway:9091
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -117,8 +117,8 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-features-prod:
@@ -131,7 +131,7 @@ services:
     deploy:
       replicas: ${ML_FEATURES_REPLICAS:?required}
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      PUSHGATEWAY_ADDR: monitoring-pushgateway:9091
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -150,8 +150,8 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-models-prod:
@@ -164,12 +164,12 @@ services:
     deploy:
       replicas: ${ML_MODELS_REPLICAS:?required}
     environment:
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?required}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?required}
       GIT_PYTHON_REFRESH: quiet
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      PUSHGATEWAY_ADDR: monitoring-pushgateway:9091
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -189,10 +189,10 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - pipeline_runtime_net
-      - tracking_client_net
-      - tracking_backend_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_tracking_client_net
+      - prod_tracking_backend_net
+      - prod_observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-gateway:
@@ -214,7 +214,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - pipeline_runtime_net
+      - prod_pipeline_runtime_net
     profiles: ["ml", "all", "ptf"]
 
   api-prod:
@@ -229,7 +229,6 @@ services:
     environment:
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
-
     volumes:
       - ./runtime/data/final:/app/data/final:ro
       - ./runtime/logs:/app/logs
@@ -243,8 +242,8 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["all", "api", "ptf"]
 
   job-runner-api:
@@ -276,7 +275,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - pipeline_runtime_net
+      - prod_pipeline_runtime_net
     profiles: ["all", "runner", "ptf"]
 
   # ========================
@@ -297,7 +296,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tracking_backend_net
+      - prod_tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-minio:
@@ -316,7 +315,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - tracking_backend_net
+      - prod_tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-mc-init:
@@ -332,7 +331,7 @@ services:
       touch /tmp/ok && sleep 1
       "
     networks:
-      - tracking_backend_net
+      - prod_tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-server:
@@ -373,9 +372,9 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - tracking_client_net
-      - tracking_backend_net
-      - observability_net
+      - prod_tracking_client_net
+      - prod_tracking_backend_net
+      - prod_observability_net
     profiles: ["all", "mlflow", "ptf"]
 
   # ========================
@@ -396,7 +395,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - orchestration_net
+      - prod_orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
@@ -411,7 +410,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - orchestration_net
+      - prod_orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
@@ -492,9 +491,9 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - orchestration_net
-      - pipeline_runtime_net
-      - dev_support_net
+      - prod_orchestration_net
+      - prod_pipeline_runtime_net
+      - prod_support_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-triggerer:
@@ -532,7 +531,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-grafana:
@@ -557,7 +556,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-cadvisor:
@@ -576,7 +575,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-pushgateway:
@@ -589,8 +588,8 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-alertmanager:
@@ -606,8 +605,8 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
-      - dev_support_net
+      - prod_observability_net
+      - prod_support_net
     profiles: ["all", "monitoring", "ptf"]
 
   monitoring-mailhog:
@@ -620,5 +619,5 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - dev_support_net
+      - prod_support_net
     profiles: ["all", "monitoring", "ptf"]
