@@ -2,6 +2,8 @@
 # LOCAL DEVELOPMENT RUNTIME
 # ========================
 # This Compose entrypoint is the canonical development runtime.
+# It follows docs/local-prod-network-topology.md and keeps the runner execution
+# boundary explicit in docs/local-prod-runtime.md.
 
 volumes:
   dev-mlflow-postgres-db:
@@ -59,7 +61,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
     AIRFLOW__SMTP__SMTP_STARTTLS: "False"
     AIRFLOW__SMTP__SMTP_SSL: "False"
-  user: "${AIRFLOW_UID:-50000}:0"
+  user: "${AIRFLOW_UID:?required}:${AIRFLOW_GID:?required}"
   depends_on: &airflow-common-depends-on
     airflow-redis:
       condition: service_healthy
@@ -86,6 +88,7 @@ services:
       context: ../..
       dockerfile: ./docker/dev/ml/ingest/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
     deploy:
       replicas: ${ML_INGEST_REPLICAS:?required}
     environment:
@@ -118,6 +121,7 @@ services:
       context: ../..
       dockerfile: ./docker/dev/ml/features/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
     deploy:
       replicas: ${ML_FEATURES_REPLICAS:?required}
     environment:
@@ -150,6 +154,7 @@ services:
       context: ../..
       dockerfile: ./docker/dev/ml/models/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
     deploy:
       replicas: ${ML_MODELS_REPLICAS:?required}
     environment:
@@ -212,8 +217,9 @@ services:
       context: ../..
       dockerfile: ./docker/dev/api/Dockerfile
     ports:
-      - "${API_HOST_PORT:-10000}:10000"
+      - "${API_HOST_PORT_DEV:?required}:10000"
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
     environment:
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
@@ -240,6 +246,7 @@ services:
       context: ../..
       dockerfile: ./docker/dev/job-runner/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
     depends_on:
       ml-gateway:
         condition: service_healthy
@@ -294,7 +301,7 @@ services:
       MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?required}
       MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?required}
     ports:
-      - "${MINIO_CONSOLE_HOST_PORT:-13002}:9001"
+      - "${MINIO_CONSOLE_HOST_PORT_DEV:?required}:9001"
     volumes:
       - dev-mlflow-minio-data:/data
     healthcheck:
@@ -351,7 +358,7 @@ services:
       GIT_PYTHON_REFRESH: quiet
       MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
     ports:
-      - "${MLFLOW_HOST_PORT:-13001}:5000"
+      - "${MLFLOW_HOST_PORT_DEV:?required}:5000"
     healthcheck:
       test:
         - CMD-SHELL
@@ -422,7 +429,7 @@ services:
         condition: service_completed_successfully
     command: ["api-server"]
     ports:
-      - "${AIRFLOW_HOST_PORT:-12080}:8080"
+      - "${AIRFLOW_HOST_PORT_DEV:?required}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 10s
@@ -509,7 +516,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
     ports:
-      - "${PROMETHEUS_HOST_PORT:-14090}:9090"
+      - "${PROMETHEUS_HOST_PORT_DEV:?required}:9090"
     volumes:
       - ./prometheus:/etc/prometheus:ro
       - dev-prometheus-data:/prometheus
@@ -529,11 +536,11 @@ services:
     depends_on:
       - monitoring-prometheus
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:?required}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "${GRAFANA_HOST_PORT:-14300}:3000"
+      - "${GRAFANA_HOST_PORT_DEV:?required}:3000"
     volumes:
       - dev-grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -553,7 +560,7 @@ services:
     restart: unless-stopped
     privileged: true
     ports:
-      - "${CADVISOR_HOST_PORT:-14200}:8080"
+      - "${CADVISOR_HOST_PORT_DEV:?required}:8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -573,7 +580,7 @@ services:
     image: ${PUSHGATEWAY_IMAGE:?required}
     restart: unless-stopped
     ports:
-      - "${PUSHGATEWAY_HOST_PORT:-14091}:9091"
+      - "${PUSHGATEWAY_HOST_PORT_DEV:?required}:9091"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/ready"]
       interval: 10s
@@ -589,7 +596,7 @@ services:
     image: ${ALERTMANAGER_IMAGE:?required}
     restart: unless-stopped
     ports:
-      - "${ALERTMANAGER_HOST_PORT:-14093}:9093"
+      - "${ALERTMANAGER_HOST_PORT_DEV:?required}:9093"
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - dev-alertmanager-data:/alertmanager
@@ -608,8 +615,8 @@ services:
     image: ${MAILHOG_IMAGE:?required}
     restart: unless-stopped
     ports:
-      - "${MAILHOG_SMTP_HOST_PORT:-15025}:1025"
-      - "${MAILHOG_UI_HOST_PORT:-15080}:8025"
+      - "${MAILHOG_SMTP_HOST_PORT_DEV:?required}:1025"
+      - "${MAILHOG_UI_HOST_PORT_DEV:?required}:8025"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8025 || exit 1"]
       interval: 10s

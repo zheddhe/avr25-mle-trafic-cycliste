@@ -24,12 +24,13 @@ RUN groupadd --gid "${APP_GID}" app && \
         --shell /usr/sbin/nologin \
         app && \
     mkdir -p /app/src/artifacts /app/src/ml/jobs /app/src/job_runner && \
-    mkdir -p /app/logs/job-runner && \
-    chown -R app:app /app
+    mkdir -p /app/logs/job-runner
 
 COPY src/artifacts /app/src/artifacts
-COPY /src/ml/jobs /app/src/ml/jobs
+COPY src/ml/jobs /app/src/ml/jobs
 COPY src/job_runner /app/src/job_runner
+
+RUN chown -R app:app /app
 
 USER app
 

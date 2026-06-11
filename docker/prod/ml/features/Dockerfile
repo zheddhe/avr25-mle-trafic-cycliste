@@ -27,8 +27,7 @@ RUN groupadd --gid "${APP_GID}" app && \
         /app/src/metrics \
         /app/src/ml/features \
         /app/src/ml/jobs \
-        /app/src/ml/services && \
-    chown -R app:app /app
+        /app/src/ml/services
 
 COPY src/artifacts /app/src/artifacts
 COPY src/metrics /app/src/metrics
@@ -37,6 +36,8 @@ COPY src/ml/services /app/src/ml/services
 COPY src/ml/features/artifact_manifest_emission.py /app/src/ml/features/artifact_manifest_emission.py
 COPY src/ml/features/features_utils.py /app/src/ml/features/features_utils.py
 COPY src/ml/features/build_features.py /app/src/ml/features/build_features.py
+
+RUN chown -R app:app /app
 
 USER app
 

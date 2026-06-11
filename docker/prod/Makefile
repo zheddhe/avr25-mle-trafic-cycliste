@@ -2,9 +2,9 @@ SHELL := /bin/bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: prod-help prod-prepare-runtime prod-compose-config prod-build
+.PHONY: prod-help prod-compose-config prod-build
 .PHONY: prod-start prod-stop prod-down prod-ps prod-logs prod-clean
-.PHONY: prod-scale-ml
+.PHONY: prod-scale-ml prod-dir-runtime
 
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
@@ -32,27 +32,12 @@ prod-help: ## Display local production-like runtime targets
 		} \
 	' $(MAKEFILE_LIST)
 
-prod-prepare-runtime: ## Create ignored local production-like runtime folders
-	@$(call prod_log_target,prod-prepare-runtime)
-	mkdir -p \
-		docker/prod/runtime/artifacts/manifests \
-		docker/prod/runtime/data/raw \
-		docker/prod/runtime/data/interim \
-		docker/prod/runtime/data/processed \
-		docker/prod/runtime/data/final \
-		docker/prod/runtime/models \
-		docker/prod/runtime/logs/api \
-		docker/prod/runtime/logs/airflow \
-		docker/prod/runtime/logs/job-runner \
-		docker/prod/runtime/logs/ml
-	cp -f ./data/raw/*.csv docker/prod/runtime/data/raw/
-
-prod-compose-config: prod-prepare-runtime ## Validate production-like Compose config
+prod-compose-config: ## Validate production-like Compose config
 	@$(call prod_log_target,prod-compose-config)
 	@$(prod_check_env)
 	$(prod_compose) --profile all config >/dev/null
 
-prod-build: prod-prepare-runtime ## Build local production-like Docker images
+prod-build: ## Build local production-like Docker images
 	@$(call prod_log_target,prod-build)
 	@$(prod_check_env)
 	$(prod_compose) --profile all build
@@ -85,6 +70,13 @@ prod-ps: ## Show local production-like service status
 prod-logs: ## Follow logs for SERVICE in the local production-like runtime
 	@$(call prod_log_target,prod-logs SERVICE=$(SERVICE))
 	$(prod_compose) logs -f -t $(SERVICE)
+
+prod-dir-runtime: ## Inspect the runtime volume
+	@$(call prod_dir_runtime,prod-dir-runtime)
+	docker run --rm -it \
+		-v prod-runtime:/runtime:ro \
+		alpine:3.20 \
+		sh
 
 prod-clean: ## Remove production-like containers, networks, and volumes
 	@$(call prod_log_target,prod-clean)

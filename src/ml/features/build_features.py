@@ -15,16 +15,19 @@ from src.ml.features.artifact_manifest_emission import (
 )
 from src.ml.features.features_utils import DatetimePeriodicsTransformer
 
-log_dir = os.path.join("logs", "ml")
-os.makedirs(log_dir, exist_ok=True)
-log_path = os.path.join(log_dir, "build_features.log")
+LOG_DIR = os.path.join("logs", "ml")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_PATH = os.path.join(LOG_DIR, "build_features.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 COLUMNS_TO_DROP = [
     "nom_du_site_de_comptage",
@@ -131,10 +134,10 @@ def main(
 
     with track_pipeline_step("features", labels) as metrics_payload:
         try:
-            logger.info(f"Loading interim CSV [{interim_path}] ...")
+            LOGGER.info(f"Loading interim CSV [{interim_path}] ...")
             df = pd.read_csv(interim_path, index_col=0)
         except Exception as exc:
-            logger.exception(f"Failed to load interim CSV: {exc}")
+            LOGGER.exception(f"Failed to load interim CSV: {exc}")
             raise click.ClickException(f"Failed to load interim CSV: {exc}") from exc
 
         if timestamp_col not in df.columns:
@@ -151,7 +154,7 @@ def main(
             if column in df.columns
         ]
         if to_drop:
-            logger.info(f"Dropping {len(to_drop)} column(s): {to_drop}")
+            LOGGER.info(f"Dropping {len(to_drop)} column(s): {to_drop}")
             df = df.drop(columns=to_drop)
 
         if sub_dir is None:
@@ -161,7 +164,7 @@ def main(
         processed_path = os.path.join(out_dir, processed_name)
 
         df.to_csv(processed_path, index=True)
-        logger.info(
+        LOGGER.info(
             f"Saved processed CSV to [{processed_path}]"
             f" ({len(df)} rows, {df.shape[1]} cols)."
         )
@@ -182,14 +185,14 @@ def main(
             promote=True,
         )
         if emitted_manifest is not None:
-            logger.info(
+            LOGGER.info(
                 "Feature dataset artifact manifest emitted for "
                 f"run_id=[{emitted_manifest.run_id}].",
             )
 
         metrics_payload["records"] = int(len(df))
 
-    logger.info("Feature engineering ended successfully.")
+    LOGGER.info("Feature engineering ended successfully.")
     sys.exit(0)
 
 
@@ -197,5 +200,5 @@ if __name__ == "__main__":
     try:
         main()
     except click.ClickException as error:
-        logger.error(str(error))
+        LOGGER.error(str(error))
         sys.exit(1)
