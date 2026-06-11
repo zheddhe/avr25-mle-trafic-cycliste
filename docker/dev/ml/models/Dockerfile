@@ -10,16 +10,18 @@ WORKDIR /app
 COPY docker/dev/ml/models/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-RUN mkdir -p /app/src/artifacts /app/src/metrics /app/src/ml/models
-COPY src/artifacts /app/src/artifacts
-COPY src/metrics /app/src/metrics
-COPY src/ml/models/artifact_manifest_emission.py \
-     /app/src/ml/models/artifact_manifest_emission.py
-COPY src/ml/models/models_utils.py \
-     /app/src/ml/models/models_utils.py
-COPY src/ml/models/mlflow_tracking.py \
-     /app/src/ml/models/mlflow_tracking.py
-COPY src/ml/models/train_and_predict.py \
-     /app/src/ml/models/train_and_predict.py
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /app/data /app/logs /app/artifacts /app/models \
+    && chown -R app:app /app
 
-ENTRYPOINT ["python", "-m", "src.ml.models.train_and_predict"]
+COPY --chown=app:app src/artifacts /app/src/artifacts
+COPY --chown=app:app src/metrics /app/src/metrics
+COPY --chown=app:app src/ml/jobs /app/src/ml/jobs
+COPY --chown=app:app src/ml/services /app/src/ml/services
+COPY --chown=app:app src/ml/models /app/src/ml/models
+
+USER app
+
+EXPOSE 10083
+
+CMD ["uvicorn", "src.ml.services.models_main:app", "--host", "0.0.0.0", "--port", "10083"]
