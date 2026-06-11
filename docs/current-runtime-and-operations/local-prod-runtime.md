@@ -1,59 +1,40 @@
 # Local Compose runtimes
 
-This document describes the implemented local Docker Compose runtime model on
-`main`. It is a current-state operational guide.
+This document describes the implemented local Docker Compose runtime model. It is
+a current-state operational guide for `docker/dev` and `docker/prod`.
 
-The development runtime optimizes for debugging, host visibility, live-mounted
-runtime assets, and direct inspection of local service UIs. The production-like
-runtime optimizes for stricter local operation, reduced host exposure, functional
-networks, non-root custom application images, and isolated runtime workspaces.
+The two runtimes now share the same functional execution topology:
 
-Both Compose runtimes keep their operational outputs under runtime-scoped
-workspaces:
+```text
+Airflow DAG
+  -> job-runner-api
+  -> ml-gateway
+  -> ml-ingest-* / ml-features-* / ml-models-*
+  -> promoted artifact manifests
+  -> authenticated API refresh
+```
 
-- `docker/dev/runtime` for Airflow-driven development operations;
-- `docker/prod/runtime` for local production-like validation.
-
-Root `data`, `models`, and `logs` remain the local experimentation and DVC
-workspaces. This separation prevents routine Compose runs from polluting the DVC
-or notebook-oriented workspace.
+The important runtime differences are intentional and limited to local exposure,
+workspace ownership, image tags, runtime users, and debug ergonomics.
 
 ## When to use each runtime
 
 | Runtime | Entry point | Primary use |
 | ------- | ----------- | ----------- |
-| Development | `docker/dev/docker-compose.yaml` | Debugging, local demos, broad host visibility, DockerOperator-based Airflow ML jobs. |
-| Local production-like | `docker/prod/docker-compose.yaml` | Network and exposure validation, isolated runtime workspaces, internal runner API checks, manifest-first API serving, and monitoring smoke checks. |
+| Development | `docker/dev/docker-compose.yaml` | Full local runtime with visible host ports, host bind-mounted `docker/dev/runtime`, and the same runner/gateway/ML-service path as prod-like. |
+| Local production-like | `docker/prod/docker-compose.yaml` | Reduced host exposure, named Docker runtime volume, explicit init service, internal runner/gateway/ML services, and production-like boundary checks. |
 
-Use `docker/dev` when iterating on DAGs, ML CLI containers, service wiring, and
-Airflow-driven operational behavior. Its DAG path mounts `docker/dev/runtime` so
-that Compose-generated data, logs, models, and manifests stay isolated from root
-DVC workspaces.
+Use `docker/dev` for day-to-day MLOps development, DAG debugging, service logs,
+OpenAPI inspection, MLflow inspection, metrics debugging, and parallel local runs
+with `docker/prod`.
 
-Use root Python, DVC, notebooks, or explicit local scripts when iterating on
-reproducible experimentation assets under root `data`, `models`, and `logs`.
+Use `docker/prod` for production-like validation of the service topology,
+runtime volume ownership, internal-only services, reduced host exposure, and
+manifest-first serving behavior.
 
-Use `docker/prod` when validating implemented service boundaries, reduced host
-exposure, non-root application containers, internal service discovery, runner API
-behavior, manifest-first artifact handoff, and isolated runtime workspaces.
-
-Do not use a root-level Compose file. Runtime commands must go through the
-runtime-specific Make targets or an explicit `docker compose -f` command.
-
-## Related documentation
-
-Start from [`../README.md`](../README.md) for the full documentation map and the
-rules that separate current runtime docs, architecture references, and active
-design notes.
-
-| Document | Role |
-| -------- | ---- |
-| [`repository-structure.md`](repository-structure.md) | Repository ownership, DVC boundaries, and runtime workspace ownership. |
-| [`ports-and-services.md`](ports-and-services.md) | Implemented host exposure and internal-only services. |
-| [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md) | Implemented service traffic, runner boundary, networks, and mounts. |
-| [`../architecture-references/runtime-security-boundaries.md`](../architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket risk, and security boundaries. |
-| [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md) | Implemented production-like network topology. |
-| [`../next-phase-design/artifact-handoff-strategy.md`](../next-phase-design/artifact-handoff-strategy.md) | Manifest-first artifact handoff contract and remaining artifact gaps. |
+Root `data`, `models`, and `logs` remain local experimentation and DVC
+workspaces. Compose-driven runtime outputs must stay under the runtime-specific
+workspace or volume described below.
 
 ## Operational commands
 
@@ -62,19 +43,34 @@ The root Makefile includes the dedicated runtime Makefiles:
 - `docker/dev/Makefile` for local development Compose operations;
 - `docker/prod/Makefile` for local production-like Compose operations.
 
-Explicit runtime commands are preferred for cross-checks:
+Common validation and startup commands:
 
 ```bash
 make dev-compose-config
+make dev-build
 make dev-start
 make dev-ps
 
 make prod-compose-config
+make prod-build
 make prod-start
 make prod-ps
 ```
 
-Runtime-scoped cleanups:
+Scale ML replicas through the gateway path:
+
+```bash
+make dev-scale-ml ML_INGEST_REPLICAS=2 ML_FEATURES_REPLICAS=2 ML_MODELS_REPLICAS=2
+make prod-scale-ml ML_INGEST_REPLICAS=2 ML_FEATURES_REPLICAS=2 ML_MODELS_REPLICAS=2
+```
+
+Inspect the production-like runtime Docker volume with:
+
+```bash
+make prod-dir-runtime
+```
+
+Runtime-scoped cleanup commands:
 
 ```bash
 make dev-clean
@@ -83,256 +79,152 @@ make prod-clean
 
 ## Runtime workspace strategy
 
-The root `data`, `models`, and `logs` folders are development, DVC, and
-host-local experimentation workspaces. They are used by local Python commands,
-DVC reproduction, notebooks, and ad hoc developer exploration.
+The development runtime uses host-visible bind mounts under `docker/dev/runtime`.
+This keeps debugging simple and makes generated files easy to inspect from the
+host.
 
-The Airflow-driven development runtime writes operational outputs to ignored
-runtime workspaces under `docker/dev/runtime`:
+| Development path | Purpose |
+| ---------------- | ------- |
+| `docker/dev/runtime/data` | Generated raw, interim, processed, and final runtime data. |
+| `docker/dev/runtime/models` | Runtime model artifacts written by `ml-models-dev`. |
+| `docker/dev/runtime/logs` | API, Airflow, ML service, and runner logs. |
+| `docker/dev/runtime/artifacts` | Manifest-first artifact handoff root. |
 
-| Path | Purpose |
-| ---- | ------- |
-| `docker/dev/runtime/data` | Development Compose generated data workspace. |
-| `docker/dev/runtime/models` | Development Compose model workspace. |
-| `docker/dev/runtime/logs` | Development Compose service and batch log workspace. |
-| `docker/dev/runtime/artifacts` | Development Compose manifest-first artifact handoff root. |
+The production-like runtime uses the named Docker volume `prod-runtime`. The
+`init-volumes` service creates the expected subdirectories, seeds the raw CSV
+from root `data/raw`, and applies runtime ownership before dependent services
+start.
 
-The local production-like runtime writes to ignored runtime workspaces under
-`docker/prod/runtime`:
+| Production-like volume path | Purpose |
+| --------------------------- | ------- |
+| `prod-runtime:/data` | Generated production-like data workspace. |
+| `prod-runtime:/models` | Production-like model artifacts. |
+| `prod-runtime:/logs` | Production-like service, Airflow, ML, and runner logs. |
+| `prod-runtime:/artifacts` | Manifest-first artifact handoff root. |
 
-| Path | Purpose |
-| ---- | ------- |
-| `docker/prod/runtime/data` | Production-like generated data workspace. |
-| `docker/prod/runtime/models` | Production-like model workspace. |
-| `docker/prod/runtime/logs` | Production-like service and batch log workspace. |
-| `docker/prod/runtime/artifacts` | Manifest-first artifact handoff root. |
-
-Only the required business source CSV is mounted from the root development/DVC
-workspace into the production-like ingestion service as read-only input:
+The required business source CSV is still owned by the root/DVC workspace and is
+seeded into the production-like runtime volume by `init-volumes`:
 
 ```text
 data/raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv
 ```
 
-This keeps DVC ownership local to the root workspace while allowing Compose
-runtimes to run without writing routine operational outputs into root `data`,
-`models`, or `logs`.
+## Shared execution boundary
 
-## Production-like service boundary
+Both runtimes expose the same typed execution boundary:
 
-The production-like runtime contains:
-
-- custom non-root API, runner API, and ML images;
-- Airflow services without `/var/run/docker.sock` mounts;
-- MLflow, MinIO, PostgreSQL, Redis, and monitoring support services;
-- internal `ml-ingest-prod`, `ml-features-prod`, and `ml-models-prod` FastAPI
-  services for concrete ML step execution;
-- an internal `job-runner-api` service for typed ML step submission, status reads,
-  and failure mapping;
-- a manifest-first prediction API that serves only promoted prediction manifests.
-
-`job-runner-api` is a FastAPI service listening on container port `10080`. It
-exposes `/health`, `/jobs`, and `/jobs/{job_id}` on internal Docker networks. It
-keeps job status in process memory and delegates one allow-listed typed ML step at
-a time to the matching internal ML service through Compose DNS.
-
-The active runner contract accepts only `ingest`, `features`, and `models` jobs
-from `src/ml/jobs`. It does not expose a pipeline-wide runtime job. Submitted
-jobs move through `queued`, `running`, and a terminal `succeeded` or `failed`
-state. Successful jobs return output path, metrics, and optional artifact
-manifest evidence. Controlled execution failures return structured job errors.
-
-The runner implementation is intentionally synchronous and in-memory for the
-local production-like runtime. It is not a durable queue, distributed scheduler,
-Docker SDK wrapper, shell command runner, or Kubernetes job controller.
-
-`docker/prod` Airflow services can start without Docker socket access. The
-production-like DAGs under `docker/prod/airflow/dags` keep the same functional
-shape as the development DAGs:
-
-- `bike_traffic_orchestrator` lists counters from the mounted DAG configuration;
-- `bike_traffic_init` performs historical bootstrap through `job-runner-api`;
-- `bike_traffic_daily` performs daily sliding-window runs through
+- Airflow loads a file-based DAG configuration from
+  `airflow/config/bike_dag_config.json`.
+- `bike_traffic_orchestrator` enumerates configured counters.
+- `bike_traffic_init` and `bike_traffic_daily` submit typed jobs to
   `job-runner-api`.
+- `job-runner-api` accepts only `ingest`, `features`, and `models` jobs.
+- `ml-gateway` routes those requests to the matching ML step service.
+- ML step services write data, logs, models, metrics, and promoted manifests.
+- The FastAPI prediction API refreshes from promoted prediction manifests.
 
-Both child DAGs submit `ingest`, then `features`, then `models` jobs, and only
-trigger authenticated API refresh through the `api_prod` Airflow connection after
-the model step has succeeded.
+`job-runner-api` is intentionally not a generic shell runner, Docker SDK wrapper,
+Kubernetes controller, or full-pipeline orchestrator. Airflow keeps ordering
+responsibility; the runner keeps typed service dispatch and status mapping.
+
+## Runtime services
+
+| Service family | Development | Production-like |
+| -------------- | ----------- | --------------- |
+| Prediction API | `api-dev`, host-exposed on `API_HOST_PORT_DEV`. | `api-prod`, host-exposed on `API_HOST_PORT_PROD`. |
+| Runner API | `job-runner-api`, internal-only. | `job-runner-api`, internal-only. |
+| Gateway | `ml-gateway`, internal-only on `10090`. | `ml-gateway`, internal-only on `10090`. |
+| ML services | `ml-ingest-dev`, `ml-features-dev`, `ml-models-dev`. | `ml-ingest-prod`, `ml-features-prod`, `ml-models-prod`. |
+| Airflow | Host-exposed UI/API on `AIRFLOW_HOST_PORT_DEV`. | Host-exposed UI/API on `AIRFLOW_HOST_PORT_PROD`. |
+| MLflow | Host-exposed on `MLFLOW_HOST_PORT_DEV`. | Host-exposed on `MLFLOW_HOST_PORT_PROD`. |
+| MinIO | Console host-exposed for dev debugging only. | Internal-only. |
+| Monitoring | Prometheus, Pushgateway, cAdvisor, Grafana, Alertmanager exposed for dev. | Grafana host-exposed; support services internal-only. |
+| MailHog | Host-exposed local helper. | Internal support service only when configured. |
+
+## Airflow configuration
+
+Dev and prod-like Airflow are file based. `variables.json` is no longer part of
+the normal runtime contract.
+
+| Runtime | DAG config | API refresh connection |
+| ------- | ---------- | ---------------------- |
+| Development | `docker/dev/airflow/config/bike_dag_config.json` | `api_dev` from `connections.json`. |
+| Production-like | `docker/prod/airflow/config/bike_dag_config.json` | `api_prod` from `connections.json`. |
+
+The dev and prod-like DAGs are intentionally aligned. Differences should remain
+limited to runtime tags, API connection IDs, service names, and runtime paths.
+
+## MLflow runtime view
+
+Compose services use the internal MLflow service name directly:
+
+```text
+http://mlflow-server:5000
+```
+
+The previous local `mlops-*` chain is no longer the main path. Host-side MLflow
+switching is handled by the root Makefile environment helpers for local unset
+mode or DagsHub mode. Compose mode does not need mirrored MLflow target variables
+because the runtime service URLs are explicit in Compose.
+
+## Host port strategy
+
+`.env.template` separates dev and prod-like host port ranges so both runtimes can
+run in parallel on the same host:
+
+| Range family | Prod-like variables | Dev variables |
+| ------------ | ------------------- | ------------- |
+| Business API | `API_HOST_PORT_PROD` | `API_HOST_PORT_DEV` |
+| Airflow | `AIRFLOW_HOST_PORT_PROD` | `AIRFLOW_HOST_PORT_DEV` |
+| MLflow | `MLFLOW_HOST_PORT_PROD` | `MLFLOW_HOST_PORT_DEV` |
+| Grafana | `GRAFANA_HOST_PORT_PROD` | `GRAFANA_HOST_PORT_DEV` |
+| Dev-only tools | n/a | MinIO console, Prometheus, Pushgateway, cAdvisor, Alertmanager, MailHog. |
+
+Detailed ports are documented in
+[`ports-and-services.md`](ports-and-services.md).
 
 ## Manifest-first API serving
 
-The prediction API no longer infers the current payload by scanning
-`data/final`. It loads promoted prediction manifests from:
+The prediction API loads promoted prediction manifests from:
 
 ```text
 <manifest_root>/predictions/<counter_id>/current.json
 ```
 
-The API runtime is configured with:
-
-| Variable | Purpose |
-| -------- | ------- |
-| `ARTIFACT_MANIFEST_ROOT` | Directory that contains promoted manifests. |
-| `ARTIFACT_REPOSITORY_ROOT` | Base directory used to resolve manifest `storage.local_path` values. |
-| `API_COUNTER_IDS` | Optional comma-separated counter allow-list. When omitted, the API discovers counters with a promoted prediction `current.json`. |
-
-Only `primary_backend="local"` prediction manifests are served today. The API
-verifies the local payload checksum when `storage.checksum_sha256` is present,
-reads the referenced CSV, and exposes sanitized current artifact metadata through
-`/artifacts/current` and `/artifacts/current/{counter_id}`.
-
-If no promoted prediction manifest is available at startup, the API still boots
-so the runtime can become healthy before the first DAG run. Serving endpoints
-return a business error until `/admin/refresh` successfully loads a promoted
-manifest.
-
-## Manifest promotion reliability
-
-The local filesystem manifest store writes run-scoped manifests under:
-
-```text
-<manifest_root>/<artifact_type>/<counter_id>/<run_id>/manifest.json
-```
-
-Promotion then atomically replaces the stable reader-facing file:
-
-```text
-<manifest_root>/<artifact_type>/<counter_id>/current.json
-```
-
-Promotion is serialized with a scope-local lock under the same artifact type and
-counter id. This keeps same-counter promotion deterministic while allowing
-independent counters to use independent locks.
-
-A failed `current.json` write must leave the previous valid promoted manifest in
-place when one exists. Retrying the same promotion with identical manifest input
-is idempotent and keeps the same promoted path. This contract supports the
-manifest-first API reader, which should observe either the previous valid
-manifest or the newly promoted one, never partial JSON content.
-
-## Production-like Airflow configuration
-
-The production-like Airflow configuration is file based:
-
-| File | Purpose |
-| ---- | ------- |
-| `docker/prod/airflow/config/bike_dag_config.json` | Counter and scheduling configuration mounted read-only into Airflow. |
-| `docker/prod/airflow/config/connections.json` | Airflow connections, including `api_prod` for authenticated API refresh. |
-
-`docker/prod` no longer imports `variables.json`. The prod DAG configuration is
-loaded from the mounted JSON file, while the init script removes obsolete
-DockerOperator-era variables if they still exist in a reused Airflow metadata DB.
-
-## Network topology
-
-The `docker/prod` Compose file implements the functional network design from
-[`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md).
-
-| Network | Main responsibility |
-| ------- | ------------------- |
-| `orchestration_net` | Airflow control plane, metadata DB, and broker. |
-| `pipeline_runtime_net` | API refresh, batch job handoff, runner API access, and Pushgateway writes. |
-| `tracking_client_net` | MLflow client API calls from model workloads. |
-| `tracking_backend_net` | MLflow PostgreSQL and MinIO backend isolation. |
-| `observability_net` | Prometheus scrapes, Grafana datasource access, and alert routing. |
-| `dev_support_net` | Local SMTP capture for Airflow and Alertmanager. |
-
-The broad development `mlops_net` remains available in `docker/dev` because the
-current Airflow DockerOperator path depends on the development network model. It
-is not used by `docker/prod`.
-
-## Host exposure
-
-The local production-like runtime publishes only operator-facing services needed
-for local validation by default:
-
-| Service | Reason |
-| ------- | ------ |
-| `api-prod` | Local prediction API, OpenAPI docs, and smoke tests. |
-| `airflow-api-server` | Local DAG inspection and orchestration UI. |
-| `mlflow-server` | Local tracking inspection while the model registry path matures. |
-| `monitoring-grafana` | Local dashboard entrypoint. |
-
-`job-runner-api`, ML step services, MinIO, Prometheus, Pushgateway,
-Alertmanager, MailHog, cAdvisor, Redis, and PostgreSQL services stay internal in
-`docker/prod`.
-
-## Mount strategy
-
-| Mount | Runtime | Status | Reason |
-| ----- | ------- | ------ | ------ |
-| Root `data`, `models`, `logs` | Local Python/DVC | Writable | Reproducible experimentation and notebook-oriented local work. |
-| `docker/dev/runtime/data` | Dev | Writable | Airflow-driven development generated data workspace. |
-| `docker/dev/runtime/models` | Dev | Writable | Airflow-driven development model workspace. |
-| `docker/dev/runtime/logs` | Dev | Writable | Development Compose service and batch log workspace. |
-| `docker/dev/runtime/artifacts` | Dev | Writable by ML jobs, read-only by API when mounted | Development manifest-first handoff root. |
-| Root source CSV | Prod | Read-only | Required business input for ingestion. |
-| `docker/prod/runtime/data` | Prod | Writable by ML jobs, read-only by API | Production-like generated data workspace. |
-| `docker/prod/runtime/models` | Prod | Writable | Production-like model workspace. |
-| `docker/prod/runtime/logs` | Prod | Writable | Production-like service and batch log workspace. |
-| `docker/prod/runtime/artifacts` | Prod | Writable by ML jobs, read-only by API and Airflow | Manifest-first handoff root. |
-| `docker/prod/runtime/logs/job-runner` | Prod | Writable by `job-runner-api` | Runner API service logs. |
-| Airflow DAG/config files | Prod | Read-only | DAG and config placement is explicit for this runtime. |
-| Monitoring configs | Prod | Read-only | Prometheus, Alertmanager, and Grafana provisioning remain versioned assets. |
-
-The runner API service mounts only its log directory in Compose. The concrete ML
-services own runtime data, model, log, artifact, and optional MLflow access. The
-runner therefore keeps its control-plane boundary narrow and does not need Docker
-or broad artifact workspace mounts.
-
-## Runtime identities and exceptions
-
-Custom API, runner API, and ML containers run as a non-root application user in
-`docker/prod`. They also drop Linux capabilities and use `no-new-privileges`.
-The prod Dockerfiles default this user to UID/GID `1000` to keep local
-bind-mount writes compatible with common developer hosts.
-
-Documented exceptions:
-
-- Airflow uses the upstream Airflow image and its supported runtime user model.
-- cAdvisor remains privileged because local container metrics require access to
-  host and Docker runtime paths.
-- Infrastructure images such as PostgreSQL, Redis, MinIO, Prometheus, Grafana,
-  and Alertmanager keep their upstream image users unless a service-specific
-  validation proves a safer override.
-
-## Secrets and placeholders
-
-`docker/dev` and `docker/prod` read `.env` from the repository root. Do not
-commit a populated `.env` file.
-
-The production-like Airflow config uses placeholder credentials where values are
-not safe to commit. Replace placeholders locally before running authenticated
-flows.
+The API does not infer current predictions by scanning `data/final`. It resolves
+`storage.local_path` from `ARTIFACT_REPOSITORY_ROOT`, verifies the local payload
+checksum when present, and exposes current artifact metadata through the artifact
+endpoints.
 
 ## Validation checklist
 
-Minimum validation:
+For this runtime slice, validate at least:
 
 ```bash
+make lint
+make tests
 make dev-compose-config
 make prod-compose-config
+make dev-build
+make prod-build
 ```
 
-Additional local smoke checks after startup:
+Then validate runtime behavior with:
 
 ```bash
-make dev-start
-make prod-start
+make dev-start DEV_PROFILE=ptf
+make prod-start PROD_PROFILE=ptf
+make dev-ps
 make prod-ps
 ```
 
-Runner API checks inside the production-like Compose network:
+Expected runtime properties:
 
-```bash
-docker compose \
-    --env-file .env \
-    -f docker/prod/docker-compose.yaml \
-    --profile ptf up -d job-runner-api
-
-docker compose \
-    --env-file .env \
-    -f docker/prod/docker-compose.yaml \
-    exec job-runner-api \
-    python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:10080/health').read().decode())"
-```
+- dev and prod-like DAGs submit ML work through `job-runner-api`;
+- `job-runner-api` reaches ML services only through `ml-gateway`;
+- Airflow workers do not mount `/var/run/docker.sock`;
+- only cAdvisor keeps the Docker socket observability exception;
+- dev writes to host-visible `docker/dev/runtime`;
+- prod-like writes to the `prod-runtime` Docker volume;
+- prod-like MinIO, Prometheus, Pushgateway, Alertmanager, cAdvisor, MailHog,
+  runner, gateway, and ML step services stay internal-only.
