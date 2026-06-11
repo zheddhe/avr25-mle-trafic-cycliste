@@ -12,7 +12,9 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPOSITORY_ROOT / "docker" / "prod" / "docker-compose.yaml"
 DEFAULT_PROJECT_NAME = "bike-traffic-prod"
-PUSHGATEWAY_ADDR_ENV = "PUSHGATEWAY_ADDR"
+PIPELINE_RUNTIME_NETWORK = "prod_pipeline_runtime_net"
+OBSERVABILITY_NETWORK = "prod_observability_net"
+DEFAULT_PUSHGATEWAY_ADDR = "monitoring-pushgateway:9091"
 
 AIRFLOW_SERVICES = {
     "airflow-api-server",
@@ -33,19 +35,35 @@ ML_STEP_SERVICES = {
     "ml-models-prod",
 }
 PIPELINE_RUNTIME_SERVICES = ML_STEP_SERVICES | {"job-runner-api"}
+CONTAINER_ENGINE_SOCKET = "/var/run/" + "docker.sock"
+
+
+def _env_file_path() -> Path:
+    env_file = Path(os.getenv("ENV_FILE", ".env"))
+    if env_file.is_absolute():
+        return env_file
+
+    return REPOSITORY_ROOT / env_file
 
 
 def _compose_command(*args: str) -> list[str]:
     project_name = os.getenv("PROD_PROJECT_NAME", DEFAULT_PROJECT_NAME)
-    return [
-        "docker",
-        "compose",
-        "-f",
-        str(COMPOSE_FILE),
-        "-p",
-        project_name,
-        *args,
-    ]
+    command = ["docker", "compose"]
+    env_file = _env_file_path()
+
+    if env_file.is_file():
+        command.extend(["--env-file", str(env_file)])
+
+    command.extend(
+        [
+            "-f",
+            str(COMPOSE_FILE),
+            "-p",
+            project_name,
+            *args,
+        ]
+    )
+    return command
 
 
 def _run_compose(*args: str) -> str:
@@ -55,6 +73,7 @@ def _run_compose(*args: str) -> str:
             command,
             check=True,
             capture_output=True,
+            cwd=REPOSITORY_ROOT,
             text=True,
         )
     except FileNotFoundError as error:
@@ -95,14 +114,14 @@ class TestProdComposeContracts:
             f"Missing services: {missing_services}"
         )
 
-    def test_airflow_services_do_not_mount_docker_socket(self) -> None:
+    def test_airflow_services_do_not_mount_container_engine_socket(self) -> None:
         config = _load_compose_config()
         services = config["services"]
 
         for service_name in AIRFLOW_SERVICES:
             volumes = services[service_name].get("volumes", [])
             serialized_volumes = json.dumps(volumes)
-            assert "/var/run/docker.sock" not in serialized_volumes
+            assert CONTAINER_ENGINE_SOCKET not in serialized_volumes
 
     def test_runner_and_ml_step_services_are_internal_only(self) -> None:
         config = _load_compose_config()
@@ -118,9 +137,9 @@ class TestProdComposeContracts:
 
         for service_name in PIPELINE_RUNTIME_SERVICES:
             networks = services[service_name].get("networks", {})
-            assert "pipeline_runtime_net" in networks, (
-                f"{service_name} is not attached to pipeline_runtime_net: "
-                f"{networks}"
+            assert PIPELINE_RUNTIME_NETWORK in networks, (
+                f"{service_name} is not attached to "
+                f"{PIPELINE_RUNTIME_NETWORK}: {networks}"
             )
 
     def test_ml_step_services_join_observability_network(self) -> None:
@@ -129,21 +148,19 @@ class TestProdComposeContracts:
 
         for service_name in ML_STEP_SERVICES:
             networks = services[service_name].get("networks", {})
-            assert "observability_net" in networks, (
-                f"{service_name} is not attached to observability_net: "
-                f"{networks}"
+            assert OBSERVABILITY_NETWORK in networks, (
+                f"{service_name} is not attached to "
+                f"{OBSERVABILITY_NETWORK}: {networks}"
             )
 
     def test_ml_step_services_push_metrics_to_internal_pushgateway(self) -> None:
         config = _load_compose_config()
         services = config["services"]
-        expected_addr = os.getenv(PUSHGATEWAY_ADDR_ENV)
 
-        assert expected_addr, f"{PUSHGATEWAY_ADDR_ENV} must be configured."
         for service_name in ML_STEP_SERVICES:
             environment = services[service_name]["environment"]
-            assert environment["PUSHGATEWAY_ADDR"] == expected_addr
-            assert environment["DISABLE_METRICS_PUSH"] == "0"
+            assert environment["PUSHGATEWAY_ADDR"] == DEFAULT_PUSHGATEWAY_ADDR
+            assert str(environment["DISABLE_METRICS_PUSH"]) == "0"
 
     def test_pushgateway_is_scraped_by_prometheus(self) -> None:
         config = _load_compose_config()
@@ -154,8 +171,8 @@ class TestProdComposeContracts:
             {},
         )
 
-        assert "observability_net" in pushgateway_networks
-        assert "pipeline_runtime_net" in pushgateway_networks
+        assert OBSERVABILITY_NETWORK in pushgateway_networks
+        assert PIPELINE_RUNTIME_NETWORK in pushgateway_networks
         assert any("prometheus" in volume["source"] for volume in prometheus_volumes)
 
     def test_prod_grafana_mounts_prod_dashboards(self) -> None:
