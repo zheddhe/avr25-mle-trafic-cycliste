@@ -1,105 +1,35 @@
-# src/airflow/dags/bike_traffic_pipeline_dag.py
+"""Development init and daily DAGs using job-runner-api."""
+
 from __future__ import annotations
 
 import json
 import logging
-import os
+import urllib.error
+import urllib.request
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from airflow import DAG
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance
-from airflow.models.param import Param, ParamsDict
-from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.models.param import ParamsDict
 from airflow.providers.http.operators.http import HttpOperator
 from airflow.providers.standard.operators.python import (
     PythonOperator,
     ShortCircuitOperator,
 )
-from airflow.sdk import Variable
-from airflow.utils.task_group import TaskGroup
-from common.utils import _load_config, _required_var
-from docker.types import Mount
-
-from docker import from_env as docker_from_env
+from airflow.sdk import DAG, Param, TaskGroup, Variable
+from common.utils import CounterCfg, _load_concurrency_config, _load_config
 
 logger = logging.getLogger("airflow.task")
+concurrency = _load_concurrency_config()
 
-# --------------------------------------------------------------------------- #
-# Infra Variables
-# --------------------------------------------------------------------------- #
-# Docker images and runtime network
-# Images: default_var kept for local dev convenience; missing var raises a
-# clear error at DAG-parse time when the variable is truly absent.
-IMG_INGEST = _required_var("docker_image_ingest")
-IMG_FEATS = _required_var("docker_image_features")
-IMG_MODELS = _required_var("docker_image_models")
-DOCKER_NET = _required_var("docker_network")
+JOB_RUNNER_URL = "http://job-runner-api:10080"
+DATA_ROOT = "/app/data"
+MODEL_ROOT = "/app/models"
+MANIFEST_ROOT = "/app/artifacts/manifests"
 
-# Host and container paths
-# host_repo_root has NO default: a missing variable would mount "/" which is
-# dangerous.  The error is raised at DAG-parse time so the operator sees it
-# before any container is created.
-HOST_REPO = _required_var("host_repo_root")
-AIRFLOW_REPO = _required_var("airflow_repo_root")
-CONT_REPO = _required_var("container_repo_root")
-
-# Artifact handoff configuration
-# These variables are mandatory: a missing root would silently disable manifest
-# emission or make local_path resolution diverge from API serving.
-ARTIFACT_MANIFEST_ROOT = _required_var("artifact_manifest_root")
-ARTIFACT_REPOSITORY_ROOT = _required_var("artifact_repository_root")
-
-MOUNTS = [
-    Mount(
-        source=f"{HOST_REPO}/docker/dev/runtime/data",
-        target=f"{CONT_REPO}/data",
-        type="bind",
-    ),
-    Mount(
-        source=f"{HOST_REPO}/docker/dev/runtime/logs",
-        target=f"{CONT_REPO}/logs",
-        type="bind",
-    ),
-    Mount(
-        source=f"{HOST_REPO}/docker/dev/runtime/models",
-        target=f"{CONT_REPO}/models",
-        type="bind",
-    ),
-    Mount(
-        source=f"{HOST_REPO}/docker/dev/runtime/artifacts",
-        target=f"{CONT_REPO}/artifacts",
-        type="bind",
-    ),
-]
-
-# MLflow / MinIO configuration
-# These are infrastructure credentials / endpoints: no default_var.
-# A missing variable means the pipeline would silently lose all artifacts.
-MLFLOW_TRACKING_URI = _required_var("mlflow_tracking_uri")
-MLFLOW_S3_ENDPOINT_URL = _required_var("mlflow_s3_endpoint_url")
-AWS_ACCESS_KEY_ID = _required_var("aws_access_key_id")
-AWS_SECRET_ACCESS_KEY = _required_var("aws_secret_access_key")
-AWS_DEFAULT_REGION = _required_var("aws_default_region")
-
-# PushGateway configuration
-PUSHGATEWAY_ADDR = _required_var("pushgateway_addr")
-# Metrics push is disabled by default; enable only when the Pushgateway
-# service is running and the operator wants to collect batch metrics.
-DISABLE_METRICS_PUSH = _required_var("disable_metrics_push")
-
-# Airflow runtime configuration
-TZ = _required_var("tz")
-AIRFLOW_UID = _required_var("airflow_uid")
-AIRFLOW_GID = _required_var("airflow_gid")
-
-# DAG parameters
-# counter_id has NO default: the operator must explicitly choose a counter.
-# This prevents accidental runs on an arbitrary counter when the DAG is
-# triggered manually from the Airflow UI.
 DAG_PARAMS: ParamsDict = ParamsDict(
     {
         "counter_id": Param(
@@ -110,479 +40,324 @@ DAG_PARAMS: ParamsDict = ParamsDict(
 )
 
 
-# --------------------------------------------------------------------------- #
-# Helpers
-# --------------------------------------------------------------------------- #
-def _make_env(sub_dir: str, run_id: str, window: dict[str, float]) -> dict[str, str]:
-    """
-    Build environment variables for Docker tasks.
-
-    Parameters
-    ----------
-    sub_dir : str
-        The subdirectory used for run artifacts.
-    run_id : str
-        Unique identifier of the run.
-    window : Dict[str, float]
-        Window percentages (start, end).
-
-    Returns
-    -------
-    Dict[str, str]
-        Dictionary of environment variables.
-    """
-    artifact_root = f"{CONT_REPO}/logs/run/{sub_dir}/{run_id}"
-    return {
-        "RUN_ID": run_id,
-        "SUB_DIR": sub_dir,
-        "RANGE_START": str(window["start"]),
-        "RANGE_END": str(window["end"]),
-        "ARTIFACT_RUN_ROOT": artifact_root,
-        "ARTIFACT_MANIFEST_ROOT": ARTIFACT_MANIFEST_ROOT,
-        "ARTIFACT_REPOSITORY_ROOT": ARTIFACT_REPOSITORY_ROOT,
-        "MANIFEST_INGEST": f"{artifact_root}/ingest/manifest.json",
-        "MANIFEST_FEATS": f"{artifact_root}/features/manifest.json",
-        "MANIFEST_MODELS": f"{artifact_root}/models/manifest.json",
-        "TZ": TZ,
-        "MLFLOW_TRACKING_URI": MLFLOW_TRACKING_URI,
-        "MLFLOW_S3_ENDPOINT_URL": MLFLOW_S3_ENDPOINT_URL,
-        "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
-        "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
-        "AWS_DEFAULT_REGION": AWS_DEFAULT_REGION,
-        "PUSHGATEWAY_ADDR": PUSHGATEWAY_ADDR,
-        "DISABLE_METRICS_PUSH": DISABLE_METRICS_PUSH,
-        "AIRFLOW_UID": AIRFLOW_UID,
-        "AIRFLOW_GID": AIRFLOW_GID,
-    }
-
-
-def _read_manifests(**ctx) -> dict[str, Any]:
-    """
-    Read manifests (ingest, features, models) from previous tasks or build defaults.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Dictionary with keys "ingest", "features" and "models".
-    """
-    logger.info("[pipeline] Reading manifests")
-    ti: TaskInstance = ctx["ti"]
-    run_id: str = ti.xcom_pull(key="RUN_ID", task_ids="etl.prepare_args")
-    sub_dir: str = ti.xcom_pull(key="SUB_DIR", task_ids="etl.prepare_args")
-
-    artifact_root = Path(HOST_REPO) / "logs" / "runs" / sub_dir / run_id
-
-    def _try_load(p: Path):
-        try:
-            with p.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return None
-
-    ing = _try_load(artifact_root / "ingest" / "manifest.json")
-    fea = _try_load(artifact_root / "features" / "manifest.json")
-    mod = _try_load(artifact_root / "models" / "manifest.json")
-
-    if ing is None:
-        ing = {
-            "outputs": {
-                "interim_path": f"{CONT_REPO}/data/interim/{sub_dir}/"
-                f"{ti.xcom_pull('etl.prepare_args', key='INTERIM_NAME')}"
-            }
-        }
-    if fea is None:
-        fea = {
-            "inputs": {"interim_path": ing["outputs"]["interim_path"]},
-            "outputs": {
-                "processed_path": f"{CONT_REPO}/data/processed/{sub_dir}/"
-                f"{ti.xcom_pull('etl.prepare_args', key='PROCESSED_NAME')}"
-            },
-        }
-    if mod is None:
-        mod = {
-            "inputs": {"processed_path": fea["outputs"]["processed_path"]},
-            "outputs": {
-                "table": f"{CONT_REPO}/data/final/{sub_dir}/"
-                f"{ti.xcom_pull('etl.prepare_args', key='FINAL_BASENAME')}"
-            },
-        }
-
-    ti.xcom_push(key="INGEST_MANIFEST", value=ing)
-    ti.xcom_push(key="FEATURES_MANIFEST", value=fea)
-    ti.xcom_push(key="MODELS_MANIFEST", value=mod)
-    return {"ingest": ing, "features": fea, "models": mod}
-
-
-def _check_docker_access(**_):
-    """
-    Check that Docker socket is reachable by the user from DockerOperattor
-    (AIRFLOW_UID:AIRFLOW_GID).
-    """
-    uid_effective = int(AIRFLOW_UID)
-    gid_effective = int(AIRFLOW_GID)
-    sock_path = "/var/run/docker.sock"
-
-    logger.info("[pipeline] Docker access check starting")
-    logger.info(f"[pipeline] AIRFLOW_UID={AIRFLOW_UID}, AIRFLOW_GID={AIRFLOW_GID}")
-    logger.info(
-        f"[pipeline] Simulation d'accès avec UID={uid_effective}, "
-        f"GID={gid_effective}"
+def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url=url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
     )
-
-    if not os.path.exists(sock_path):
-        logger.error(f"[pipeline] Docker socket missing: {sock_path}")
-        raise AirflowException(
-            f"[Docker Check] Le socket Docker n'existe pas à l'emplacement {sock_path}"
-        )
-
-    st = os.stat(sock_path)
-    perms = oct(st.st_mode)[-3:]
-    owner_uid, owner_gid = st.st_uid, st.st_gid
-    logger.info(f"[pipeline] Socket perms={perms}, owner={owner_uid}:{owner_gid}")
-
-    can_read = False
-    can_write = False
-
-    if uid_effective == owner_uid:
-        can_read = bool(st.st_mode & 0o400)
-        can_write = bool(st.st_mode & 0o200)
-    elif gid_effective == owner_gid:
-        can_read = bool(st.st_mode & 0o040)
-        can_write = bool(st.st_mode & 0o020)
-    else:
-        can_read = bool(st.st_mode & 0o004)
-        can_write = bool(st.st_mode & 0o002)
-
-    if not (can_read and can_write):
-        logger.warning(
-            f"[pipeline] User {uid_effective}:{gid_effective} lacks "
-            f"read/write on {sock_path} (perms={perms}, "
-            f"owner={owner_uid}:{owner_gid})",
-        )
-        raise AirflowException(
-            f"[Docker Check] simulated user {uid_effective}:{gid_effective} "
-            f"does not have read/write rights on {sock_path}. "
-            f"Permissions={perms}, owner={owner_uid}:{owner_gid}. "
-            f"Check that group {gid_effective} correspond to docker group."
-        )
-
     try:
-        client = docker_from_env()
-        client.ping()
-        logger.info("[pipeline] Docker access confirmed")
-    except Exception as e:
-        logger.error(f"[pipeline] Docker connection failed: {e}")
+        with urllib.request.urlopen(request, timeout=3600) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
         raise AirflowException(
-            f"[Docker Check] Docker socket unreachable : {e}"
-        )
+            f"HTTP {error.code} while calling {url}: {body}"
+        ) from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise AirflowException(f"Failed to call {url}: {error}") from error
 
 
-# --------------------------------------------------------------------------- #
-# Prepare args
-# --------------------------------------------------------------------------- #
-def _prepare_args_common(
-        ti: TaskInstance, exec_date: datetime,
-        mode: str, counter_override=None
-) -> dict[str, Any]:
-    """
-    Compute run context (IDs, window, subdir) and push it to XCom.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Environment dictionary injected into Docker operators.
-    """
-    cfg, default_counter_id = _load_config()
-    if counter_override:
-        counter_id = counter_override
-    else:
-        counter_id = default_counter_id
-    sched = cfg.scheduling
-    counter = cfg.counters[counter_id]
-
-    run_id = (
-        f"{exec_date.strftime('%Y%m%d')}_"
-        f"{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}"
-    )
-
-    if mode == "init":
-        delta_days = 0
-        window = {"start": 0.0, "end": 75.0}
-        proceed = True
-    else:
-        anchor_dt = datetime.fromisoformat(sched.initial_anchor_date).date()
-        delta_days = (exec_date.date() - anchor_dt).days
-        x = max(0.0, delta_days * float(sched.daily_increment_pct))
-        start = max(0.0, min(100.0, 0.0 + x))
-        end = max(0.0, min(100.0, 75.0 + x))
-        window = {"start": round(start, 2), "end": round(end, 2)}
-        proceed = end > 75.0
-
-    effective_sub_dir = f"{counter_id}_day{delta_days}"
-
-    # Push run context in XCom
-    ti.xcom_push(key="RUN_ID", value=run_id)
-    ti.xcom_push(key="WINDOW", value=window)
-    ti.xcom_push(key="PROCEED", value=proceed)
-    ti.xcom_push(key="SUB_DIR", value=effective_sub_dir)
-
-    # Push container args in XCom
-    ti.xcom_push(key="RAW_FILE_NAME", value=counter.raw_file_name)
-    ti.xcom_push(key="SITE", value=counter.site)
-    ti.xcom_push(key="SITE_SHORT", value=counter_id)
-    ti.xcom_push(key="ORIENTATION", value=counter.orientation)
-    ti.xcom_push(key="INTERIM_NAME", value=counter.interim_name)
-    ti.xcom_push(key="PROCESSED_NAME", value=counter.processed_name)
-    ti.xcom_push(key="FINAL_BASENAME", value=counter.final_basename)
-
-    ti.xcom_push(key="AR", value=str(counter.modeling.ar))
-    ti.xcom_push(key="MM", value=str(counter.modeling.mm))
-    ti.xcom_push(key="ROLL", value=str(counter.modeling.roll))
-    ti.xcom_push(key="TEST_RATIO", value=str(counter.modeling.test_ratio))
-    ti.xcom_push(key="GRID_ITER", value=str(counter.modeling.grid_iter))
-
-    env = _make_env(effective_sub_dir, run_id, window)
-    env.update({
-        "COUNTER_ID": counter_id,
-        "SITE": counter.site,
-        "SITE_SHORT": counter_id,
-        "ORIENTATION": counter.orientation,
-        "DAY_OFFSET": str(delta_days),  # <- dayX simulé
-    })
-    return env
+def _extract_counter_id(ctx: Mapping[str, Any]) -> str | None:
+    params_obj = ctx.get("params")
+    if isinstance(params_obj, Mapping):
+        value = params_obj.get("counter_id")
+        if isinstance(value, str) and value:
+            return value
+    dag_run = ctx.get("dag_run")
+    conf_obj = getattr(dag_run, "conf", None)
+    if isinstance(conf_obj, Mapping):
+        value = conf_obj.get("counter_id")
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _prepare_args_callable(mode: str):
-    """
-    Build a callable for prepare_args depending on mode (init or daily).
-    """
-    logger.info(f"[pipeline] prepare_args callable created for mode={mode}")
-
-    def _callable(**ctx):
-        ti = ctx["ti"]
+    def _callable(**ctx) -> dict[str, Any]:
+        ti: TaskInstance = ctx["ti"]
+        cfg, default_counter_id = _load_config()
+        counter_id = _extract_counter_id(ctx) or default_counter_id
+        counter = cfg.counters[counter_id]
+        sched = cfg.scheduling
         exec_date = ctx["data_interval_end"]
-        # Priority: DAG param, then DAG run conf (parent orchestrator)
-        counter_override = (ctx.get("params") or {})["counter_id"]
-        if not counter_override:
-            counter_override = (ctx.get("dag_run") or {})["conf"]["counter_id"]
-        return _prepare_args_common(
-            ti=ti, exec_date=exec_date, mode=mode, counter_override=counter_override
+        run_id = (
+            f"{exec_date.strftime('%Y%m%d')}_"
+            f"{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}"
         )
+        delta_days = 0
+        window = {"start": 0.0, "end": 75.0}
+        proceed = True
+        if mode == "daily":
+            anchor_dt = datetime.fromisoformat(sched.initial_anchor_date).date()
+            delta_days = (exec_date.date() - anchor_dt).days
+            shift = max(0.0, delta_days * float(sched.daily_increment_pct))
+            window = {
+                "start": round(max(0.0, min(100.0, shift)), 2),
+                "end": round(max(0.0, min(100.0, 75.0 + shift)), 2),
+            }
+            proceed = window["end"] > 75.0
+        context = _build_context(counter_id, counter, run_id, delta_days, window)
+        context["PROCEED"] = proceed
+        for key, value in context.items():
+            ti.xcom_push(key=key, value=value)
+        return context
+
     return _callable
 
 
-# --------------------------------------------------------------------------- #
-# Build ETL group
-# --------------------------------------------------------------------------- #
-def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
-    """
-    Build the ETL task group and its Docker-backed ML steps.
-    """
-    with TaskGroup(group_id="etl", dag=dag) as etl:
-        # --- Docker sanity check ---
-        docker_check = PythonOperator(
-            task_id="check_docker_access",
-            python_callable=_check_docker_access,
-            dag=dag,
+def _build_context(
+    counter_id: str,
+    counter: CounterCfg,
+    run_id: str,
+    delta_days: int,
+    window: dict[str, float],
+) -> dict[str, Any]:
+    sub_dir = f"{counter_id}_day{delta_days}"
+    return {
+        "RUN_ID": run_id,
+        "COUNTER_ID": counter_id,
+        "SUB_DIR": sub_dir,
+        "WINDOW": window,
+        "RAW_FILE_NAME": counter.raw_file_name,
+        "SITE": counter.site,
+        "SITE_SHORT": counter_id,
+        "ORIENTATION": counter.orientation,
+        "INTERIM_NAME": counter.interim_name,
+        "PROCESSED_NAME": counter.processed_name,
+        "FINAL_BASENAME": counter.final_basename,
+        "INTERIM_PATH": f"{DATA_ROOT}/interim/{sub_dir}/{counter.interim_name}",
+        "PROCESSED_PATH": f"{DATA_ROOT}/processed/{sub_dir}/{counter.processed_name}",
+        "PREDICTION_PATH": f"{DATA_ROOT}/final/{sub_dir}/{counter.final_basename}",
+        "MODEL_PATH": f"{MODEL_ROOT}/{sub_dir}",
+        "AR": counter.modeling.ar,
+        "MM": counter.modeling.mm,
+        "ROLL": counter.modeling.roll,
+        "TEST_RATIO": counter.modeling.test_ratio,
+        "GRID_ITER": counter.modeling.grid_iter,
+    }
+
+
+def _submit_runner_job(job_type: str, **ctx) -> dict[str, Any]:
+    ti: TaskInstance = ctx["ti"]
+    payload = _build_job_payload(job_type, ti, ctx)
+    status = _post_json(f"{JOB_RUNNER_URL}/jobs", payload)
+    if status.get("state") != "succeeded":
+        error = status.get("error") or {}
+        message = error.get("message") or "Runner job did not succeed."
+        raise AirflowException(
+            f"Runner job failed with state={status.get('state')}: {message}"
         )
+    manifest = ((status.get("result") or {}).get("manifest") or {})
+    if manifest:
+        ti.xcom_push(key=f"{job_type.upper()}_MANIFEST", value=manifest)
+    return status
+
+
+def _build_job_payload(
+    job_type: str,
+    ti: TaskInstance,
+    ctx: Mapping[str, Any],
+) -> dict[str, Any]:
+    base = {
+        "job_type": job_type,
+        "run_id": _pull(ti, "RUN_ID"),
+        "counter_id": _pull(ti, "COUNTER_ID"),
+        "dag_id": str(ctx["dag"].dag_id),
+        "task_id": str(ctx["task"].task_id),
+        "try_number": int(ti.try_number),
+        "manifest_root": MANIFEST_ROOT,
+    }
+    if job_type == "ingest":
+        base.update(_ingest_args(ti))
+    elif job_type == "features":
+        base.update(_features_args(ti))
+    elif job_type == "models":
+        base.update(_models_args(ti))
+    else:
+        raise AirflowException(f"Unsupported job_type={job_type}")
+    return base
+
+
+def _ingest_args(ti: TaskInstance) -> dict[str, Any]:
+    window = _pull(ti, "WINDOW")
+    return {
+        "raw_path": f"{DATA_ROOT}/raw/{_pull(ti, 'RAW_FILE_NAME')}",
+        "site": _pull(ti, "SITE"),
+        "orientation": _pull(ti, "ORIENTATION"),
+        "range_start": window["start"],
+        "range_end": window["end"],
+        "timestamp_col": "date_et_heure_de_comptage",
+        "sub_dir": _pull(ti, "SUB_DIR"),
+        "interim_name": _pull(ti, "INTERIM_NAME"),
+        "interim_output_path": _pull(ti, "INTERIM_PATH"),
+    }
+
+
+def _features_args(ti: TaskInstance) -> dict[str, Any]:
+    return {
+        "interim_input_path": _manifest_or_xcom_path(
+            ti,
+            task_id="etl.ingest",
+            manifest_key="INGEST_MANIFEST",
+            fallback_key="INTERIM_PATH",
+        ),
+        "processed_output_path": _pull(ti, "PROCESSED_PATH"),
+        "processed_name": _pull(ti, "PROCESSED_NAME"),
+        "timestamp_col": "date_et_heure_de_comptage",
+    }
+
+
+def _models_args(ti: TaskInstance) -> dict[str, Any]:
+    return {
+        "processed_input_path": _manifest_or_xcom_path(
+            ti,
+            task_id="etl.features",
+            manifest_key="FEATURES_MANIFEST",
+            fallback_key="PROCESSED_PATH",
+        ),
+        "prediction_output_path": _pull(ti, "PREDICTION_PATH"),
+        "model_output_path": _pull(ti, "MODEL_PATH"),
+        "target_col": "comptage_horaire",
+        "ts_col_utc": "date_et_heure_de_comptage_utc",
+        "ts_col_local": "date_et_heure_de_comptage_local",
+        "ar": _pull(ti, "AR"),
+        "mm": _pull(ti, "MM"),
+        "roll": _pull(ti, "ROLL"),
+        "test_ratio": _pull(ti, "TEST_RATIO"),
+        "grid_iter": _pull(ti, "GRID_ITER"),
+        "mlflow_uri": "http://mlflow-server:5000",
+    }
+
+
+def _pull(ti: TaskInstance, key: str) -> Any:
+    return ti.xcom_pull(task_ids="etl.prepare_args", key=key)
+
+
+def _manifest_or_xcom_path(
+    ti: TaskInstance,
+    *,
+    task_id: str,
+    manifest_key: str,
+    fallback_key: str,
+) -> str:
+    manifest = ti.xcom_pull(task_ids=task_id, key=manifest_key)
+    if isinstance(manifest, Mapping):
+        storage = manifest.get("storage")
+        if isinstance(storage, Mapping) and storage.get("local_path"):
+            return f"/app/{storage['local_path']}"
+    return _pull(ti, fallback_key)
+
+
+def _read_manifests(**ctx) -> dict[str, Any]:
+    ti: TaskInstance = ctx["ti"]
+    counter_id = _pull(ti, "COUNTER_ID")
+    manifests = {
+        "INGEST_MANIFEST": _read_current_manifest("interim_dataset", counter_id),
+        "FEATURES_MANIFEST": _read_current_manifest("feature_dataset", counter_id),
+        "MODELS_MANIFEST": _read_current_manifest("predictions", counter_id),
+    }
+    for key, value in manifests.items():
+        if value is not None:
+            ti.xcom_push(key=key, value=value)
+    return manifests
+
+
+def _read_current_manifest(
+    artifact_type: str,
+    counter_id: str,
+) -> dict[str, Any] | None:
+    path = Path(MANIFEST_ROOT) / artifact_type / counter_id / "current.json"
+    if not path.is_file():
+        logger.info("[pipeline] Manifest not found yet: %s", path)
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _daily_gate_callable(**ctx) -> bool:
+    ti: TaskInstance = ctx["ti"]
+    return bool(_pull(ti, "PROCEED"))
+
+
+def _init_gate_callable(**ctx) -> bool:
+    counter_id = _extract_counter_id(ctx) or "UNKNOWN"
+    already_done = Variable.get(f"bike_init_done__{counter_id}", default="0") == "1"
+    logger.info("[pipeline] Init gate counter=%s done=%s", counter_id, already_done)
+    return not already_done
+
+
+def _mark_init_done_callable(**ctx) -> None:
+    counter_id = _extract_counter_id(ctx) or "UNKNOWN"
+    Variable.set(f"bike_init_done__{counter_id}", "1")
+
+
+def build_etl_group(dag: DAG, mode: str) -> TaskGroup:
+    with TaskGroup(group_id="etl", dag=dag) as etl:
         prepare_args = PythonOperator(
             task_id="prepare_args",
             python_callable=_prepare_args_callable(mode),
             dag=dag,
         )
-
+        upstream = prepare_args
         if mode == "daily":
-            def _gate(**ctx) -> bool:
-                ti: TaskInstance = ctx["ti"]
-                return bool(ti.xcom_pull(task_ids="etl.prepare_args", key="PROCEED"))
-
-            gate = ShortCircuitOperator(task_id="gate", python_callable=_gate, dag=dag)
-            docker_check >> prepare_args >> gate  # type: ignore
+            gate = ShortCircuitOperator(
+                task_id="gate",
+                python_callable=_daily_gate_callable,
+                dag=dag,
+            )
+            prepare_args >> gate  # type: ignore
             upstream = gate
-        else:
-            docker_check >> prepare_args  # type: ignore
-            upstream = prepare_args
-
-        # Docker tasks, dynamically parameterized via XCom
-        ingest = DockerOperator(
-            task_id="ingest",
-            image=IMG_INGEST,
-            command=[
-                "--raw-path",
-                "{{ var.value.container_repo_root }}/data/raw/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='RAW_FILE_NAME') }}",
-                "--site",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE') }}",
-                "--orientation",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ORIENTATION') }}",
-                "--range-start",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', "
-                "key='WINDOW')['start'] }}",
-                "--range-end",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', "
-                "key='WINDOW')['end'] }}",
-                "--timestamp-col",
-                "date_et_heure_de_comptage",
-                "--sub-dir",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
-                "--interim-name",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
-                "--artifact-manifest-root",
-                "{{ var.value.artifact_manifest_root }}",
-                "--artifact-repository-root",
-                "{{ var.value.artifact_repository_root }}",
-            ],
-            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
-            environment=prepare_args.output,
-            mounts=MOUNTS,
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NET,
-            mount_tmp_dir=False,
-            auto_remove="success",
-            user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
-            dag=dag,
-        )
-
-        features = DockerOperator(
-            task_id="features",
-            image=IMG_FEATS,
-            command=[
-                "--interim-path",
-                "{{ var.value.container_repo_root }}/data/interim/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='INTERIM_NAME') }}",
-                "--sub-dir",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
-                "--processed-name",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='PROCESSED_NAME') }}",
-                "--timestamp-col",
-                "date_et_heure_de_comptage",
-                "--artifact-manifest-root",
-                "{{ var.value.artifact_manifest_root }}",
-                "--artifact-repository-root",
-                "{{ var.value.artifact_repository_root }}",
-            ],
-            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
-            environment=prepare_args.output,
-            mounts=MOUNTS,
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NET,
-            mount_tmp_dir=False,
-            auto_remove="success",
-            user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
-            dag=dag,
-        )
-
-        models = DockerOperator(
-            task_id="models",
-            image=IMG_MODELS,
-            command=[
-                "--processed-path",
-                "{{ var.value.container_repo_root }}/data/processed/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}/"
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='PROCESSED_NAME') }}",
-                "--sub-dir",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SUB_DIR') }}",
-                "--target-col",
-                "comptage_horaire",
-                "--ts-col-utc",
-                "date_et_heure_de_comptage_utc",
-                "--ts-col-local",
-                "date_et_heure_de_comptage_local",
-                "--ar",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='AR') }}",
-                "--mm",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='MM') }}",
-                "--roll",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='ROLL') }}",
-                "--test-ratio",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='TEST_RATIO') }}",
-                "--grid-iter",
-                "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='GRID_ITER') }}",
-                "--artifact-manifest-root",
-                "{{ var.value.artifact_manifest_root }}",
-                "--artifact-repository-root",
-                "{{ var.value.artifact_repository_root }}",
-            ],
-            container_name="{{ dag.dag_id }}_{{ ti.task_id }}_"
-            "{{ ti.xcom_pull(task_ids='etl.prepare_args', key='SITE_SHORT') }}",
-            environment=prepare_args.output,
-            mounts=MOUNTS,
-            docker_url="unix://var/run/docker.sock",
-            api_version="auto",
-            network_mode=DOCKER_NET,
-            mount_tmp_dir=False,
-            auto_remove="success",
-            user=f"{AIRFLOW_UID}:{AIRFLOW_GID}",
-            dag=dag,
-        )
-
-        read_manifests = PythonOperator(
-            task_id="read_manifests",
-            python_callable=_read_manifests,
-            dag=dag,
-        )
-
-        upstream >> ingest >> features >> models >> read_manifests  # type: ignore
-
+        ingest = _runner_task("ingest", dag)
+        read_after_ingest = _read_task("read_manifests_after_ingest", dag)
+        features = _runner_task("features", dag)
+        read_after_features = _read_task("read_manifests_after_features", dag)
+        models = _runner_task("models", dag)
+        read_manifests = _read_task("read_manifests", dag)
+        (
+            upstream
+            >> ingest
+            >> read_after_ingest
+            >> features
+            >> read_after_features
+            >> models
+            >> read_manifests
+        )  # type: ignore
     return etl
 
 
-# --------------------------------------------------------------------------- #
-# Counter ID extraction and flags
-# --------------------------------------------------------------------------- #
-def _extract_counter_id(ctx: Mapping[str, Any]) -> str | None:
-    """Extract counter_id from DAG params or dag_run.conf."""
-    logger.debug("[pipeline] Extracting counter_id from ctx")
-    params_obj = ctx.get("params")
-    if isinstance(params_obj, Mapping):
-        val = params_obj.get("counter_id")
-        if isinstance(val, str) and val:
-            return val
-    dag_run = ctx.get("dag_run")
-    conf_obj = getattr(dag_run, "conf", None)
-    if isinstance(conf_obj, Mapping):
-        val = conf_obj.get("counter_id")
-        if isinstance(val, str) and val:
-            return val
-    return None
-
-
-def _init_gate_callable(**ctx) -> bool:
-    """Short-circuit init DAG if init already done for this counter."""
-    counter_id = _extract_counter_id(ctx) or "UNKNOWN"
-    key = f"bike_init_done__{counter_id}"
-    logger.info(f"[pipeline] Init gate: counter={counter_id}, key={key}")
-    already_done = Variable.get(key, default="0") == "1"
-    logger.info(
-        f"[pipeline] Init gate: counter={counter_id}, "
-        f"already_done={already_done}"
+def _runner_task(job_type: str, dag: DAG) -> PythonOperator:
+    return PythonOperator(
+        task_id=job_type,
+        python_callable=_submit_runner_job,
+        op_kwargs={"job_type": job_type},
+        dag=dag,
     )
-    return not already_done
 
 
-def _mark_init_done_callable(**ctx) -> None:
-    """Mark init done for this counter by setting Airflow variable."""
-    counter_id = _extract_counter_id(ctx) or "UNKNOWN"
-    key = f"bike_init_done__{counter_id}"
-    logger.info(f"[pipeline] Marking init done: counter={counter_id}, key={key}")
-    Variable.set(key, "1")
+def _read_task(task_id: str, dag: DAG) -> PythonOperator:
+    return PythonOperator(task_id=task_id, python_callable=_read_manifests, dag=dag)
 
 
-# --------------------------------------------------------------------------- #
-# DAGs: Init and Daily
-# --------------------------------------------------------------------------- #
+def _api_refresh_task() -> HttpOperator:
+    return HttpOperator(
+        task_id="api_refresh",
+        http_conn_id="api_dev",
+        endpoint="/admin/refresh",
+        method="POST",
+        log_response=True,
+    )
+
+
 with DAG(
     dag_id="bike_traffic_init",
-    description="One-shot historical bootstrap (with short-circuit).",
+    description="Development historical bootstrap through job-runner-api.",
     start_date=datetime(2025, 9, 1),
-    schedule=None,  # Triggered by orchestrator only (or manually)
+    schedule=None,
     catchup=False,
-    tags=["mlops", "init", "bike"],
+    max_active_runs=concurrency.child_max_active_runs,
+    max_active_tasks=concurrency.child_max_active_tasks,
+    tags=["mlops", "init", "bike", "dev"],
     params=DAG_PARAMS,
 ) as init_dag:
     init_gate = ShortCircuitOperator(
@@ -594,33 +369,21 @@ with DAG(
         task_id="mark_init_done",
         python_callable=_mark_init_done_callable,
     )
-    api_refresh = HttpOperator(
-        task_id="api_refresh",
-        http_conn_id="api_dev",
-        endpoint="/admin/refresh",
-        method="POST",
-        response_check=lambda r: r.status_code == 200,
-        log_response=True,
-    )
+    api_refresh = _api_refresh_task()
     init_gate >> etl >> mark_done >> api_refresh  # type: ignore
 
 
 with DAG(
     dag_id="bike_traffic_daily",
-    description="Daily sliding window with DockerOperator (XCom-driven).",
+    description="Development daily sliding window through job-runner-api.",
     start_date=datetime(2025, 9, 1),
-    schedule=None,  # Triggered by orchestrator only (or manually)
+    schedule=None,
     catchup=False,
-    tags=["mlops", "daily", "bike"],
+    max_active_runs=concurrency.child_max_active_runs,
+    max_active_tasks=concurrency.child_max_active_tasks,
+    tags=["mlops", "daily", "bike", "dev"],
     params=DAG_PARAMS,
 ) as daily_dag:
     etl = build_etl_group(daily_dag, mode="daily")
-    api_refresh = HttpOperator(
-        task_id="api_refresh",
-        http_conn_id="api_dev",
-        endpoint="/admin/refresh",
-        method="POST",
-        response_check=lambda r: r.status_code == 200,
-        log_response=True,
-    )
+    api_refresh = _api_refresh_task()
     etl >> api_refresh  # type: ignore
