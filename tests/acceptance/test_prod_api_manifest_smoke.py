@@ -10,10 +10,19 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from dotenv import load_dotenv
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COUNTER_ID_ENV = "ACCEPTANCE_COUNTER_ID"
 PROMOTABLE_STATUSES = {"produced", "validated", "promoted"}
+REQUIRED_ACCEPTANCE_SETTINGS = {
+    "API_URL",
+    "API_USER",
+    "API_PASS",
+    "API_ADMIN_USER",
+    "API_ADMIN_PASS",
+}
+ENV_LOADED = False
 
 
 @pytest.mark.acceptance
@@ -40,16 +49,16 @@ class TestProdApiManifestSmoke:
         counters = _request_json(
             "GET",
             "/counters",
-            username=_setting("API_USER"),
-            password=_setting("API_PASS"),
+            username=_required_setting("API_USER"),
+            password=_required_setting("API_PASS"),
         )
         artifacts = _current_artifacts()
         counter_id = _acceptance_counter_id_from_api(counters)
         predictions = _request_json(
             "GET",
             f"/predictions/{counter_id}?limit=1&offset=0",
-            username=_setting("API_USER"),
-            password=_setting("API_PASS"),
+            username=_required_setting("API_USER"),
+            password=_required_setting("API_PASS"),
         )
 
         counter_ids = {counter["id"] for counter in counters}
@@ -71,41 +80,49 @@ def _env_file_path() -> Path:
     return REPOSITORY_ROOT / env_file
 
 
-def _dotenv_values() -> dict[str, str]:
+def _load_acceptance_env() -> None:
+    global ENV_LOADED
+
+    if ENV_LOADED:
+        return
+
     env_file = _env_file_path()
-    if not env_file.is_file():
-        return {}
+    if env_file.is_file():
+        load_dotenv(dotenv_path=env_file, override=True)
 
-    values: dict[str, str] = {}
-    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, raw_value = line.split("=", 1)
-        values[key.strip()] = raw_value.strip().strip('"').strip("'")
-
-    return values
+    ENV_LOADED = True
 
 
-def _setting(name: str) -> str:
-    return os.getenv(name) or _dotenv_values().get(name, "")
+def _required_setting(name: str) -> str:
+    _load_acceptance_env()
+    value = os.getenv(name)
+    if value:
+        return value
+
+    required_settings = ", ".join(sorted(REQUIRED_ACCEPTANCE_SETTINGS))
+    pytest.fail(
+        f"Missing required acceptance variable {name}. "
+        f"Define it in {_env_file_path()} or export it in the shell. "
+        f"Required variables: {required_settings}."
+    )
+    raise AssertionError
+
+
+def _optional_setting(name: str) -> str | None:
+    _load_acceptance_env()
+    return os.getenv(name) or None
 
 
 def _api_url() -> str:
-    explicit_url = os.getenv("API_URL")
-    if explicit_url:
-        return explicit_url
-    else:
-        return "undefined_api_url"
+    return _required_setting("API_URL")
 
 
 def _refresh_prediction_store() -> dict[str, Any]:
     return _request_json(
         "POST",
         "/admin/refresh",
-        username=_setting("API_ADMIN_USER"),
-        password=_setting("API_ADMIN_PASS"),
+        username=_required_setting("API_ADMIN_USER"),
+        password=_required_setting("API_ADMIN_PASS"),
     )
 
 
@@ -113,8 +130,8 @@ def _current_artifacts() -> list[dict[str, Any]]:
     artifacts = _request_json(
         "GET",
         "/artifacts/current",
-        username=_setting("API_USER"),
-        password=_setting("API_PASS"),
+        username=_required_setting("API_USER"),
+        password=_required_setting("API_PASS"),
     )
     assert isinstance(artifacts, list), f"Unexpected artifacts response: {artifacts}"
     return artifacts
@@ -125,15 +142,15 @@ def _acceptance_artifact() -> dict[str, Any]:
     artifact = _request_json(
         "GET",
         f"/artifacts/current/{counter_id}",
-        username=_setting("API_USER"),
-        password=_setting("API_PASS"),
+        username=_required_setting("API_USER"),
+        password=_required_setting("API_PASS"),
     )
     assert isinstance(artifact, dict), f"Unexpected artifact response: {artifact}"
     return artifact
 
 
 def _acceptance_counter_id_from_artifacts() -> str:
-    configured_counter_id = os.getenv(COUNTER_ID_ENV)
+    configured_counter_id = _optional_setting(COUNTER_ID_ENV)
     artifacts = _current_artifacts()
     counter_ids = sorted(artifact["counter_id"] for artifact in artifacts)
 
@@ -149,7 +166,7 @@ def _acceptance_counter_id_from_artifacts() -> str:
 
 
 def _acceptance_counter_id_from_api(counters: list[dict[str, Any]]) -> str:
-    configured_counter_id = os.getenv(COUNTER_ID_ENV)
+    configured_counter_id = _optional_setting(COUNTER_ID_ENV)
     counter_ids = sorted(counter["id"] for counter in counters)
     if configured_counter_id:
         assert configured_counter_id in counter_ids, (
