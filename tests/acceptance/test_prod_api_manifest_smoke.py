@@ -14,7 +14,6 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COUNTER_ID_ENV = "ACCEPTANCE_COUNTER_ID"
 PROMOTABLE_STATUSES = {"produced", "validated", "promoted"}
-DEFAULT_PROD_API_PORT = "10000"
 
 
 @pytest.mark.acceptance
@@ -41,16 +40,16 @@ class TestProdApiManifestSmoke:
         counters = _request_json(
             "GET",
             "/counters",
-            username=_setting("API_USER", "user1"),
-            password=_setting("API_PASS", "user1"),
+            username=_setting("API_USER"),
+            password=_setting("API_PASS"),
         )
         artifacts = _current_artifacts()
         counter_id = _acceptance_counter_id_from_api(counters)
         predictions = _request_json(
             "GET",
             f"/predictions/{counter_id}?limit=1&offset=0",
-            username=_setting("API_USER", "user1"),
-            password=_setting("API_PASS", "user1"),
+            username=_setting("API_USER"),
+            password=_setting("API_PASS"),
         )
 
         counter_ids = {counter["id"] for counter in counters}
@@ -89,25 +88,24 @@ def _dotenv_values() -> dict[str, str]:
     return values
 
 
-def _setting(name: str, default: str) -> str:
-    return os.getenv(name) or _dotenv_values().get(name, default)
+def _setting(name: str) -> str:
+    return os.getenv(name) or _dotenv_values().get(name, "")
 
 
 def _api_url() -> str:
-    explicit_url = os.getenv("ACCEPTANCE_API_URL")
+    explicit_url = os.getenv("API_URL")
     if explicit_url:
         return explicit_url
-
-    prod_port = _setting("API_HOST_PORT_PROD", DEFAULT_PROD_API_PORT)
-    return f"http://localhost:{prod_port}"
+    else:
+        return "undefined_api_url"
 
 
 def _refresh_prediction_store() -> dict[str, Any]:
     return _request_json(
         "POST",
         "/admin/refresh",
-        username=_setting("API_ADMIN_USER", "admin1"),
-        password=_setting("API_ADMIN_PASSWORD", "admin1"),
+        username=_setting("API_ADMIN_USER"),
+        password=_setting("API_ADMIN_PASS"),
     )
 
 
@@ -115,8 +113,8 @@ def _current_artifacts() -> list[dict[str, Any]]:
     artifacts = _request_json(
         "GET",
         "/artifacts/current",
-        username=_setting("API_USER", "user1"),
-        password=_setting("API_PASS", "user1"),
+        username=_setting("API_USER"),
+        password=_setting("API_PASS"),
     )
     assert isinstance(artifacts, list), f"Unexpected artifacts response: {artifacts}"
     return artifacts
@@ -127,8 +125,8 @@ def _acceptance_artifact() -> dict[str, Any]:
     artifact = _request_json(
         "GET",
         f"/artifacts/current/{counter_id}",
-        username=_setting("API_USER", "user1"),
-        password=_setting("API_PASS", "user1"),
+        username=_setting("API_USER"),
+        password=_setting("API_PASS"),
     )
     assert isinstance(artifact, dict), f"Unexpected artifact response: {artifact}"
     return artifact

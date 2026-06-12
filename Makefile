@@ -15,7 +15,7 @@ SHELL := /bin/bash
 UV ?= uv
 DOCKER_COMPOSE ?= docker compose
 ENV_FILE ?= .env
-URL ?= http://localhost:10000
+API_URL ?= http://localhost:10000
 N ?= 100
 P_OK ?= 0.80
 API_USER ?= user1
@@ -236,7 +236,7 @@ mlflow-local: env sync ## Start a host-side MLflow server for local experiments
 load-api-req: ## Simulate high traffic on /predictions/{counter}
 	@$(call log_test,sim-api-req)
 	$(UV) run --locked --group test python tests/performance/test_load_api.py \
-		--url "$(URL)" \
+		--url "$(API_URL)" \
 		--n $(N) \
 		--p-ok $(P_OK) \
 		--user "$(API_USER)" \
