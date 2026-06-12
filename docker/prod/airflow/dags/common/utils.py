@@ -7,7 +7,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
-logger = logging.getLogger("airflow.task")
+
+def get_airflow_task_logger() -> logging.Logger:
+    """Return the Airflow task logger used by DAG utilities."""
+
+    return logging.getLogger("airflow.task")
+
+
+LOGGER = get_airflow_task_logger()
 
 DEFAULT_CONFIG_PATH = "/opt/airflow/config/bike_dag_config.json"
 
@@ -61,7 +68,7 @@ class DagCfg(BaseModel):
 def _load_config() -> tuple[DagCfg, str]:
     """Load the mounted production-like DAG configuration."""
 
-    logger.info("[utils] Loading DAG config")
+    LOGGER.debug("[utils] Loading DAG config")
     raw_config = _read_config_source(DEFAULT_CONFIG_PATH)
     try:
         cfg = DagCfg.model_validate_json(raw_config)
@@ -69,7 +76,7 @@ def _load_config() -> tuple[DagCfg, str]:
         raise ValueError(f"Invalid bike DAG config: {exc}") from exc
 
     default_counter_id = next(iter(cfg.counters))
-    logger.info(
+    LOGGER.debug(
         "[utils] Config loaded: %s counters, default=%s",
         len(cfg.counters),
         default_counter_id,
@@ -86,8 +93,9 @@ def _load_concurrency_config() -> ConcurrencyCfg:
 
 def _read_config_source(cfg_ref: str) -> str:
     path = Path(cfg_ref)
-    logger.info("[utils] Config source: file %s", path)
+    LOGGER.debug("[utils] Config source: file %s", path)
     if not path.exists():
+        LOGGER.error("[utils] DAG config file not found: %s", path)
         raise ValueError(f"bike_dag_config invalid path: {cfg_ref}")
 
     return path.read_text(encoding="utf-8")
@@ -96,15 +104,15 @@ def _read_config_source(cfg_ref: str) -> str:
 def _list_counters_payload() -> list[dict[str, str]]:
     """Build a list of payloads for TriggerDagRunOperator expansion."""
 
-    logger.info("[utils] Listing counters")
+    LOGGER.debug("[utils] Listing counters")
     cfg, default_counter = _load_config()
     counters = list((cfg.counters or {}).keys())
     if not counters:
-        logger.warning(
+        LOGGER.warning(
             "[utils] No counters found, falling back to default: %s",
             default_counter,
         )
         counters = [default_counter]
 
-    logger.info("[utils] Counters: %s", counters)
+    LOGGER.debug("[utils] Counters: %s", counters)
     return [{"counter_id": counter_id} for counter_id in counters]

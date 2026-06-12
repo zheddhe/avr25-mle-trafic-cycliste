@@ -1,7 +1,6 @@
 # Ingest raw counter data.
 from __future__ import annotations
 
-import logging
 import os
 import re
 import sys
@@ -11,6 +10,8 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.common.env import get_env
+from src.common.logger import configure_logging, get_logger
 from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.ingest.artifact_manifest_emission import (
     emit_interim_dataset_artifact_manifest,
@@ -28,19 +29,7 @@ def slugify_ascii(text: str) -> str:
     return text_ascii[:64] or "counter"
 
 
-LOG_DIR = os.path.join("logs", "ml")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(LOG_DIR, "import_raw_data.log")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
-)
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 
 @click.command()
@@ -134,12 +123,12 @@ def main(
     """Extract a single counter and write an interim dataset slice."""
 
     labels = {
-        "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
-        "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.ingest"),
-        "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
-        "site": os.getenv("SITE", "NA"),
-        "site_short": os.getenv("SITE_SHORT", "NA"),
-        "orientation": os.getenv("ORIENTATION", "NA"),
+        "dag": get_env("AIRFLOW_CTX_DAG_ID", default="unknown_dag"),
+        "task": get_env("AIRFLOW_CTX_TASK_ID", default="etl.ingest"),
+        "run_id": get_env("AIRFLOW_CTX_DAG_RUN_ID", default="local"),
+        "site": get_env("SITE", default="NA"),
+        "site_short": get_env("SITE_SHORT", default="NA"),
+        "orientation": get_env("ORIENTATION", default="NA"),
     }
 
     with track_pipeline_step("ingest", labels) as metrics_payload:
@@ -209,11 +198,11 @@ def main(
             source_file_name=Path(raw_path).name,
             sub_dir=sub_dir,
             repository_root=artifact_repository_root,
-            run_id=os.getenv("RUN_ID") or os.getenv("AIRFLOW_CTX_DAG_RUN_ID"),
-            counter_id=os.getenv("COUNTER_ID") or sub_dir,
-            producer_service=os.getenv("ARTIFACT_PRODUCER_SERVICE", "ml-ingest"),
-            producer_image=os.getenv("ARTIFACT_PRODUCER_IMAGE"),
-            producer_version=os.getenv("ARTIFACT_PRODUCER_VERSION"),
+            run_id=get_env("RUN_ID") or get_env("AIRFLOW_CTX_DAG_RUN_ID"),
+            counter_id=get_env("COUNTER_ID") or sub_dir,
+            producer_service=get_env("ARTIFACT_PRODUCER_SERVICE", default="ml-ingest"),
+            producer_image=get_env("ARTIFACT_PRODUCER_IMAGE"),
+            producer_version=get_env("ARTIFACT_PRODUCER_VERSION"),
             object_uri=artifact_object_uri,
             promote=True,
         )
@@ -230,6 +219,7 @@ def main(
 
 
 if __name__ == "__main__":
+    configure_logging(level=get_env("LOG_LEVEL", default="INFO"))
     try:
         main()
     except click.ClickException as error:

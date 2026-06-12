@@ -1,8 +1,8 @@
-# src/ml/models/models_utils.py
+"""Model training utilities for cyclist traffic forecasting."""
+
 from __future__ import annotations
 
 import json
-import logging
 import os
 from datetime import UTC, datetime
 from typing import Any
@@ -24,8 +24,10 @@ from skopt import BayesSearchCV
 from skopt.space import Categorical, Integer, Real
 from xgboost import XGBRegressor
 
-PUSHGATEWAY_ADDR = os.getenv("PUSHGATEWAY_ADDR", "unknown_address:9091")
-DISABLE_METRICS_PUSH = os.getenv("DISABLE_METRICS_PUSH", "1")
+from src.common.env import get_env
+from src.common.logger import get_logger
+
+DEFAULT_PUSHGATEWAY_ADDR = "unknown_address:9091"
 
 SEARCH_SPACES_XGB = {
     "n_estimators": Integer(300, 800),
@@ -39,7 +41,7 @@ SEARCH_SPACES_XGB = {
     "min_child_weight": Integer(1, 10),
 }
 
-logger = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 
 def _auto_adjust_n_iter(search_space: dict, requested_iter: int) -> int:
@@ -53,15 +55,7 @@ def _auto_adjust_n_iter(search_space: dict, requested_iter: int) -> int:
 
 
 def _extract_param_ranges(search_space) -> dict[str, dict[str, Any]]:
-    """
-    Extract min and max values from a BayesSearchCV search space.
-
-    Args:
-        search_space: skopt Space or dict.
-
-    Returns:
-        Dict with keys ``min_params`` and ``max_params``.
-    """
+    """Extract min and max values from a BayesSearchCV search space."""
 
     min_params = {}
     max_params = {}
@@ -98,18 +92,7 @@ def train_test_split_time_aware(
     pd.Series,
     pd.Series,
 ]:
-    """
-    Chronological train/test split preserving datetime columns for visualization.
-
-    Args:
-        df: DataFrame containing all data.
-        timestamp_cols: List of timestamp columns to preserve.
-        target_col: Name of the target column.
-        test_size: Fraction of data to use for testing.
-
-    Returns:
-        X_train, X_train_dates, X_test, X_test_dates, y_train, y_test.
-    """
+    """Chronologically split features, timestamps, and target values."""
 
     df = df.copy()
     features_dates = df[timestamp_cols].copy()
@@ -128,9 +111,7 @@ def train_test_split_time_aware(
 
 
 class AutoregressiveFeaturesTransformer:
-    """
-    Add autoregressive and rolling average features to a time series dataset.
-    """
+    """Add autoregressive and rolling average features."""
 
     def __init__(
         self,
@@ -149,9 +130,7 @@ class AutoregressiveFeaturesTransformer:
         X_dates: pd.DataFrame,
         y: pd.Series,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
-        """
-        Apply AR and rolling features to ``X`` and align ``X_dates`` and ``y``.
-        """
+        """Apply AR and rolling features while keeping dates and target aligned."""
 
         df = X.copy()
         if self.nb_ar > 0:
@@ -182,9 +161,7 @@ class AutoregressiveFeaturesTransformer:
         recent_X: pd.DataFrame,
         recent_y: list[float],
     ) -> pd.DataFrame:
-        """
-        Generate AR/MM features for one recursive forecast step.
-        """
+        """Generate AR/MM features for one recursive forecast step."""
 
         if not self.fitted_:
             raise RuntimeError(
@@ -223,9 +200,7 @@ def recursive_forecast_model(
     horizon: int,
     target_col: str,
 ) -> list[float]:
-    """
-    Run recursive forecasting with AR/MM features and exogenous inputs.
-    """
+    """Run recursive forecasting with AR/MM features."""
 
     future_preds = []
     current_df = last_window_df.copy()
@@ -258,7 +233,7 @@ def recursive_forecast_model(
                 recent_y.tolist(),
             )
         except Exception as exc:
-            logger.warning(f"[STEP {step_idx}] Failed to create AR features: {exc}")
+            LOGGER.warning(f"[STEP {step_idx}] Failed to create AR features: {exc}")
             break
 
         X_next_prepped = pipe.named_steps["prep"].transform(X_next)
@@ -278,13 +253,11 @@ def train_timeseries_model(
     test_ratio: float = 0.2,
     iter_grid_search: int = 0,
 ) -> dict:
-    """
-    Train an XGBoost time-series regressor and return predictions and metadata.
-    """
+    """Train an XGBoost regressor and return predictions with metadata."""
 
     timestamp_cols = timestamp_cols or ["date_et_heure_de_comptage_local"]
     temp_feats = temp_feats or [0, 0, 1]
-    logger.info(
+    LOGGER.info(
         f"Train and predict timeseries with [df_len={len(df_counter)}"
         f" | temp_feats={temp_feats}"
         f" | test_ratio={test_ratio}"
@@ -316,15 +289,15 @@ def train_timeseries_model(
         X_train_dates,
         y_train,
     )
-    logger.info(
-        f"AR({temp_feats[0]}) et MM({temp_feats[1]}[{temp_feats[2]}h])"
-        " features are applied on train data"
+    LOGGER.debug(
+        f"AR({temp_feats[0]}) and MM({temp_feats[1]}[{temp_feats[2]}h])"
+        " features applied to train data"
     )
 
     numeric_cols = X_train.select_dtypes(include="number").columns.tolist()
-    logger.info(f"List of numerical columns: {numeric_cols}")
+    LOGGER.debug("Numerical columns: %s", numeric_cols)
     categorical_cols = X_train.select_dtypes(include="object").columns.tolist()
-    logger.info(f"List of categorical columns: {categorical_cols}")
+    LOGGER.debug("Categorical columns: %s", categorical_cols)
 
     preprocessing = ColumnTransformer(
         [
@@ -361,20 +334,20 @@ def train_timeseries_model(
             ("reg", final_model),
         ],
     )
-    logger.debug(f"Pipeline model specs used: {pipe_model}")
+    LOGGER.debug(f"Pipeline model specs used: {pipe_model}")
 
     pipe_model.fit(X_train, y_train)
-    logger.info("Model training achieved")
+    LOGGER.info("Model training achieved")
 
     fitted_model = pipe_model.named_steps["reg"]
     if iter_grid_search > 0:
         best_params = fitted_model.best_params_
-        logger.info(f"Bayesian grid search best params [{best_params}]")
+        LOGGER.info(f"Bayesian grid search best params [{best_params}]")
         fitted_model_params = fitted_model.best_estimator_.get_params()
     else:
         best_params = "Not Applicable (no grid search)"
         fitted_model_params = fitted_model.get_params()
-    logger.info(f"Fitted model params [{fitted_model_params}]")
+    LOGGER.debug("Fitted model params: %s", fitted_model_params)
 
     params = {
         "best_params": best_params,
@@ -382,7 +355,7 @@ def train_timeseries_model(
         **fitted_model_params,
     }
     y_train_pred = pipe_model.predict(X_train)
-    logger.info("Predictions on train data achieved")
+    LOGGER.debug("Predictions on train data achieved")
 
     X_full = pd.concat([X_train, X_test], ignore_index=True)
     y_full = pd.concat(
@@ -391,7 +364,7 @@ def train_timeseries_model(
     )
     last_window_df = X_full.copy()
     last_window_df[target_col] = y_full
-    logger.info(f"Recursive predict on an horizon of {len(y_test)} hour(s)")
+    LOGGER.info(f"Recursive predict on an horizon of {len(y_test)} hour(s)")
     y_test_pred = recursive_forecast_model(
         pipe_model,
         ar_transformer,
@@ -399,7 +372,7 @@ def train_timeseries_model(
         horizon=len(y_test),
         target_col=target_col,
     )
-    logger.info("Predictions on test data achieved")
+    LOGGER.debug("Predictions on test data achieved")
 
     train_df = pd.DataFrame(
         {
@@ -461,18 +434,7 @@ def save_artefacts(report: dict, save_dir):
     y_train_pred_path = os.path.join(save_data_path, "y_train_pred.csv")
     y_test_pred_path = os.path.join(save_data_path, "y_test_pred.csv")
     y_full_path = os.path.join(save_data_path, "y_full.csv")
-    logging.info(
-        f"Final refined data CSV files saved in {save_data_path}:\n"
-        f"{X_train_path}\n"
-        f"{X_test_path}\n"
-        f"{X_train_dates_path}\n"
-        f"{X_test_dates_path}\n"
-        f"{y_train_path}\n"
-        f"{y_test_path}\n"
-        f"{y_train_pred_path}\n"
-        f"{y_test_pred_path}\n"
-        f"{y_full_path}"
-    )
+    LOGGER.info("Saved prediction CSV artifacts under %s", save_data_path)
 
     report["X_test_dates"].to_csv(X_test_dates_path, index=True)
     report["X_train"].to_csv(X_train_path, index=True)
@@ -496,13 +458,7 @@ def save_artefacts(report: dict, save_dir):
     ar_transformer_path = os.path.join(save_model_path, "ar_transformer.pkl")
     params_path = os.path.join(save_model_path, "hyperparams.json")
     metrics_path = os.path.join(save_model_path, "metrics.json")
-    logging.info(
-        f"Pipeline, Params, Metrics and AR transformer are saved in {save_model_path}:\n"
-        f"{pipe_model_path}\n"
-        f"{params_path}\n"
-        f"{ar_transformer_path}\n"
-        f"{metrics_path}"
-    )
+    LOGGER.info("Saved model artifacts under %s", save_model_path)
     joblib.dump(report["pipe_model"], pipe_model_path)
     joblib.dump(report["ar_transformer"], ar_transformer_path)
     with open(params_path, "w", encoding="utf-8") as file:
@@ -544,12 +500,10 @@ def push_business_metrics(
     last_ts: datetime,
     day_offset: int,
 ) -> None:
-    """
-    Push business KPIs for the test split.
-    """
+    """Push business KPIs for the test split."""
 
-    if DISABLE_METRICS_PUSH == "1":
-        logger.info("Push metrics to gateway is disabled")
+    if get_env("DISABLE_METRICS_PUSH", default="1") == "1":
+        LOGGER.debug("Pushgateway business metrics push disabled")
         return
 
     if isinstance(last_ts, datetime) and last_ts.tzinfo is None:
@@ -601,9 +555,9 @@ def push_business_metrics(
     ).labels(site, orientation).set(float(day_offset))
 
     pushadd_to_gateway(
-        PUSHGATEWAY_ADDR,
+        get_env("PUSHGATEWAY_ADDR", default=DEFAULT_PUSHGATEWAY_ADDR),
         job="bike-traffic",
         grouping_key={"site": site, "orientation": orientation},
         registry=registry,
     )
-    logger.info("Business metrics pushed to gateway")
+    LOGGER.info("Business metrics pushed to gateway")

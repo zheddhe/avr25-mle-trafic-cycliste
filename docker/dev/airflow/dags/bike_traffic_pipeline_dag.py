@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
@@ -20,9 +19,14 @@ from airflow.providers.standard.operators.python import (
     ShortCircuitOperator,
 )
 from airflow.sdk import DAG, Param, TaskGroup, Variable
-from common.utils import CounterCfg, _load_concurrency_config, _load_config
+from common.utils import (
+    CounterCfg,
+    _load_concurrency_config,
+    _load_config,
+    get_airflow_task_logger,
+)
 
-logger = logging.getLogger("airflow.task")
+LOGGER = get_airflow_task_logger()
 concurrency = _load_concurrency_config()
 
 JOB_RUNNER_URL = "http://job-runner-api:10080"
@@ -52,10 +56,17 @@ def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
+        LOGGER.error(
+            "[pipeline] Runner API HTTP error: url=%s code=%s body=%s",
+            url,
+            error.code,
+            body,
+        )
         raise AirflowException(
             f"HTTP {error.code} while calling {url}: {body}"
         ) from error
     except (urllib.error.URLError, TimeoutError) as error:
+        LOGGER.error("[pipeline] Runner API call failed: url=%s error=%s", url, error)
         raise AirflowException(f"Failed to call {url}: {error}") from error
 
 
@@ -100,6 +111,15 @@ def _prepare_args_callable(mode: str):
             proceed = window["end"] > 75.0
         context = _build_context(counter_id, counter, run_id, delta_days, window)
         context["PROCEED"] = proceed
+        LOGGER.info(
+            "[pipeline] Prepared %s run: counter=%s run_id=%s "
+            "window=%s proceed=%s",
+            mode,
+            counter_id,
+            run_id,
+            window,
+            proceed,
+        )
         for key, value in context.items():
             ti.xcom_push(key=key, value=value)
         return context
@@ -142,13 +162,31 @@ def _build_context(
 def _submit_runner_job(job_type: str, **ctx) -> dict[str, Any]:
     ti: TaskInstance = ctx["ti"]
     payload = _build_job_payload(job_type, ti, ctx)
+    LOGGER.info(
+        "[pipeline] Submitting runner job: job_type=%s counter=%s run_id=%s",
+        job_type,
+        payload["counter_id"],
+        payload["run_id"],
+    )
     status = _post_json(f"{JOB_RUNNER_URL}/jobs", payload)
     if status.get("state") != "succeeded":
         error = status.get("error") or {}
         message = error.get("message") or "Runner job did not succeed."
+        LOGGER.error(
+            "[pipeline] Runner job failed: job_type=%s state=%s message=%s",
+            job_type,
+            status.get("state"),
+            message,
+        )
         raise AirflowException(
             f"Runner job failed with state={status.get('state')}: {message}"
         )
+    LOGGER.info(
+        "[pipeline] Runner job succeeded: job_type=%s counter=%s run_id=%s",
+        job_type,
+        payload["counter_id"],
+        payload["run_id"],
+    )
     manifest = ((status.get("result") or {}).get("manifest") or {})
     if manifest:
         ti.xcom_push(key=f"{job_type.upper()}_MANIFEST", value=manifest)
@@ -270,7 +308,7 @@ def _read_current_manifest(
 ) -> dict[str, Any] | None:
     path = Path(MANIFEST_ROOT) / artifact_type / counter_id / "current.json"
     if not path.is_file():
-        logger.info("[pipeline] Manifest not found yet: %s", path)
+        LOGGER.debug("[pipeline] Manifest not found yet: %s", path)
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -283,13 +321,14 @@ def _daily_gate_callable(**ctx) -> bool:
 def _init_gate_callable(**ctx) -> bool:
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     already_done = Variable.get(f"bike_init_done__{counter_id}", default="0") == "1"
-    logger.info("[pipeline] Init gate counter=%s done=%s", counter_id, already_done)
+    LOGGER.info("[pipeline] Init gate counter=%s done=%s", counter_id, already_done)
     return not already_done
 
 
 def _mark_init_done_callable(**ctx) -> None:
     counter_id = _extract_counter_id(ctx) or "UNKNOWN"
     Variable.set(f"bike_init_done__{counter_id}", "1")
+    LOGGER.info("[pipeline] Init marked done for counter=%s", counter_id)
 
 
 def build_etl_group(dag: DAG, mode: str) -> TaskGroup:

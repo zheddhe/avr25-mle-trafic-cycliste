@@ -6,15 +6,14 @@ fallback and by the internal FastAPI ML step services.
 
 from __future__ import annotations
 
-import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import PurePosixPath
 
 from click import Command
 
 from src.artifacts.schemas import ArtifactType
+from src.common.env import get_env, patched_env
+from src.common.logger import get_logger
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
     FeatureJobRequest,
@@ -24,6 +23,10 @@ from src.ml.jobs.contracts import (
     StepJobRequest,
 )
 from src.ml.jobs.status import JobResult, MetricsEvidence, utc_now
+
+LOGGER = get_logger(__name__)
+
+_patched_environ = patched_env
 
 
 class MlStepExecutionError(Exception):
@@ -48,6 +51,13 @@ class StepCommandExecutor:
     ) -> JobResult:
         """Execute one typed ML job and build step-level evidence."""
 
+        LOGGER.debug(
+            "Executing typed ML job: job_id=%s job_type=%s counter_id=%s",
+            job_id,
+            job_request.job_type.value,
+            job_request.counter_id,
+        )
+
         if isinstance(job_request, IngestJobRequest):
             output_paths = self._execute_ingest(job_request)
         elif isinstance(job_request, FeatureJobRequest):
@@ -60,6 +70,12 @@ class StepCommandExecutor:
                 message="Unsupported typed ML job request.",
                 retryable=False,
             )
+
+        LOGGER.debug(
+            "Typed ML job command completed: job_id=%s outputs=%s",
+            job_id,
+            output_paths,
+        )
 
         return JobResult(
             job_id=job_id,
@@ -168,7 +184,7 @@ class StepCommandExecutor:
         if job_request.manifest_root:
             args.extend(["--artifact-manifest-root", job_request.manifest_root])
 
-        repository_root = os.getenv("ARTIFACT_REPOSITORY_ROOT", ".")
+        repository_root = get_env("ARTIFACT_REPOSITORY_ROOT", default=".")
         args.extend(["--artifact-repository-root", repository_root])
 
     def _invoke(
@@ -179,7 +195,7 @@ class StepCommandExecutor:
     ) -> None:
         env = _execution_env(job_request)
         try:
-            with _patched_environ(env):
+            with patched_env(env):
                 command.main(
                     args=args,
                     prog_name=command.name,
@@ -273,20 +289,6 @@ def _execution_error(
         message=message,
         retryable=True,
     )
-
-
-@contextmanager
-def _patched_environ(updates: dict[str, str]) -> Iterator[None]:
-    previous = {key: os.environ.get(key) for key in updates}
-    os.environ.update(updates)
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
 def _artifact_type_for_job(job_type: MlJobType) -> ArtifactType:

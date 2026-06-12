@@ -18,6 +18,9 @@
   docstrings, tests, and API payloads.
 - Keep Python code compatible with Python 3.12, PEP8, Ruff, and the current
   `pyproject.toml`.
+- Use lazy interpolation for logging calls, passing values as logger
+  arguments, for example `LOGGER.info("Loaded %s rows", row_count)`.
+  Use f-strings for regular non-logging strings.
 - Prefer small, cohesive commits grouped by logical intent, not one commit per
   file.
 - Put reusable Python logic in `src/`; put tests under `tests/`.

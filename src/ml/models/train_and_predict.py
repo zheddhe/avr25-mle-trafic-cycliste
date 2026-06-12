@@ -1,7 +1,7 @@
-# src/ml/models/train_and_predict.py
+"""Train and forecast cyclist traffic time series."""
+
 from __future__ import annotations
 
-import logging
 import os
 import sys
 
@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import pytz
 
+from src.common.env import get_env
+from src.common.logger import configure_logging, get_logger
 from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.models.artifact_manifest_emission import (
     emit_prediction_artifact_manifest,
@@ -29,13 +31,8 @@ from src.ml.models.models_utils import (
 )
 
 
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
 def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
-    """
-    Extract site and orientation from a pipeline sub-directory name.
-    """
+    """Extract site and orientation from a pipeline sub-directory."""
 
     parts = sub_dir.split("_")
     if len(parts) >= 2:
@@ -43,24 +40,9 @@ def _extract_site_orientation(sub_dir: str) -> tuple[str, str]:
     return parts[0], "NA"
 
 
-# -------------------------------------------------------------------
-# Logs management
-# -------------------------------------------------------------------
-log_dir = os.path.join("logs", "ml")
-os.makedirs(log_dir, exist_ok=True)
-log_path = os.path.join(log_dir, "train_and_predict.log")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 
-# -------------------------------------------------------------------
-# Main script
-# -------------------------------------------------------------------
 @click.command()
 @click.option(
     "--processed-path",
@@ -177,17 +159,15 @@ def main(
     artifact_repository_root: str,
     artifact_object_uri: str | None,
 ) -> None:
-    """
-    Train a time-series model, persist predictions, and emit optional manifests.
-    """
+    """Train a time-series model and persist predictions."""
 
     labels = {
-        "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
-        "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.models"),
-        "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
-        "site": os.getenv("SITE", "NA"),
-        "site_short": os.getenv("SITE_SHORT", "NA"),
-        "orientation": os.getenv("ORIENTATION", "NA"),
+        "dag": get_env("AIRFLOW_CTX_DAG_ID", default="unknown_dag"),
+        "task": get_env("AIRFLOW_CTX_TASK_ID", default="etl.models"),
+        "run_id": get_env("AIRFLOW_CTX_DAG_RUN_ID", default="local"),
+        "site": get_env("SITE", default="NA"),
+        "site_short": get_env("SITE_SHORT", default="NA"),
+        "orientation": get_env("ORIENTATION", default="NA"),
     }
 
     with track_pipeline_step("models", labels) as metrics_payload:
@@ -205,10 +185,10 @@ def main(
             sub_dir = os.path.basename(os.path.dirname(processed_path))
 
         try:
-            logger.info(f"Loading processed CSV [{processed_path}] ...")
+            LOGGER.info(f"Loading processed CSV [{processed_path}] ...")
             df = pd.read_csv(processed_path, index_col=0)
         except Exception as exc:
-            logger.exception(f"Failed to load processed CSV: {exc}")
+            LOGGER.exception("Failed to load processed CSV")
             raise click.ClickException(
                 f"Failed to load processed CSV: {exc}",
             ) from exc
@@ -248,7 +228,7 @@ def main(
             iter_grid_search=grid_iter,
         )
 
-        site_short = os.getenv("SITE_SHORT")
+        site_short = get_env("SITE_SHORT")
         if not site_short:
             site_short = sub_dir
             log_message = (
@@ -256,16 +236,16 @@ def main(
                 "to construct registration model name"
             )
             if registry_enabled:
-                logger.warning(log_message)
+                LOGGER.warning(log_message)
             else:
-                logger.info(log_message)
+                LOGGER.debug(log_message)
 
         tags = {
             "counter.subdir": sub_dir,
             "site.short": site_short,
             "model.family": "XGBRegressor",
         }
-        model_version = os.getenv("MODEL_VERSION")
+        model_version = get_env("MODEL_VERSION")
         with start_run(
             experiment_name=site_short,
             run_name=os.path.basename(processed_path),
@@ -313,7 +293,7 @@ def main(
 
         metrics_payload["records"] = int(len(df))
 
-    logger.info("Training and forecasting ended successfully.")
+    LOGGER.info("Training and forecasting ended successfully.")
     sys.exit(0)
 
 
@@ -334,27 +314,27 @@ def _emit_manifest_or_raise(
             processed_path=processed_path,
             sub_dir=sub_dir,
             repository_root=artifact_repository_root,
-            run_id=os.getenv("RUN_ID") or os.getenv("AIRFLOW_CTX_DAG_RUN_ID"),
-            counter_id=os.getenv("COUNTER_ID") or sub_dir,
-            dataset_version=os.getenv("DATASET_VERSION"),
+            run_id=get_env("RUN_ID") or get_env("AIRFLOW_CTX_DAG_RUN_ID"),
+            counter_id=get_env("COUNTER_ID") or sub_dir,
+            dataset_version=get_env("DATASET_VERSION"),
             model_version=model_version,
-            producer_service=os.getenv(
+            producer_service=get_env(
                 "ARTIFACT_PRODUCER_SERVICE",
-                "ml-models",
+                default="ml-models",
             ),
-            producer_image=os.getenv("ARTIFACT_PRODUCER_IMAGE"),
-            producer_version=os.getenv("ARTIFACT_PRODUCER_VERSION"),
+            producer_image=get_env("ARTIFACT_PRODUCER_IMAGE"),
+            producer_version=get_env("ARTIFACT_PRODUCER_VERSION"),
             object_uri=artifact_object_uri,
             promote=True,
         )
     except Exception as exc:
-        logger.exception("Failed to emit prediction artifact manifest")
+        LOGGER.exception("Failed to emit prediction artifact manifest")
         raise click.ClickException(
             f"Failed to emit prediction artifact manifest: {exc}",
         ) from exc
 
     if emitted_manifest is not None:
-        logger.info(
+        LOGGER.info(
             f"Prediction artifact manifest emitted for "
             f"run_id=[{emitted_manifest.run_id}]."
         )
@@ -366,7 +346,7 @@ def _promote_latest_model_alias(
     registry_enabled: bool,
 ) -> None:
     if not registry_enabled:
-        logger.info(
+        LOGGER.info(
             "Model registry promotion skipped because no MLflow tracking URI "
             "is configured."
         )
@@ -379,7 +359,7 @@ def _promote_latest_model_alias(
         client = MlflowClient()
         versions = client.search_model_versions(f"name='{model_name}'")
         if not versions:
-            logger.warning(f"No version found for model [{model_name}].")
+            LOGGER.warning(f"No version found for model [{model_name}].")
             return
 
         latest = max(versions, key=lambda version: int(version.version))
@@ -390,14 +370,14 @@ def _promote_latest_model_alias(
                 latest.version,
             )
         except Exception as exc:
-            logger.warning(f"Alias 'prod' undefined: {exc}")
+            LOGGER.warning(f"Alias 'prod' undefined: {exc}")
 
-        logger.info(
+        LOGGER.info(
             f"Model [{model_name}] version {latest.version} "
             f"promoted to production."
         )
     except Exception as exc:
-        logger.warning(f"Model promotion failed: {exc}")
+        LOGGER.warning(f"Model promotion failed: {exc}")
 
 
 def _push_business_metrics(
@@ -425,11 +405,11 @@ def _push_business_metrics(
         r2 = float(report["metrics"]["test"].get("R2", np.nan))
         n_true = int(y_train_pred.size)
         n_pred = int(y_test_pred.size)
-        day_offset = int(os.getenv("DAY_OFFSET", "0"))
+        day_offset = int(get_env("DAY_OFFSET", default="0"))
         last_ts = pd.to_datetime(df[ts_col_utc].max(), utc=True).to_pydatetime()
 
-        site_env = os.getenv("SITE_SHORT")
-        orientation_env = os.getenv("ORIENTATION")
+        site_env = get_env("SITE_SHORT")
+        orientation_env = get_env("ORIENTATION")
         if site_env and orientation_env:
             site, orientation = site_env, orientation_env
         else:
@@ -441,8 +421,8 @@ def _push_business_metrics(
             f"n_obs_true={n_true}, n_obs_pred={n_pred}, "
             f"day_offset={day_offset}"
         )
-        if os.getenv("DISABLE_METRICS_PUSH", "1") == "1":
-            logger.info(f"Business metrics push skipped: {summary}")
+        if get_env("DISABLE_METRICS_PUSH", default="1") == "1":
+            LOGGER.debug("Business metrics push skipped: %s", summary)
             return
 
         push_business_metrics(
@@ -456,14 +436,15 @@ def _push_business_metrics(
             last_ts=last_ts,
             day_offset=day_offset,
         )
-        logger.info(f"Pushed business metrics to Pushgateway: {summary}")
+        LOGGER.info(f"Pushed business metrics to Pushgateway: {summary}")
     except Exception as exc:
-        logger.warning(f"Failed to push business metrics: {exc}")
+        LOGGER.warning(f"Failed to push business metrics: {exc}")
 
 
 if __name__ == "__main__":
+    configure_logging(level=get_env("LOG_LEVEL", default="INFO"))
     try:
         main()
     except click.ClickException as error:
-        logger.error(str(error))
+        LOGGER.error(str(error))
         sys.exit(1)

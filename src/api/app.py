@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
@@ -27,8 +26,9 @@ from src.api.schemas import (
 )
 from src.api.serving import PredictionServingError, load_predictions_from_manifests
 from src.artifacts.exceptions import ArtifactManifestError
+from src.common.logger import get_logger
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 OPENAPI_TAGS = [
     {
@@ -212,7 +212,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         """Return counters loaded in the manifest-first prediction store."""
 
         predictions = prediction_store.require_predictions()
-        LOGGER.info(
+        LOGGER.debug(
             f"Counters list requested by user: {user_info['username']} "
             f"(role: {user_info['role']})"
         )
@@ -257,7 +257,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
         dataframe = predictions[counter_id]
         dataframe_page = dataframe.iloc[offset: offset + limit]
-        LOGGER.info(
+        LOGGER.debug(
             f"Predictions for counter {counter_id} requested by user: "
             f"{user_info['username']} (role: {user_info['role']}, "
             f"limit: {limit}, offset: {offset})"
@@ -286,7 +286,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         """Return current artifact metadata for all loaded counters."""
 
         artifacts = prediction_store.require_artifacts()
-        LOGGER.info(
+        LOGGER.debug(
             f"Current artifact metadata requested by user: "
             f"{user_info['username']} (role: {user_info['role']})"
         )
@@ -314,7 +314,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
                 date=str(datetime.now()),
             )
 
-        LOGGER.info(
+        LOGGER.debug(
             f"Current artifact metadata for counter {counter_id} requested "
             f"by user: {user_info['username']}"
         )

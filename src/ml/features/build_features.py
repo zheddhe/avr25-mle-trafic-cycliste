@@ -1,7 +1,6 @@
 # Build feature datasets.
 from __future__ import annotations
 
-import logging
 import os
 import sys
 from pathlib import Path
@@ -9,25 +8,15 @@ from pathlib import Path
 import click
 import pandas as pd
 
+from src.common.env import get_env
+from src.common.logger import configure_logging, get_logger
 from src.metrics.pipeline_metrics import track_pipeline_step
 from src.ml.features.artifact_manifest_emission import (
     emit_feature_dataset_artifact_manifest,
 )
 from src.ml.features.features_utils import DatetimePeriodicsTransformer
 
-LOG_DIR = os.path.join("logs", "ml")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(LOG_DIR, "build_features.log")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
-)
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 COLUMNS_TO_DROP = [
     "nom_du_site_de_comptage",
@@ -124,12 +113,12 @@ def main(
     """Build periodic datetime features and write a processed dataset."""
 
     labels = {
-        "dag": os.getenv("AIRFLOW_CTX_DAG_ID", "unknown_dag"),
-        "task": os.getenv("AIRFLOW_CTX_TASK_ID", "etl.features"),
-        "run_id": os.getenv("AIRFLOW_CTX_DAG_RUN_ID", "local"),
-        "site": os.getenv("SITE", "NA"),
-        "site_short": os.getenv("SITE_SHORT", "NA"),
-        "orientation": os.getenv("ORIENTATION", "NA"),
+        "dag": get_env("AIRFLOW_CTX_DAG_ID", default="unknown_dag"),
+        "task": get_env("AIRFLOW_CTX_TASK_ID", default="etl.features"),
+        "run_id": get_env("AIRFLOW_CTX_DAG_RUN_ID", default="local"),
+        "site": get_env("SITE", default="NA"),
+        "site_short": get_env("SITE_SHORT", default="NA"),
+        "orientation": get_env("ORIENTATION", default="NA"),
     }
 
     with track_pipeline_step("features", labels) as metrics_payload:
@@ -137,7 +126,7 @@ def main(
             LOGGER.info(f"Loading interim CSV [{interim_path}] ...")
             df = pd.read_csv(interim_path, index_col=0)
         except Exception as exc:
-            LOGGER.exception(f"Failed to load interim CSV: {exc}")
+            LOGGER.exception("Failed to load interim CSV")
             raise click.ClickException(f"Failed to load interim CSV: {exc}") from exc
 
         if timestamp_col not in df.columns:
@@ -154,7 +143,7 @@ def main(
             if column in df.columns
         ]
         if to_drop:
-            LOGGER.info(f"Dropping {len(to_drop)} column(s): {to_drop}")
+            LOGGER.debug("Dropping feature columns: %s", to_drop)
             df = df.drop(columns=to_drop)
 
         if sub_dir is None:
@@ -175,12 +164,15 @@ def main(
             source_file_name=Path(interim_path).name,
             sub_dir=sub_dir,
             repository_root=artifact_repository_root,
-            run_id=os.getenv("RUN_ID") or os.getenv("AIRFLOW_CTX_DAG_RUN_ID"),
-            counter_id=os.getenv("COUNTER_ID") or sub_dir,
-            dataset_version=os.getenv("DATASET_VERSION"),
-            producer_service=os.getenv("ARTIFACT_PRODUCER_SERVICE", "ml-features"),
-            producer_image=os.getenv("ARTIFACT_PRODUCER_IMAGE"),
-            producer_version=os.getenv("ARTIFACT_PRODUCER_VERSION"),
+            run_id=get_env("RUN_ID") or get_env("AIRFLOW_CTX_DAG_RUN_ID"),
+            counter_id=get_env("COUNTER_ID") or sub_dir,
+            dataset_version=get_env("DATASET_VERSION"),
+            producer_service=get_env(
+                "ARTIFACT_PRODUCER_SERVICE",
+                default="ml-features",
+            ),
+            producer_image=get_env("ARTIFACT_PRODUCER_IMAGE"),
+            producer_version=get_env("ARTIFACT_PRODUCER_VERSION"),
             object_uri=artifact_object_uri,
             promote=True,
         )
@@ -197,6 +189,7 @@ def main(
 
 
 if __name__ == "__main__":
+    configure_logging(level=get_env("LOG_LEVEL", default="INFO"))
     try:
         main()
     except click.ClickException as error:
