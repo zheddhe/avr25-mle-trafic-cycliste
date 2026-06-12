@@ -27,6 +27,7 @@ RUN groupadd --gid "${APP_GID}" app && \
     mkdir -p /app/logs/job-runner
 
 COPY src/artifacts /app/src/artifacts
+COPY src/common /app/src/common
 COPY src/ml/jobs /app/src/ml/jobs
 COPY src/job_runner /app/src/job_runner
 
