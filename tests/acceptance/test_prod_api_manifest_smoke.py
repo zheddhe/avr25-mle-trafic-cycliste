@@ -32,8 +32,9 @@ class TestProdApiManifestSmoke:
         assert artifact["counter_id"] == _acceptance_counter_id_from_artifacts()
         assert artifact["artifact_type"] == "predictions"
         assert artifact["status"] in PROMOTABLE_STATUSES
-        assert artifact["storage"]["primary_backend"] == "local"
-        assert artifact["storage"].get("local_path")
+        assert artifact["primary_backend"] == "local"
+        assert artifact["local_path"]
+        assert artifact["checksum_sha256"]
 
     def test_authenticated_refresh_and_prediction_endpoints(self) -> None:
         refresh = _refresh_prediction_store()
