@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from dotenv import load_dotenv
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPOSITORY_ROOT / "docker" / "prod" / "docker-compose.yaml"
@@ -15,6 +16,7 @@ DEFAULT_PROJECT_NAME = "bike-traffic-prod"
 PIPELINE_RUNTIME_NETWORK = "prod_pipeline_runtime_net"
 OBSERVABILITY_NETWORK = "prod_observability_net"
 DEFAULT_PUSHGATEWAY_ADDR = "monitoring-pushgateway:9091"
+ENV_LOADED = False
 
 AIRFLOW_SERVICES = {
     "airflow-api-server",
@@ -46,8 +48,26 @@ def _env_file_path() -> Path:
     return REPOSITORY_ROOT / env_file
 
 
+def _load_acceptance_env() -> None:
+    global ENV_LOADED
+
+    if ENV_LOADED:
+        return
+
+    env_file = _env_file_path()
+    if env_file.is_file():
+        load_dotenv(dotenv_path=env_file, override=True)
+
+    ENV_LOADED = True
+
+
+def _optional_setting(name: str) -> str | None:
+    _load_acceptance_env()
+    return os.getenv(name) or None
+
+
 def _compose_command(*args: str) -> list[str]:
-    project_name = os.getenv("PROD_PROJECT_NAME", DEFAULT_PROJECT_NAME)
+    project_name = _optional_setting("PROD_PROJECT_NAME") or DEFAULT_PROJECT_NAME
     command = ["docker", "compose"]
     env_file = _env_file_path()
 
