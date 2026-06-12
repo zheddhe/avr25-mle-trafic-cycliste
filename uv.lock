@@ -419,7 +419,7 @@ wheels = [
 
 [[package]]
 name = "avr25-mle-trafic-cycliste"
-version = "0.7.0"
+version = "0.8.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

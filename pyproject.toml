@@ -1,6 +1,6 @@
 [project]
 name = "avr25-mle-trafic-cycliste"
-version = "0.7.0"
+version = "0.8.0"
 description = "bike trafic science project for MLE April 2025 promotion"
 license = "MIT"
 requires-python = "==3.12.*"
