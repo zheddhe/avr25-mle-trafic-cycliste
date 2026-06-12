@@ -3,62 +3,74 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import urllib.error
 import urllib.request
-from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import pytest
-from dotenv import load_dotenv
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COUNTER_ID_ENV = "ACCEPTANCE_COUNTER_ID"
 PROMOTABLE_STATUSES = {"produced", "validated", "promoted"}
-REQUIRED_ACCEPTANCE_SETTINGS = {
-    "API_URL",
-    "API_USER",
-    "API_PASS",
-    "API_ADMIN_USER",
-    "API_ADMIN_PASS",
-}
-ENV_LOADED = False
+RequiredEnvVar = Callable[[str], str]
+OptionalEnvVar = Callable[[str], str | None]
 
 
 @pytest.mark.acceptance
 class TestProdApiManifestSmoke:
-    def test_authenticated_refresh_loads_prediction_manifests(self) -> None:
-        refresh = _refresh_prediction_store()
-        artifacts = _current_artifacts()
+    def test_authenticated_refresh_loads_prediction_manifests(
+        self,
+        required_env_var: RequiredEnvVar,
+    ) -> None:
+        refresh = _refresh_prediction_store(required_env_var)
+        artifacts = _current_artifacts(required_env_var)
 
         assert refresh["loaded"] >= 1
         assert artifacts, "The API did not expose any current prediction artifact."
 
-    def test_prediction_manifest_is_current_publishable_manifest(self) -> None:
-        artifact = _acceptance_artifact()
+    def test_prediction_manifest_is_current_publishable_manifest(
+        self,
+        required_env_var: RequiredEnvVar,
+        optional_env_var: OptionalEnvVar,
+    ) -> None:
+        artifact = _acceptance_artifact(required_env_var, optional_env_var)
+        counter_id = _acceptance_counter_id_from_artifacts(
+            required_env_var,
+            optional_env_var,
+        )
 
-        assert artifact["counter_id"] == _acceptance_counter_id_from_artifacts()
+        assert artifact["counter_id"] == counter_id
         assert artifact["artifact_type"] == "predictions"
         assert artifact["status"] in PROMOTABLE_STATUSES
         assert artifact["primary_backend"] == "local"
         assert artifact["local_path"]
         assert artifact["checksum_sha256"]
 
-    def test_authenticated_refresh_and_prediction_endpoints(self) -> None:
-        refresh = _refresh_prediction_store()
+    def test_authenticated_refresh_and_prediction_endpoints(
+        self,
+        required_env_var: RequiredEnvVar,
+        optional_env_var: OptionalEnvVar,
+    ) -> None:
+        refresh = _refresh_prediction_store(required_env_var)
         counters = _request_json(
             "GET",
             "/counters",
-            username=_required_setting("API_USER"),
-            password=_required_setting("API_PASS"),
+            username=required_env_var("API_USER"),
+            password=required_env_var("API_PASS"),
+            api_url=required_env_var("API_URL"),
         )
-        artifacts = _current_artifacts()
-        counter_id = _acceptance_counter_id_from_api(counters)
+        artifacts = _current_artifacts(required_env_var)
+        counter_id = _acceptance_counter_id_from_api(
+            counters,
+            required_env_var,
+            optional_env_var,
+        )
         predictions = _request_json(
             "GET",
             f"/predictions/{counter_id}?limit=1&offset=0",
-            username=_required_setting("API_USER"),
-            password=_required_setting("API_PASS"),
+            username=required_env_var("API_USER"),
+            password=required_env_var("API_PASS"),
+            api_url=required_env_var("API_URL"),
         )
 
         counter_ids = {counter["id"] for counter in counters}
@@ -72,86 +84,55 @@ class TestProdApiManifestSmoke:
         assert predictions["item"]
 
 
-def _env_file_path() -> Path:
-    env_file = Path(os.getenv("ENV_FILE", ".env"))
-    if env_file.is_absolute():
-        return env_file
-
-    return REPOSITORY_ROOT / env_file
-
-
-def _load_acceptance_env() -> None:
-    global ENV_LOADED
-
-    if ENV_LOADED:
-        return
-
-    env_file = _env_file_path()
-    if env_file.is_file():
-        load_dotenv(dotenv_path=env_file, override=True)
-
-    ENV_LOADED = True
-
-
-def _required_setting(name: str) -> str:
-    _load_acceptance_env()
-    value = os.getenv(name)
-    if value:
-        return value
-
-    required_settings = ", ".join(sorted(REQUIRED_ACCEPTANCE_SETTINGS))
-    pytest.fail(
-        f"Missing required acceptance variable {name}. "
-        f"Define it in {_env_file_path()} or export it in the shell. "
-        f"Required variables: {required_settings}."
-    )
-    raise AssertionError
-
-
-def _optional_setting(name: str) -> str | None:
-    _load_acceptance_env()
-    return os.getenv(name) or None
-
-
-def _api_url() -> str:
-    return _required_setting("API_URL")
-
-
-def _refresh_prediction_store() -> dict[str, Any]:
+def _refresh_prediction_store(
+    required_env_var: RequiredEnvVar,
+) -> dict[str, Any]:
     return _request_json(
         "POST",
         "/admin/refresh",
-        username=_required_setting("API_ADMIN_USER"),
-        password=_required_setting("API_ADMIN_PASS"),
+        username=required_env_var("API_ADMIN_USER"),
+        password=required_env_var("API_ADMIN_PASS"),
+        api_url=required_env_var("API_URL"),
     )
 
 
-def _current_artifacts() -> list[dict[str, Any]]:
+def _current_artifacts(required_env_var: RequiredEnvVar) -> list[dict[str, Any]]:
     artifacts = _request_json(
         "GET",
         "/artifacts/current",
-        username=_required_setting("API_USER"),
-        password=_required_setting("API_PASS"),
+        username=required_env_var("API_USER"),
+        password=required_env_var("API_PASS"),
+        api_url=required_env_var("API_URL"),
     )
     assert isinstance(artifacts, list), f"Unexpected artifacts response: {artifacts}"
     return artifacts
 
 
-def _acceptance_artifact() -> dict[str, Any]:
-    counter_id = _acceptance_counter_id_from_artifacts()
+def _acceptance_artifact(
+    required_env_var: RequiredEnvVar,
+    optional_env_var: OptionalEnvVar,
+) -> dict[str, Any]:
+    counter_id = _acceptance_counter_id_from_artifacts(
+        required_env_var,
+        optional_env_var,
+    )
     artifact = _request_json(
         "GET",
         f"/artifacts/current/{counter_id}",
-        username=_required_setting("API_USER"),
-        password=_required_setting("API_PASS"),
+        username=required_env_var("API_USER"),
+        password=required_env_var("API_PASS"),
+        api_url=required_env_var("API_URL"),
     )
     assert isinstance(artifact, dict), f"Unexpected artifact response: {artifact}"
     return artifact
 
 
-def _acceptance_counter_id_from_artifacts() -> str:
-    configured_counter_id = _optional_setting(COUNTER_ID_ENV)
-    artifacts = _current_artifacts()
+def _acceptance_counter_id_from_artifacts(
+    required_env_var: RequiredEnvVar,
+    optional_env_var: OptionalEnvVar,
+) -> str:
+    configured_counter_id = optional_env_var(COUNTER_ID_ENV)
+    artifacts = _current_artifacts(required_env_var)
     counter_ids = sorted(artifact["counter_id"] for artifact in artifacts)
 
     if configured_counter_id:
@@ -165,8 +146,12 @@ def _acceptance_counter_id_from_artifacts() -> str:
     return counter_ids[0]
 
 
-def _acceptance_counter_id_from_api(counters: list[dict[str, Any]]) -> str:
-    configured_counter_id = _optional_setting(COUNTER_ID_ENV)
+def _acceptance_counter_id_from_api(
+    counters: list[dict[str, Any]],
+    required_env_var: RequiredEnvVar,
+    optional_env_var: OptionalEnvVar,
+) -> str:
+    configured_counter_id = optional_env_var(COUNTER_ID_ENV)
     counter_ids = sorted(counter["id"] for counter in counters)
     if configured_counter_id:
         assert configured_counter_id in counter_ids, (
@@ -175,7 +160,10 @@ def _acceptance_counter_id_from_api(counters: list[dict[str, Any]]) -> str:
         )
         return configured_counter_id
 
-    manifest_counter_id = _acceptance_counter_id_from_artifacts()
+    manifest_counter_id = _acceptance_counter_id_from_artifacts(
+        required_env_var,
+        optional_env_var,
+    )
     if manifest_counter_id in counter_ids:
         return manifest_counter_id
 
@@ -189,9 +177,9 @@ def _request_json(
     *,
     username: str,
     password: str,
+    api_url: str,
 ) -> Any:
     token = base64.b64encode(f"{username}:{password}".encode())
-    api_url = _api_url()
     request = urllib.request.Request(
         url=f"{api_url.rstrip('/')}/{path.lstrip('/')}",
         method=method,
