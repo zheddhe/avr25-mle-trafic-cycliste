@@ -7,9 +7,12 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.api.app import create_app
 from src.common.env import get_env
-from src.common.logger import configure_logging
+from src.common.logger import build_log_file_path, configure_logging
 
-configure_logging(level=get_env("LOG_LEVEL", default="INFO"))
+configure_logging(
+    level=get_env("LOG_LEVEL", default="INFO"),
+    log_file_path=build_log_file_path("api", "main.log"),
+)
 
 app = create_app()
 

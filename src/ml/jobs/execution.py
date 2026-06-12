@@ -13,7 +13,12 @@ from click import Command
 
 from src.artifacts.schemas import ArtifactType
 from src.common.env import get_env, patched_env
-from src.common.logger import get_logger
+from src.common.logger import (
+    build_log_file_path,
+    get_logger,
+    job_logging_context,
+    safe_log_path_part,
+)
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
     FeatureJobRequest,
@@ -51,47 +56,54 @@ class StepCommandExecutor:
     ) -> JobResult:
         """Execute one typed ML job and build step-level evidence."""
 
-        LOGGER.debug(
-            "Executing typed ML job: job_id=%s job_type=%s counter_id=%s",
-            job_id,
-            job_request.job_type.value,
-            job_request.counter_id,
-        )
-
-        if isinstance(job_request, IngestJobRequest):
-            output_paths = self._execute_ingest(job_request)
-        elif isinstance(job_request, FeatureJobRequest):
-            output_paths = self._execute_features(job_request)
-        elif isinstance(job_request, ModelJobRequest):
-            output_paths = self._execute_models(job_request)
-        else:  # pragma: no cover - guarded by Pydantic request union.
-            raise MlStepExecutionError(
-                code="UNSUPPORTED_JOB_TYPE",
-                message="Unsupported typed ML job request.",
-                retryable=False,
+        job_log_path = _job_log_path(job_request, job_id)
+        with job_logging_context(
+            job_log_path,
+            level=get_env("LOG_LEVEL", default="INFO"),
+        ):
+            LOGGER.debug(
+                "Executing typed ML job: job_id=%s job_type=%s counter_id=%s",
+                job_id,
+                job_request.job_type.value,
+                job_request.counter_id,
             )
 
-        LOGGER.debug(
-            "Typed ML job command completed: job_id=%s outputs=%s",
-            job_id,
-            output_paths,
-        )
+            if isinstance(job_request, IngestJobRequest):
+                output_paths = self._execute_ingest(job_request, job_id)
+            elif isinstance(job_request, FeatureJobRequest):
+                output_paths = self._execute_features(job_request, job_id)
+            elif isinstance(job_request, ModelJobRequest):
+                output_paths = self._execute_models(job_request, job_id)
+            else:  # pragma: no cover - guarded by Pydantic request union.
+                raise MlStepExecutionError(
+                    code="UNSUPPORTED_JOB_TYPE",
+                    message="Unsupported typed ML job request.",
+                    retryable=False,
+                )
 
-        return JobResult(
-            job_id=job_id,
-            run_id=job_request.run_id,
-            counter_id=job_request.counter_id,
-            job_type=job_request.job_type,
-            started_at=started_at,
-            finished_at=utc_now(),
-            output_paths=output_paths,
-            manifest=self._build_manifest_reference(job_request),
-            metrics=MetricsEvidence(
-                metrics_reference=f"logs/ml/{job_request.job_type.value}.log",
-            ),
-        )
+            LOGGER.debug(
+                "Typed ML job command completed: job_id=%s outputs=%s",
+                job_id,
+                output_paths,
+            )
 
-    def _execute_ingest(self, job_request: IngestJobRequest) -> tuple[str, ...]:
+            return JobResult(
+                job_id=job_id,
+                run_id=job_request.run_id,
+                counter_id=job_request.counter_id,
+                job_type=job_request.job_type,
+                started_at=started_at,
+                finished_at=utc_now(),
+                output_paths=output_paths,
+                manifest=self._build_manifest_reference(job_request),
+                metrics=MetricsEvidence(metrics_reference=job_log_path),
+            )
+
+    def _execute_ingest(
+        self,
+        job_request: IngestJobRequest,
+        job_id: str,
+    ) -> tuple[str, ...]:
         from src.ml.ingest.import_raw_data import main as ingest_command
 
         args = [
@@ -113,12 +125,13 @@ class StepCommandExecutor:
             job_request.interim_name,
         ]
         self._append_manifest_root(args, job_request)
-        self._invoke(ingest_command, args, job_request)
+        self._invoke(ingest_command, args, job_request, job_id)
         return (job_request.interim_output_path,)
 
     def _execute_features(
         self,
         job_request: FeatureJobRequest,
+        job_id: str,
     ) -> tuple[str, ...]:
         from src.ml.features.build_features import main as features_command
 
@@ -136,10 +149,14 @@ class StepCommandExecutor:
             args.extend(["--extra-drop", column])
 
         self._append_manifest_root(args, job_request)
-        self._invoke(features_command, args, job_request)
+        self._invoke(features_command, args, job_request, job_id)
         return (job_request.processed_output_path,)
 
-    def _execute_models(self, job_request: ModelJobRequest) -> tuple[str, ...]:
+    def _execute_models(
+        self,
+        job_request: ModelJobRequest,
+        job_id: str,
+    ) -> tuple[str, ...]:
         from src.ml.models.train_and_predict import main as models_command
 
         sub_dir = _model_sub_dir(job_request)
@@ -171,7 +188,7 @@ class StepCommandExecutor:
             args.extend(["--artifact-object-uri", job_request.artifact_object_uri])
 
         self._append_manifest_root(args, job_request)
-        self._invoke(models_command, args, job_request)
+        self._invoke(models_command, args, job_request, job_id)
 
         outputs = [job_request.prediction_output_path, job_request.model_output_path]
         return tuple(path for path in outputs if path is not None)
@@ -192,8 +209,9 @@ class StepCommandExecutor:
         command: Command,
         args: list[str],
         job_request: StepJobRequest,
+        job_id: str,
     ) -> None:
-        env = _execution_env(job_request)
+        env = _execution_env(job_request, job_id)
         try:
             with patched_env(env):
                 command.main(
@@ -241,10 +259,14 @@ class StepCommandExecutor:
         )
 
 
-def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
+def _execution_env(
+    job_request: StepJobRequest,
+    job_id: str,
+) -> dict[str, str]:
     site_short, orientation = _metrics_label_values(job_request)
     env = {
         "RUN_ID": job_request.run_id,
+        "JOB_ID": job_id,
         "COUNTER_ID": job_request.counter_id,
         "SITE_SHORT": site_short,
         "SITE": site_short,
@@ -261,6 +283,14 @@ def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
         env["ARTIFACT_MANIFEST_ROOT"] = job_request.manifest_root
 
     return env
+
+
+def _job_log_path(job_request: StepJobRequest, job_id: str) -> str:
+    file_name = (
+        f"{safe_log_path_part(job_request.run_id)}_"
+        f"{safe_log_path_part(job_id)}.log"
+    )
+    return str(build_log_file_path("ml", job_request.job_type.value, file_name))
 
 
 def _metrics_label_values(job_request: StepJobRequest) -> tuple[str, str]:
