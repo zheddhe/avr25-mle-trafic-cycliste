@@ -5,7 +5,7 @@ import logging
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def apply_percent_range_selection(
@@ -26,7 +26,7 @@ def apply_percent_range_selection(
     start_pct, end_pct = range_pct
 
     if df.empty or start_pct >= end_pct:
-        logger.warning("Invalid or empty range provided — returning empty DataFrame.")
+        LOGGER.warning("Invalid or empty range provided — returning empty DataFrame.")
         return df.iloc[0:0].copy()
 
     n_rows = len(df)

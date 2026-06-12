@@ -1,6 +1,6 @@
 [project]
 name = "avr25-mle-trafic-cycliste"
-version = "0.7.0"
+version = "0.8.0"
 description = "bike trafic science project for MLE April 2025 promotion"
 license = "MIT"
 requires-python = "==3.12.*"
@@ -34,6 +34,7 @@ app = [
 
 test = [
     { include-group = "app" },
+    "python-dotenv>=1.2.2",
     "pytest==8.3.5",
     "coverage==7.8.2",
     "pytest-cov==6.1.1",

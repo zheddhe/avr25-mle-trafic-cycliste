@@ -7,9 +7,9 @@ Machine learning and MLOps project for daily refreshed bike traffic prediction i
 Paris.
 
 The project was developed as part of the April 2025 Machine Learning Engineering
-training program. It combines data processing, time-series modelling, API
-serving, orchestration, tracking, monitoring, and local production-like runtime
-validation.
+training program. It combines data processing, time-series modelling, FastAPI
+serving, Airflow orchestration, MLflow tracking, Prometheus/Grafana monitoring,
+and local production-like runtime validation.
 
 ![Local production-like architecture overview](docs/assets/diagrams/local-prod-architecture-overview.png)
 
@@ -23,17 +23,20 @@ The MLOps architecture is organized around one business goal:
 
 > an external user can access daily refreshed bike traffic predictions.
 
-The implementation currently provides:
+The current implementation provides:
 
 - reproducible local Python tooling with uv;
 - DVC-oriented development data and model workspaces;
 - FastAPI prediction serving from promoted artifact manifests;
-- ML pipeline containers for ingestion, features, and modelling;
+- ML pipeline services for ingestion, features, and modelling;
 - manifest-first artifact handoff for pipeline outputs;
 - Airflow orchestration for multi-counter workflows;
+- an internal typed `job-runner-api` execution boundary;
+- an internal `ml-gateway` for scaled ML step service dispatch;
 - MLflow tracking with PostgreSQL and MinIO;
 - Prometheus, Grafana, Pushgateway, Alertmanager, cAdvisor, and MailHog;
 - explicit `docker/dev` and `docker/prod` Compose runtimes;
+- dev/prod-compatible host port ranges for parallel local runs;
 - production-like smoke validation for runtime, API, manifests, and monitoring
   wiring.
 
@@ -47,9 +50,9 @@ avr25-mle-trafic-cycliste/
 ├── pyproject.toml      <- Python project, dependency groups, pytest, coverage, Ruff
 ├── uv.lock             <- uv lockfile for reproducible local validation
 ├── data/               <- Development and DVC data workspace
-├── logs/               <- Development runtime logs
+├── logs/               <- Local non-Compose developer logs
 ├── models/             <- Development and DVC model artifacts
-├── src/                <- API and ML pipeline source code
+├── src/                <- API, runner, ML pipeline, artifacts, and metrics code
 ├── docker/             <- Dev/prod container architecture and runtime assets
 ├── docs/               <- Runtime, architecture, assets, and remaining work docs
 └── tests/              <- Unit, integration, and acceptance tests
@@ -70,7 +73,7 @@ The documentation is intentionally split into four groups:
 | Current runtime and operations | `docs/current-runtime-and-operations/` | How to run, validate, and reason about implemented local runtimes. |
 | Architecture references | `docs/architecture-references/` | Runtime communication, security boundaries, and implemented network topology. |
 | Documentation assets | `docs/assets/` | Versioned icons and rendered diagrams used by Markdown documentation. |
-| Remaining work | `docs/remaining-work/` | Future improvement axes that are deliberately outside the validated local production-like baseline. |
+| Remaining work | `docs/remaining-work/` | Future improvement axes outside the current local runtime baseline. |
 
 Key entrypoints:
 
@@ -78,6 +81,7 @@ Key entrypoints:
 - [`docs/current-runtime-and-operations/ports-and-services.md`](docs/current-runtime-and-operations/ports-and-services.md)
 - [`docs/current-runtime-and-operations/repository-structure.md`](docs/current-runtime-and-operations/repository-structure.md)
 - [`docs/architecture-references/runtime-communication-matrix.md`](docs/architecture-references/runtime-communication-matrix.md)
+- [`docs/architecture-references/runtime-security-boundaries.md`](docs/architecture-references/runtime-security-boundaries.md)
 - [`docs/architecture-references/local-prod-network-topology.md`](docs/architecture-references/local-prod-network-topology.md)
 - [`docs/remaining-work/global-remaining-work.md`](docs/remaining-work/global-remaining-work.md)
 
@@ -165,8 +169,8 @@ The project has two explicit runtime entrypoints.
 
 | Runtime | Compose file | Make targets | Main purpose |
 | ------- | ------------ | ------------ | ------------ |
-| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Debugging, broad host visibility, DVC/local workspaces, and current Airflow DockerOperator jobs. |
-| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, non-root custom services, runner-backed ML steps, manifest-first API serving, and acceptance validation. |
+| Development | `docker/dev/docker-compose.yaml` | `dev-*` | Full local runtime, broad host visibility, host bind-mounted `docker/dev/runtime`, and the same runner/gateway/ML-service path as prod-like. |
+| Local production-like | `docker/prod/docker-compose.yaml` | `prod-*` | Reduced host exposure, functional networks, `prod-runtime` Docker volume, runner/gateway/ML-service path, manifest-first API serving, and acceptance validation. |
 
 Development runtime:
 
@@ -187,47 +191,63 @@ make prod-build
 make prod-start
 make prod-ps
 make prod-logs SERVICE=api-prod
+make prod-dir-runtime
 make prod-clean
 ```
 
-The default profile is `ptf`, combining MLflow, Airflow, monitoring, and API
-services. Use `DEV_PROFILE=api` or `PROD_PROFILE=api` for targeted startup.
+The default profile is `ptf`, combining MLflow, Airflow, monitoring, runner,
+gateway, ML services, and API services. Use `DEV_PROFILE=api` or
+`PROD_PROFILE=api` for targeted startup.
+
+Scale ML step service replicas through the internal gateway path:
+
+```bash
+make dev-scale-ml ML_INGEST_REPLICAS=2 ML_FEATURES_REPLICAS=2 ML_MODELS_REPLICAS=2
+make prod-scale-ml ML_INGEST_REPLICAS=2 ML_FEATURES_REPLICAS=2 ML_MODELS_REPLICAS=2
+```
 
 ## ML pipeline, artifacts, and tracking
 
-Development one-off pipeline containers:
-
-```bash
-make dev-mlops-ingest
-make dev-mlops-features
-make dev-mlops-models
-make dev-mlops-pipeline
-```
-
-Local host-side execution:
+Local host-side execution remains available for quick experiments outside the
+Compose runtimes:
 
 ```bash
 make local-pipeline
 make mlflow-local
 ```
 
+Compose-driven ML execution is orchestrated by Airflow. In both dev and
+prod-like runtimes, Airflow submits typed jobs to `job-runner-api`. The runner
+routes job requests through `ml-gateway`, which dispatches to the appropriate ML
+step service:
+
+```text
+Airflow DAG task
+  -> job-runner-api
+  -> ml-gateway
+  -> ml-ingest-* / ml-features-* / ml-models-*
+```
+
 Pipeline steps can emit and promote artifact manifests when
 `ARTIFACT_MANIFEST_ROOT` or `--artifact-manifest-root` is configured. This keeps
-local/DVC runs unchanged by default while allowing production-like runtimes to
-publish validated artifact metadata and checksums.
+local/DVC runs unchanged by default while allowing Compose runtimes to publish
+validated artifact metadata and checksums.
 
 The prediction API serves from promoted prediction manifests. It reads
 `predictions/<counter_id>/current.json`, resolves the referenced local payload
-through `ARTIFACT_REPOSITORY_ROOT`, verifies the checksum when present, and no
-longer scans `data/final` to infer the current prediction file.
+through `ARTIFACT_REPOSITORY_ROOT`, verifies the checksum when present, and does
+not scan `data/final` to infer the current prediction file.
 
-MLflow environment presets:
+MLflow environment helpers:
 
 ```bash
 eval "$(make --no-print-directory env-compose)"
 eval "$(make --no-print-directory env-local)"
 eval "$(make --no-print-directory env-dagshub)"
 ```
+
+Compose services use their internal MLflow service names directly. Host-side
+helpers are for local Python or DagsHub-oriented workflows.
 
 ## Orchestration and monitoring
 
@@ -237,36 +257,40 @@ Airflow orchestrates multi-counter workflows:
 - `bike_traffic_daily`: rolling increment after initialization;
 - `bike_traffic_orchestrator`: orchestrates configured counters.
 
-In the production-like runtime, Airflow calls the internal `job-runner-api`, which
-then delegates typed `ingest`, `features`, and `models` jobs to internal ML step
-FastAPI services. The API is refreshed only after the model step has produced and
-promoted prediction artifacts.
+In both Compose runtimes, Airflow calls the internal `job-runner-api`, which then
+delegates typed `ingest`, `features`, and `models` jobs through `ml-gateway` to
+internal ML step FastAPI services. The prediction API is refreshed only after the
+model step has produced and promoted prediction artifacts.
 
 Monitoring uses Prometheus, Grafana, Pushgateway, cAdvisor, Alertmanager, and
 MailHog. Batch metrics are pushed from ML step services to Pushgateway and then
-scraped by Prometheus. Production-like Grafana dashboards are provisioned from
-`docker/prod/grafana/dashboards`.
+scraped by Prometheus. Grafana dashboards are provisioned from runtime-specific
+`docker/*/grafana/dashboards` folders.
 
 ## Current baseline and remaining work
 
-The local production-like baseline now covers the validated path:
+The current local baseline covers:
 
 ```text
 Airflow DAG task
   -> job-runner-api
-  -> ml-ingest-prod / ml-features-prod / ml-models-prod
+  -> ml-gateway
+  -> ML step service
   -> promoted prediction manifest
   -> authenticated API refresh
   -> FastAPI serving from the promoted manifest payload
   -> Prometheus and Grafana observability
 ```
 
+Development and local production-like runtimes are aligned on the functional
+path. The remaining differences are deliberate: host visibility, runtime storage,
+service hardening, and support-service exposure.
+
 Known remaining work is tracked as global improvement axes rather than as a
 phase-specific design target. See
 [`docs/remaining-work/global-remaining-work.md`](docs/remaining-work/global-remaining-work.md)
-for security hardening, scale-out execution, full ETL source chain,
-object-storage-first artifact serving, remote deployment, and production
-operations.
+for security hardening, full ETL source chain, object-storage-first artifact
+serving, remote deployment, and production operations.
 
 ## Collaboration
 

@@ -4,8 +4,7 @@ SHELL := /bin/bash
 
 .PHONY: dev-help dev-prepare-runtime dev-compose-config dev-build
 .PHONY: dev-start dev-stop dev-down dev-ps dev-logs dev-clean
-.PHONY: dev-mlops-ingest dev-mlops-features dev-mlops-models
-.PHONY: dev-mlops-pipeline
+.PHONY: dev-scale-ml
 .PHONY: dev-sim-api-loop dev-sim-api-down
 
 DOCKER_COMPOSE ?= docker compose
@@ -14,6 +13,9 @@ DEV_COMPOSE_FILE ?= docker/dev/docker-compose.yaml
 DEV_PROFILE ?= ptf
 DEV_PROJECT_NAME ?= bike-traffic-dev
 SERVICE ?= api-dev
+ML_INGEST_REPLICAS ?= 1
+ML_FEATURES_REPLICAS ?= 1
+ML_MODELS_REPLICAS ?= 1
 
 dev_log_target = printf '==> [%s] \033[33m%s\033[0m\n' "$$(date --iso-8601=seconds)" "$(1)"
 dev_check_env = if [ ! -f "$(ENV_FILE)" ]; then echo "Error: $(ENV_FILE) is missing. Run: make env" >&2; exit 1; fi
@@ -42,8 +44,10 @@ dev-prepare-runtime: ## Create ignored dev runtime folders
 		docker/dev/runtime/models \
 		docker/dev/runtime/logs/api \
 		docker/dev/runtime/logs/airflow \
+		docker/dev/runtime/logs/job-runner \
 		docker/dev/runtime/logs/ml
-	cp -f ./data/raw/*.csv docker/prod/runtime/data/raw/
+	cp -f ./data/raw/*.csv docker/dev/runtime/data/raw/
+
 dev-compose-config: dev-prepare-runtime ## Validate the local development Compose config
 	@$(call dev_log_target,dev-compose-config)
 	@$(dev_check_env)
@@ -79,22 +83,14 @@ dev-clean: ## Remove development containers, networks, and volumes
 	@$(dev_check_env)
 	$(dev_compose) --profile all down -v --remove-orphans
 
-dev-mlops-ingest: ## Run the development ML ingestion container once
-	@$(call dev_log_target,dev-mlops-ingest)
-	@$(dev_check_env)
-	$(dev_compose) --profile ml up ml-ingest-dev
-
-dev-mlops-features: ## Run the development ML feature container once
-	@$(call dev_log_target,dev-mlops-features)
-	@$(dev_check_env)
-	$(dev_compose) --profile ml up ml-features-dev
-
-dev-mlops-models: ## Run the development ML model container once
-	@$(call dev_log_target,dev-mlops-models)
-	@$(dev_check_env)
-	$(dev_compose) --profile ml up ml-models-dev
-
-dev-mlops-pipeline: dev-mlops-ingest dev-mlops-features dev-mlops-models ## Run the full development ML pipeline
+dev-scale-ml: dev-compose-config ## Scale dev ML replicas and reload the gateway
+	@$(call dev_log_target,dev-scale-ml)
+	$(dev_compose) --profile all up -d \
+		--scale ml-ingest-dev=$(ML_INGEST_REPLICAS) \
+		--scale ml-features-dev=$(ML_FEATURES_REPLICAS) \
+		--scale ml-models-dev=$(ML_MODELS_REPLICAS) \
+		ml-ingest-dev ml-features-dev ml-models-dev ml-gateway
+	$(dev_compose) exec -T ml-gateway nginx -s reload
 
 dev-sim-api-loop: ## Simulate 10 API stop/start cycles with a 5-second interval
 	@$(call dev_log_target,dev-sim-api-loop)

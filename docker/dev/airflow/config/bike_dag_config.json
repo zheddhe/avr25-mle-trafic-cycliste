@@ -1,7 +1,13 @@
 {
   "scheduling": {
-    "initial_anchor_date": "2025-09-12",
+    "initial_anchor_date": "2026-06-10",
     "daily_increment_pct": 0.25
+  },
+  "concurrency": {
+    "orchestrator_max_active_runs": 1,
+    "orchestrator_max_active_tasks": 2,
+    "child_max_active_runs": 2,
+    "child_max_active_tasks": 4
   },
   "counters": {
     "Sebastopol_N-S_airflow": {

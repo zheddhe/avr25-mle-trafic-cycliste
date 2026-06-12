@@ -3,79 +3,74 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import urllib.error
 import urllib.request
-from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-MANIFEST_ROOT = (
-    REPOSITORY_ROOT / "docker" / "prod" / "runtime" / "artifacts" / "manifests"
-)
-API_URL = os.getenv("ACCEPTANCE_API_URL", "http://localhost:10000")
-API_ADMIN_USER = os.getenv("API_ADMIN_USER", "admin1")
-API_ADMIN_PASSWORD = os.getenv("API_ADMIN_PASSWORD", "admin1")
-API_USER = os.getenv("API_USER", "user1")
-API_PASSWORD = os.getenv("API_PASS", "user1")
 COUNTER_ID_ENV = "ACCEPTANCE_COUNTER_ID"
 PROMOTABLE_STATUSES = {"produced", "validated", "promoted"}
+RequiredEnvVar = Callable[[str], str]
+OptionalEnvVar = Callable[[str], str | None]
 
 
 @pytest.mark.acceptance
 class TestProdApiManifestSmoke:
-    def test_expected_current_manifests_exist(self) -> None:
-        counter_id = _acceptance_counter_id()
-        expected_paths = [
-            _current_manifest_path("interim_dataset", counter_id),
-            _current_manifest_path("feature_dataset", counter_id),
-            _current_manifest_path("predictions", counter_id),
-        ]
+    def test_authenticated_refresh_loads_prediction_manifests(
+        self,
+        required_env_var: RequiredEnvVar,
+    ) -> None:
+        refresh = _refresh_prediction_store(required_env_var)
+        artifacts = _current_artifacts(required_env_var)
 
-        missing_paths = [str(path) for path in expected_paths if not path.is_file()]
+        assert refresh["loaded"] >= 1
+        assert artifacts, "The API did not expose any current prediction artifact."
 
-        assert not missing_paths, (
-            "The production-like pipeline has not produced all expected "
-            f"current manifests for {counter_id}: {missing_paths}"
+    def test_prediction_manifest_is_current_publishable_manifest(
+        self,
+        required_env_var: RequiredEnvVar,
+        optional_env_var: OptionalEnvVar,
+    ) -> None:
+        artifact = _acceptance_artifact(required_env_var, optional_env_var)
+        counter_id = _acceptance_counter_id_from_artifacts(
+            required_env_var,
+            optional_env_var,
         )
 
-    def test_prediction_manifest_is_current_publishable_manifest(self) -> None:
-        counter_id = _acceptance_counter_id()
-        manifest = _read_current_manifest("predictions", counter_id)
+        assert artifact["counter_id"] == counter_id
+        assert artifact["artifact_type"] == "predictions"
+        assert artifact["status"] in PROMOTABLE_STATUSES
+        assert artifact["primary_backend"] == "local"
+        assert artifact["local_path"]
+        assert artifact["checksum_sha256"]
 
-        assert manifest["counter_id"] == counter_id
-        assert manifest["artifact_type"] == "predictions"
-        assert manifest["status"] in PROMOTABLE_STATUSES
-        assert manifest["storage"]["primary_backend"] == "local"
-        assert manifest["storage"].get("local_path")
-
-    def test_authenticated_refresh_and_prediction_endpoints(self) -> None:
-        refresh = _request_json(
-            "POST",
-            "/admin/refresh",
-            username=API_ADMIN_USER,
-            password=API_ADMIN_PASSWORD,
-        )
+    def test_authenticated_refresh_and_prediction_endpoints(
+        self,
+        required_env_var: RequiredEnvVar,
+        optional_env_var: OptionalEnvVar,
+    ) -> None:
+        refresh = _refresh_prediction_store(required_env_var)
         counters = _request_json(
             "GET",
             "/counters",
-            username=API_USER,
-            password=API_PASSWORD,
+            username=required_env_var("API_USER"),
+            password=required_env_var("API_PASS"),
+            api_url=required_env_var("API_URL"),
         )
-        artifacts = _request_json(
-            "GET",
-            "/artifacts/current",
-            username=API_USER,
-            password=API_PASSWORD,
+        artifacts = _current_artifacts(required_env_var)
+        counter_id = _acceptance_counter_id_from_api(
+            counters,
+            required_env_var,
+            optional_env_var,
         )
-        counter_id = _acceptance_counter_id_from_api(counters)
         predictions = _request_json(
             "GET",
             f"/predictions/{counter_id}?limit=1&offset=0",
-            username=API_USER,
-            password=API_PASSWORD,
+            username=required_env_var("API_USER"),
+            password=required_env_var("API_PASS"),
+            api_url=required_env_var("API_URL"),
         )
 
         counter_ids = {counter["id"] for counter in counters}
@@ -89,23 +84,74 @@ class TestProdApiManifestSmoke:
         assert predictions["item"]
 
 
-def _acceptance_counter_id() -> str:
-    configured_counter_id = os.getenv(COUNTER_ID_ENV)
+def _refresh_prediction_store(
+    required_env_var: RequiredEnvVar,
+) -> dict[str, Any]:
+    return _request_json(
+        "POST",
+        "/admin/refresh",
+        username=required_env_var("API_ADMIN_USER"),
+        password=required_env_var("API_ADMIN_PASS"),
+        api_url=required_env_var("API_URL"),
+    )
+
+
+def _current_artifacts(required_env_var: RequiredEnvVar) -> list[dict[str, Any]]:
+    artifacts = _request_json(
+        "GET",
+        "/artifacts/current",
+        username=required_env_var("API_USER"),
+        password=required_env_var("API_PASS"),
+        api_url=required_env_var("API_URL"),
+    )
+    assert isinstance(artifacts, list), f"Unexpected artifacts response: {artifacts}"
+    return artifacts
+
+
+def _acceptance_artifact(
+    required_env_var: RequiredEnvVar,
+    optional_env_var: OptionalEnvVar,
+) -> dict[str, Any]:
+    counter_id = _acceptance_counter_id_from_artifacts(
+        required_env_var,
+        optional_env_var,
+    )
+    artifact = _request_json(
+        "GET",
+        f"/artifacts/current/{counter_id}",
+        username=required_env_var("API_USER"),
+        password=required_env_var("API_PASS"),
+        api_url=required_env_var("API_URL"),
+    )
+    assert isinstance(artifact, dict), f"Unexpected artifact response: {artifact}"
+    return artifact
+
+
+def _acceptance_counter_id_from_artifacts(
+    required_env_var: RequiredEnvVar,
+    optional_env_var: OptionalEnvVar,
+) -> str:
+    configured_counter_id = optional_env_var(COUNTER_ID_ENV)
+    artifacts = _current_artifacts(required_env_var)
+    counter_ids = sorted(artifact["counter_id"] for artifact in artifacts)
+
     if configured_counter_id:
+        assert configured_counter_id in counter_ids, (
+            f"Configured {COUNTER_ID_ENV}={configured_counter_id} is not served. "
+            f"Available counters: {counter_ids}"
+        )
         return configured_counter_id
 
-    current_manifests = sorted((MANIFEST_ROOT / "predictions").glob("*/current.json"))
-    if not current_manifests:
-        pytest.fail(
-            "No prediction current manifest found. Run the production-like "
-            f"Airflow chain before make acceptance, or set {COUNTER_ID_ENV}."
-        )
-
-    return current_manifests[0].parent.name
+    assert counter_ids, "The API did not expose any current artifact."
+    return counter_ids[0]
 
 
-def _acceptance_counter_id_from_api(counters: list[dict[str, Any]]) -> str:
-    configured_counter_id = os.getenv(COUNTER_ID_ENV)
+def _acceptance_counter_id_from_api(
+    counters: list[dict[str, Any]],
+    required_env_var: RequiredEnvVar,
+    optional_env_var: OptionalEnvVar,
+) -> str:
+    configured_counter_id = optional_env_var(COUNTER_ID_ENV)
     counter_ids = sorted(counter["id"] for counter in counters)
     if configured_counter_id:
         assert configured_counter_id in counter_ids, (
@@ -114,21 +160,15 @@ def _acceptance_counter_id_from_api(counters: list[dict[str, Any]]) -> str:
         )
         return configured_counter_id
 
-    manifest_counter_id = _acceptance_counter_id()
+    manifest_counter_id = _acceptance_counter_id_from_artifacts(
+        required_env_var,
+        optional_env_var,
+    )
     if manifest_counter_id in counter_ids:
         return manifest_counter_id
 
     assert counter_ids, "The API did not expose any counter after refresh."
     return counter_ids[0]
-
-
-def _current_manifest_path(artifact_type: str, counter_id: str) -> Path:
-    return MANIFEST_ROOT / artifact_type / counter_id / "current.json"
-
-
-def _read_current_manifest(artifact_type: str, counter_id: str) -> dict[str, Any]:
-    path = _current_manifest_path(artifact_type, counter_id)
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _request_json(
@@ -137,10 +177,11 @@ def _request_json(
     *,
     username: str,
     password: str,
+    api_url: str,
 ) -> Any:
     token = base64.b64encode(f"{username}:{password}".encode())
     request = urllib.request.Request(
-        url=f"{API_URL.rstrip('/')}/{path.lstrip('/')}",
+        url=f"{api_url.rstrip('/')}/{path.lstrip('/')}",
         method=method,
         headers={"Authorization": f"Basic {token.decode('ascii')}"},
     )
@@ -152,7 +193,7 @@ def _request_json(
         pytest.fail(f"API returned HTTP {error.code} for {path}: {body}")
         raise AssertionError from error
     except urllib.error.URLError as error:
-        pytest.fail(f"API is not reachable at {API_URL}: {error}")
+        pytest.fail(f"API is not reachable at {api_url}: {error}")
         raise AssertionError from error
 
     return json.loads(body)

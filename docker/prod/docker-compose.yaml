@@ -1,7 +1,7 @@
 # ========================
 # LOCAL PRODUCTION-LIKE RUNTIME
 # ========================
-# This runtime is intentionally separate from the root development runtime.
+# This Compose entrypoint is intentionally separate from the development runtime.
 # It follows docs/local-prod-network-topology.md and keeps the runner execution
 # boundary explicit in docs/local-prod-runtime.md.
 
@@ -20,25 +20,27 @@ volumes:
     name: prod-grafana-data
   prod-alertmanager-data:
     name: prod-alertmanager-data
+  prod-runtime:
+    name: prod-runtime
 
 networks:
-  orchestration_net:
-    name: orchestration_net
+  prod_orchestration_net:
+    name: prod_orchestration_net
     driver: bridge
-  pipeline_runtime_net:
-    name: pipeline_runtime_net
+  prod_pipeline_runtime_net:
+    name: prod_pipeline_runtime_net
     driver: bridge
-  tracking_client_net:
-    name: tracking_client_net
+  prod_tracking_client_net:
+    name: prod_tracking_client_net
     driver: bridge
-  tracking_backend_net:
-    name: tracking_backend_net
+  prod_tracking_backend_net:
+    name: prod_tracking_backend_net
     driver: bridge
-  observability_net:
-    name: observability_net
+  prod_observability_net:
+    name: prod_observability_net
     driver: bridge
-  dev_support_net:
-    name: dev_support_net
+  prod_support_net:
+    name: prod_support_net
     driver: bridge
 
 x-prod-security: &prod-security
@@ -62,29 +64,77 @@ x-airflow-common: &airflow-common
     AIRFLOW__API__BASE_URL: http://airflow-api-server:8080
     AIRFLOW__API_AUTH__JWT_SECRET: "${AIRFLOW_API_AUTH_JWT_SECRET:?required}"
     AIRFLOW__SIMPLE_AUTH_MANAGER__USERS: "admin:admin"
-    AIRFLOW__SMTP__SMTP_HOST: "monitoring-mailhog"
-    AIRFLOW__SMTP__SMTP_PORT: 1025
-    AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
-    AIRFLOW__SMTP__SMTP_STARTTLS: "False"
-    AIRFLOW__SMTP__SMTP_SSL: "False"
-  user: "${AIRFLOW_UID:-50000}:0"
+    # waiting for security strenghtening with real SMTP configuration
+    # AIRFLOW__SMTP__SMTP_HOST: "monitoring-mailhog"
+    # AIRFLOW__SMTP__SMTP_PORT: 1025
+    # AIRFLOW__SMTP__SMTP_MAIL_FROM: "airflow@test.local"
+    # AIRFLOW__SMTP__SMTP_STARTTLS: "False"
+    # AIRFLOW__SMTP__SMTP_SSL: "False"
+  user: "${AIRFLOW_UID:?required}:${AIRFLOW_GID:?required}"
   depends_on: &airflow-common-depends-on
     airflow-redis:
       condition: service_healthy
     airflow-postgres:
       condition: service_healthy
+    init-volumes:
+      condition: service_completed_successfully
   volumes:
-    - ./runtime/logs/airflow:/opt/airflow/logs
-    - ./runtime/data:/opt/airflow/data
-    - ./runtime/artifacts:/app/artifacts:ro
+    - type: volume
+      source: prod-runtime
+      target: /app/data/final
+      read_only: false
+      volume:
+        subpath: data/final
+    - type: volume
+      source: prod-runtime
+      target: /app/artifacts
+      read_only: true
+      volume:
+        subpath: artifacts
+    - type: volume
+      source: prod-runtime
+      target: /opt/airflow/logs
+      read_only: false
+      volume:
+        subpath: logs/airflow
     - ./airflow/dags:/opt/airflow/dags:ro
     - ./airflow/config/bike_dag_config.json:/opt/airflow/config/bike_dag_config.json:ro
   networks:
-    - orchestration_net
-    - dev_support_net
+    - prod_orchestration_net
+    - prod_support_net
   profiles: ["all", "airflow", "ptf"]
 
 services:
+  # ========================
+  # INIT SERVICES
+  # ========================
+  init-volumes:
+    image: alpine:3.20
+    restart: "no"
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p \
+          /prod-runtime/artifacts/manifests \
+          /prod-runtime/data/raw \
+          /prod-runtime/data/interim \
+          /prod-runtime/data/processed \
+          /prod-runtime/data/final \
+          /prod-runtime/models \
+          /prod-runtime/logs/api \
+          /prod-runtime/logs/airflow \
+          /prod-runtime/logs/job-runner \
+          /prod-runtime/logs/ml
+        cp -f /seed-data-raw/comptage-velo-donnees-compteurs-2024-2025_Enriched_ML-ready_data.csv /prod-runtime/data/raw/
+        chown -R ${APP_UID:?required}:${APP_GID:?required} /prod-runtime
+        chmod -R u=rwX,g=rwX,o= /prod-runtime
+        find /prod-runtime -type d -exec chmod g+s {} +
+    volumes:
+      - prod-runtime:/prod-runtime
+      - ../../data/raw:/seed-data-raw:ro
+
   # ========================
   # BUSINESS SERVICES
   # ========================
@@ -95,19 +145,38 @@ services:
       context: ../..
       dockerfile: ./docker/prod/ml/ingest/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     deploy:
       replicas: ${ML_INGEST_REPLICAS:?required}
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      PUSHGATEWAY_ADDR: monitoring-pushgateway:9091
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-ingest-prod
       ARTIFACT_PRODUCER_IMAGE: ml-ingest:prod
     volumes:
-      - ./runtime/data:/app/data
-      - ./runtime/logs:/app/logs
-      - ./runtime/artifacts:/app/artifacts
+      - type: volume
+        source: prod-runtime
+        target: /app/data
+        read_only: false
+        volume:
+          subpath: data
+      - type: volume
+        source: prod-runtime
+        target: /app/artifacts
+        read_only: false
+        volume:
+          subpath: artifacts
+      - type: volume
+        source: prod-runtime
+        target: /apt/logs
+        read_only: false
+        volume:
+          subpath: logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -117,8 +186,8 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-features-prod:
@@ -128,19 +197,38 @@ services:
       context: ../..
       dockerfile: ./docker/prod/ml/features/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     deploy:
       replicas: ${ML_FEATURES_REPLICAS:?required}
     environment:
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      PUSHGATEWAY_ADDR: monitoring-pushgateway:9091
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-features-prod
       ARTIFACT_PRODUCER_IMAGE: ml-features:prod
     volumes:
-      - ./runtime/data:/app/data
-      - ./runtime/logs:/app/logs
-      - ./runtime/artifacts:/app/artifacts
+      - type: volume
+        source: prod-runtime
+        target: /app/data
+        read_only: false
+        volume:
+          subpath: data
+      - type: volume
+        source: prod-runtime
+        target: /app/artifacts
+        read_only: false
+        volume:
+          subpath: artifacts
+      - type: volume
+        source: prod-runtime
+        target: /apt/logs
+        read_only: false
+        volume:
+          subpath: logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -150,8 +238,8 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-models-prod:
@@ -161,25 +249,49 @@ services:
       context: ../..
       dockerfile: ./docker/prod/ml/models/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     deploy:
       replicas: ${ML_MODELS_REPLICAS:?required}
     environment:
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?required}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?required}
       GIT_PYTHON_REFRESH: quiet
-      PUSHGATEWAY_ADDR: ${PUSHGATEWAY_ADDR:?required}
+      PUSHGATEWAY_ADDR: monitoring-pushgateway:9091
       DISABLE_METRICS_PUSH: 0
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-models-prod
       ARTIFACT_PRODUCER_IMAGE: ml-models:prod
     volumes:
-      - ./runtime/data:/app/data
-      - ./runtime/models:/app/models
-      - ./runtime/logs:/app/logs
-      - ./runtime/artifacts:/app/artifacts
+      - type: volume
+        source: prod-runtime
+        target: /app/data
+        read_only: false
+        volume:
+          subpath: data
+      - type: volume
+        source: prod-runtime
+        target: /app/models
+        read_only: false
+        volume:
+          subpath: models
+      - type: volume
+        source: prod-runtime
+        target: /app/artifacts
+        read_only: false
+        volume:
+          subpath: artifacts
+      - type: volume
+        source: prod-runtime
+        target: /app/logs
+        read_only: false
+        volume:
+          subpath: logs
     healthcheck:
       test:
         - CMD-SHELL
@@ -189,10 +301,10 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - pipeline_runtime_net
-      - tracking_client_net
-      - tracking_backend_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_tracking_client_net
+      - prod_tracking_backend_net
+      - prod_observability_net
     profiles: ["ml", "all", "ptf"]
 
   ml-gateway:
@@ -214,7 +326,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - pipeline_runtime_net
+      - prod_pipeline_runtime_net
     profiles: ["ml", "all", "ptf"]
 
   api-prod:
@@ -224,16 +336,34 @@ services:
       context: ../..
       dockerfile: ./docker/prod/api/Dockerfile
     ports:
-      - "${API_HOST_PORT:-10000}:10000"
+      - "${API_HOST_PORT_PROD:?required}:10000"
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     environment:
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
-
     volumes:
-      - ./runtime/data/final:/app/data/final:ro
-      - ./runtime/logs:/app/logs
-      - ./runtime/artifacts:/app/artifacts
+      - type: volume
+        source: prod-runtime
+        target: /app/data/final
+        read_only: true
+        volume:
+          subpath: data/final
+      - type: volume
+        source: prod-runtime
+        target: /app/logs
+        read_only: false
+        volume:
+          subpath: logs
+      - type: volume
+        source: prod-runtime
+        target: /app/artifacts
+        read_only: true
+        volume:
+          subpath: artifacts
     healthcheck:
       test:
         - CMD-SHELL
@@ -243,8 +373,8 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["all", "api", "ptf"]
 
   job-runner-api:
@@ -254,9 +384,12 @@ services:
       context: ../..
       dockerfile: ./docker/prod/job-runner/Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:?required}:${APP_GID:?required}"
     depends_on:
       ml-gateway:
         condition: service_healthy
+      init-volumes:
+        condition: service_completed_successfully
     environment:
       JOB_RUNNER_EXECUTOR: service
       JOB_RUNNER_LOG_ROOT: /app/logs/job-runner
@@ -266,7 +399,12 @@ services:
       ML_FEATURES_SERVICE_URL: http://ml-gateway:10090/features
       ML_MODELS_SERVICE_URL: http://ml-gateway:10090/models
     volumes:
-      - ./runtime/logs/job-runner:/app/logs/job-runner
+      - type: volume
+        source: prod-runtime
+        target: /app/logs/job-runner
+        read_only: false
+        volume:
+          subpath: logs/job-runner
     healthcheck:
       test:
         - CMD-SHELL
@@ -276,7 +414,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - pipeline_runtime_net
+      - prod_pipeline_runtime_net
     profiles: ["all", "runner", "ptf"]
 
   # ========================
@@ -297,7 +435,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - tracking_backend_net
+      - prod_tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-minio:
@@ -316,7 +454,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - tracking_backend_net
+      - prod_tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-mc-init:
@@ -332,7 +470,7 @@ services:
       touch /tmp/ok && sleep 1
       "
     networks:
-      - tracking_backend_net
+      - prod_tracking_backend_net
     profiles: ["all", "mlflow", "ptf"]
 
   mlflow-server:
@@ -363,7 +501,7 @@ services:
       GIT_PYTHON_REFRESH: quiet
       MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
     ports:
-      - "${MLFLOW_HOST_PORT:-13001}:5000"
+      - "${MLFLOW_HOST_PORT_PROD:?required}:5000"
     healthcheck:
       test:
         - CMD-SHELL
@@ -373,9 +511,9 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - tracking_client_net
-      - tracking_backend_net
-      - observability_net
+      - prod_tracking_client_net
+      - prod_tracking_backend_net
+      - prod_observability_net
     profiles: ["all", "mlflow", "ptf"]
 
   # ========================
@@ -396,7 +534,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - orchestration_net
+      - prod_orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-redis:
@@ -411,7 +549,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - orchestration_net
+      - prod_orchestration_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-init:
@@ -434,7 +572,7 @@ services:
         condition: service_completed_successfully
     command: ["api-server"]
     ports:
-      - "${AIRFLOW_HOST_PORT:-12080}:8080"
+      - "${AIRFLOW_HOST_PORT_PROD:?required}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 10s
@@ -492,9 +630,9 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - orchestration_net
-      - pipeline_runtime_net
-      - dev_support_net
+      - prod_orchestration_net
+      - prod_pipeline_runtime_net
+      - prod_support_net
     profiles: ["all", "airflow", "ptf"]
 
   airflow-triggerer:
@@ -532,7 +670,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-grafana:
@@ -541,11 +679,11 @@ services:
     depends_on:
       - monitoring-prometheus
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:?required}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required}
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "${GRAFANA_HOST_PORT:-14300}:3000"
+      - "${GRAFANA_HOST_PORT_PROD:?required}:3000"
     volumes:
       - prod-grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -557,7 +695,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-cadvisor:
@@ -576,7 +714,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-pushgateway:
@@ -589,8 +727,8 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - pipeline_runtime_net
-      - observability_net
+      - prod_pipeline_runtime_net
+      - prod_observability_net
     profiles: ["monitoring", "all", "ptf"]
 
   monitoring-alertmanager:
@@ -606,19 +744,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - observability_net
-      - dev_support_net
+      - prod_observability_net
+      - prod_support_net
     profiles: ["all", "monitoring", "ptf"]
 
-  monitoring-mailhog:
-    image: ${MAILHOG_IMAGE:?required}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8025 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    networks:
-      - dev_support_net
-    profiles: ["all", "monitoring", "ptf"]

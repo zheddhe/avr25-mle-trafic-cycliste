@@ -1,20 +1,17 @@
-"""Shared utilities for dev-like Airflow DAGs."""
+"""Shared utilities for development Airflow DAGs."""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-from airflow.exceptions import AirflowNotFoundException
-from airflow.sdk import Variable
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger("airflow.task")
 
+DEFAULT_CONFIG_PATH = "/opt/airflow/config/bike_dag_config.json"
 
-# --------------------------------------------------------------------------- #
-# Pydantic Models
-# --------------------------------------------------------------------------- #
+
 class ModelingCfg(BaseModel):
     """Modeling hyperparameters for one counter."""
 
@@ -38,10 +35,19 @@ class CounterCfg(BaseModel):
 
 
 class SchedulingCfg(BaseModel):
-    """Scheduling configuration for the DAG."""
+    """Scheduling configuration shared by init and daily DAGs."""
 
     initial_anchor_date: str
-    daily_increment_pct: float  # No default: must be explicit in bike_dag_config.json
+    daily_increment_pct: float
+
+
+class ConcurrencyCfg(BaseModel):
+    """Bounded local development Airflow concurrency limits."""
+
+    orchestrator_max_active_runs: int = Field(default=1, ge=1)
+    orchestrator_max_active_tasks: int = Field(default=2, ge=1)
+    child_max_active_runs: int = Field(default=2, ge=1)
+    child_max_active_tasks: int = Field(default=4, ge=1)
 
 
 class DagCfg(BaseModel):
@@ -49,135 +55,56 @@ class DagCfg(BaseModel):
 
     counters: dict[str, CounterCfg]
     scheduling: SchedulingCfg
-
-
-# --------------------------------------------------------------------------- #
-# Functions
-# --------------------------------------------------------------------------- #
-def _missing(msg: str) -> str:
-    """
-    Raise a clear error for a required Airflow Variable that is missing.
-
-    Logs at ERROR level so the message appears in the Airflow scheduler/worker
-    logs even when the DAG is parsed.
-
-    Parameters
-    ----------
-    msg : str
-        Human-readable explanation of what is missing and how to fix it.
-
-    Returns
-    -------
-    str
-        Never returns; always raises.
-    """
-    logger.error(f"REQUIRED VARIABLE MISSING: {msg}")
-    raise ValueError(msg)
-
-
-def _required_var(name: str) -> str:
-    """
-    Read an Airflow Variable that MUST be set.
-
-    Raises ``ValueError`` with a clear message (and ERROR-level log) when the
-    variable is absent or empty.  This is the preferred way to read variables
-    that have no sensible local default.
-
-    Parameters
-    ----------
-    name : str
-        Name of the Airflow Variable.
-
-    Returns
-    -------
-    str
-        The variable value.
-
-    Raises
-    ------
-    ValueError
-        If the variable is not found or is empty.
-    """
-    try:
-        value = Variable.get(name)
-        if not value:
-            _missing(f"Airflow Variable '{name}' is defined but empty. "
-                     f"Run 'make ops' to import variables from variables.json.")
-        logger.debug(f"[utils] Variable '{name}' resolved")
-        return value
-    except AirflowNotFoundException:
-        _missing(f"Airflow Variable '{name}' is not defined. "
-                 f"Run 'make ops' to import variables from variables.json.")
-        raise AirflowNotFoundException(f"Airflow Variable '{name}' is not defined.")
+    concurrency: ConcurrencyCfg = Field(default_factory=ConcurrencyCfg)
 
 
 def _load_config() -> tuple[DagCfg, str]:
-    """
-    Load DAG configuration from Airflow Variable ``bike_dag_config``.
+    """Load the mounted development DAG configuration."""
 
-    The variable may contain:
-    - Inline JSON
-    - A path to a JSON file
-
-    Returns
-    -------
-    Tuple[DagCfg, str]
-        Parsed configuration and the selected counter_id.
-
-    Raises
-    ------
-    ValueError
-        If the variable is missing, the file path does not exist, or the JSON is invalid.
-    """
     logger.info("[utils] Loading DAG config")
-    cfg_ref = Variable.get("bike_dag_config")
-    default_counter_id = _required_var("default_counter_id")
+    raw_config = _read_config_source(DEFAULT_CONFIG_PATH)
+    try:
+        cfg = DagCfg.model_validate_json(raw_config)
+    except ValidationError as exc:
+        raise ValueError(f"Invalid bike DAG config: {exc}") from exc
 
-    if not cfg_ref:
-        logger.error("[utils] bike_dag_config is empty")
-        raise ValueError("bike_dag_config not defined")
+    default_counter_id = next(iter(cfg.counters))
+    logger.info(
+        "[utils] Config loaded: %s counters, default=%s",
+        len(cfg.counters),
+        default_counter_id,
+    )
+    return cfg, default_counter_id
 
-    # Case 1: inline JSON
-    if cfg_ref.strip().startswith("{"):
-        logger.info("[utils] Config source: inline JSON")
-        try:
-            return DagCfg.model_validate_json(cfg_ref), default_counter_id
-        except ValidationError as exc:
-            logger.error(f"[utils] Invalid inline JSON: {exc}")
-            raise ValueError(f"Invalid inline JSON in bike_dag_config: {exc}") from exc
 
-    # Case 2: path to JSON file
+def _load_concurrency_config() -> ConcurrencyCfg:
+    """Load only the bounded Airflow concurrency configuration."""
+
+    cfg, _ = _load_config()
+    return cfg.concurrency
+
+
+def _read_config_source(cfg_ref: str) -> str:
     path = Path(cfg_ref)
-    logger.info(f"[utils] Config source: file {path}")
+    logger.info("[utils] Config source: file %s", path)
     if not path.exists():
-        logger.error(f"[utils] Config file not found: {cfg_ref}")
         raise ValueError(f"bike_dag_config invalid path: {cfg_ref}")
 
-    try:
-        cfg = DagCfg.model_validate_json(path.read_text())
-        logger.info(
-            f"[utils] Config loaded: {len(cfg.counters)} "
-            f"counters, default={default_counter_id}")
-        return cfg, default_counter_id
-    except ValidationError as exc:
-        logger.error(f"[utils] Invalid JSON in {cfg_ref}: {exc}")
-        raise ValueError(f"Invalid JSON content in {cfg_ref}: {exc}") from exc
+    return path.read_text(encoding="utf-8")
 
 
 def _list_counters_payload() -> list[dict[str, str]]:
-    """
-    Build a list of payloads for TriggerDagRunOperator expansion.
+    """Build a list of payloads for TriggerDagRunOperator expansion."""
 
-    Returns
-    -------
-    List[Dict[str, str]]
-        List of {"counter_id": <id>} dicts.
-    """
     logger.info("[utils] Listing counters")
     cfg, default_counter = _load_config()
     counters = list((cfg.counters or {}).keys())
     if not counters:
-        logger.warning(f"[utils] No counters found, falling back to default: {default_counter}")
+        logger.warning(
+            "[utils] No counters found, falling back to default: %s",
+            default_counter,
+        )
         counters = [default_counter]
-    logger.info(f"[utils] Counters: {counters}")
-    return [{"counter_id": cid} for cid in counters]
+
+    logger.info("[utils] Counters: %s", counters)
+    return [{"counter_id": counter_id} for counter_id in counters]

@@ -27,8 +27,7 @@ RUN groupadd --gid "${APP_GID}" app && \
         /app/src/metrics \
         /app/src/ml/ingest \
         /app/src/ml/jobs \
-        /app/src/ml/services && \
-    chown -R app:app /app
+        /app/src/ml/services
 
 COPY src/artifacts /app/src/artifacts
 COPY src/metrics /app/src/metrics
@@ -38,6 +37,8 @@ COPY src/ml/ingest/artifact_manifest_emission.py \
      /app/src/ml/ingest/artifact_manifest_emission.py
 COPY src/ml/ingest/ingest_utils.py /app/src/ml/ingest/ingest_utils.py
 COPY src/ml/ingest/import_raw_data.py /app/src/ml/ingest/import_raw_data.py
+
+RUN chown -R app:app /app
 
 USER app
 

@@ -28,16 +28,19 @@ def slugify_ascii(text: str) -> str:
     return text_ascii[:64] or "counter"
 
 
-log_dir = os.path.join("logs", "ml")
-os.makedirs(log_dir, exist_ok=True)
-log_path = os.path.join(log_dir, "import_raw_data.log")
+LOG_DIR = os.path.join("logs", "ml")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_PATH = os.path.join(LOG_DIR, "import_raw_data.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 @click.command()
@@ -152,10 +155,10 @@ def main(
             )
 
         try:
-            logger.info(f"Loading raw CSV [{raw_path}] ...")
+            LOGGER.info(f"Loading raw CSV [{raw_path}] ...")
             df = pd.read_csv(raw_path, index_col=0)
         except Exception as exc:
-            logger.exception("Failed to load raw CSV")
+            LOGGER.exception("Failed to load raw CSV")
             raise click.ClickException(f"Failed to load raw CSV: {exc}") from exc
 
         key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
@@ -169,7 +172,7 @@ def main(
             raise click.ClickException(f"Counter not found: {key}")
 
         df_counter = grouped.get_group(key).copy()
-        logger.info(f"Counter [{site} | {orientation}] rows: {len(df_counter)}")
+        LOGGER.info(f"Counter [{site} | {orientation}] rows: {len(df_counter)}")
 
         try:
             df_counter[timestamp_col] = pd.to_datetime(
@@ -198,7 +201,7 @@ def main(
         out_path = os.path.join(out_dir, interim_name)
 
         df_counter.to_csv(out_path, index=True)
-        logger.info(f"Saved interim slice -> [{out_path}] ({len(df_counter)} rows)")
+        LOGGER.info(f"Saved interim slice -> [{out_path}] ({len(df_counter)} rows)")
 
         emitted_manifest = emit_interim_dataset_artifact_manifest(
             manifest_root=artifact_manifest_root,
@@ -215,14 +218,14 @@ def main(
             promote=True,
         )
         if emitted_manifest is not None:
-            logger.info(
+            LOGGER.info(
                 "Interim dataset artifact manifest emitted for "
                 f"run_id=[{emitted_manifest.run_id}].",
             )
 
         metrics_payload["records"] = int(len(df_counter))
 
-    logger.info("Data ingestion ended successfully.")
+    LOGGER.info("Data ingestion ended successfully.")
     sys.exit(0)
 
 
@@ -230,5 +233,5 @@ if __name__ == "__main__":
     try:
         main()
     except click.ClickException as error:
-        logger.error(str(error))
+        LOGGER.error(str(error))
         sys.exit(1)

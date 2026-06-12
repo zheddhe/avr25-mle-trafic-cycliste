@@ -8,7 +8,7 @@ import pandas as pd
 import pytz
 from sklearn.base import BaseEstimator, TransformerMixin
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 def extract_datetime_periodic_features(
@@ -84,7 +84,7 @@ def extract_datetime_periodic_features(
         return df
 
     except Exception as exc:
-        logger.error(
+        LOGGER.error(
             f"Error in datetime feature extraction for '{timestamp_col}': {exc}",
         )
         raise
