@@ -6,6 +6,7 @@ fallback and by the internal FastAPI ML step services.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import PurePosixPath
 
@@ -56,14 +57,22 @@ class StepCommandExecutor:
     ) -> JobResult:
         """Execute one typed ML job and build step-level evidence."""
 
-        job_log_path = _job_log_path(job_request, job_id)
+        service_instance_id = _service_instance_id()
+        job_log_path = _job_log_path(
+            job_request,
+            job_id,
+            service_instance_id=service_instance_id,
+        )
         with job_logging_context(
             job_log_path,
             level=get_env("LOG_LEVEL", default="INFO"),
         ):
             LOGGER.debug(
-                "Executing typed ML job: job_id=%s job_type=%s counter_id=%s",
+                "Executing typed ML job: job_id=%s run_id=%s "
+                "service_instance_id=%s job_type=%s counter_id=%s",
                 job_id,
+                job_request.run_id,
+                service_instance_id,
                 job_request.job_type.value,
                 job_request.counter_id,
             )
@@ -82,8 +91,9 @@ class StepCommandExecutor:
                 )
 
             LOGGER.debug(
-                "Typed ML job command completed: job_id=%s outputs=%s",
+                "Typed ML job command completed: job_id=%s run_id=%s outputs=%s",
                 job_id,
+                job_request.run_id,
                 output_paths,
             )
 
@@ -263,10 +273,12 @@ def _execution_env(
     job_request: StepJobRequest,
     job_id: str,
 ) -> dict[str, str]:
+    service_instance_id = _service_instance_id()
     site_short, orientation = _metrics_label_values(job_request)
     env = {
         "RUN_ID": job_request.run_id,
         "JOB_ID": job_id,
+        "SERVICE_INSTANCE_ID": service_instance_id,
         "COUNTER_ID": job_request.counter_id,
         "SITE_SHORT": site_short,
         "SITE": site_short,
@@ -285,12 +297,30 @@ def _execution_env(
     return env
 
 
-def _job_log_path(job_request: StepJobRequest, job_id: str) -> str:
+def _job_log_path(
+    job_request: StepJobRequest,
+    job_id: str,
+    *,
+    service_instance_id: str | None = None,
+) -> str:
+    instance_id = service_instance_id or _service_instance_id()
     file_name = (
-        f"{safe_log_path_part(job_request.run_id)}_"
+        f"{safe_log_path_part(instance_id)}_"
         f"{safe_log_path_part(job_id)}.log"
     )
     return str(build_log_file_path("ml", job_request.job_type.value, file_name))
+
+
+def _service_instance_id() -> str:
+    """Return the stable identifier used to correlate one ML service instance."""
+
+    instance_id = (
+        get_env("ML_SERVICE_INSTANCE_ID")
+        or get_env("SERVICE_INSTANCE_ID")
+        or get_env("HOSTNAME")
+        or f"pid-{os.getpid()}"
+    )
+    return safe_log_path_part(instance_id)
 
 
 def _metrics_label_values(job_request: StepJobRequest) -> tuple[str, str]:

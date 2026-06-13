@@ -206,11 +206,16 @@ Runtime service logs are written below repository-local `logs/` paths:
 
 - the serving API writes project logs to `logs/api/main.log`;
 - the job runner API writes project logs to `logs/job-runner/main.log`;
-- typed ML service jobs write to `logs/ml/<step>/<run_id>_<job_id>.log`,
-  where `<step>` is `ingest`, `features`, or `models`.
+- typed ML service jobs write to
+  `logs/ml/<step>/<service_instance_id>_<job_id>.log`, where `<step>` is
+  `ingest`, `features`, or `models`. The service instance identifier
+  comes from `ML_SERVICE_INSTANCE_ID`, `SERVICE_INSTANCE_ID`, `HOSTNAME`,
+  or a process-local fallback.
 
 Direct CLI launches keep console-only project logging. This keeps ad-hoc unit
 runs visible in the terminal or container logs without creating local files.
+The job runner API logs `job_id`, `run_id`, `job_type`, and `counter_id`
+so operators can correlate `logs/job-runner/main.log` with ML job files.
 
 Log levels should remain operational: `DEBUG` for diagnostics, `INFO` for
 lifecycle milestones, `WARNING` for recoverable abnormal states, and `ERROR`

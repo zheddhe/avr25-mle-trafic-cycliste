@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 import pytest
 
+from src.common import env as env_module
 from src.common.env import (
     ConfigurationError,
     get_env,
@@ -54,9 +56,13 @@ class TestCommonEnv:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.delenv("APP_VALUE", raising=False)
-
-        with pytest.raises(ConfigurationError, match="APP_VALUE"):
-            get_required_env("APP_VALUE")
+        runtime_logger = logging.getLogger(env_module.LOGGER.name)
+        runtime_logger.addHandler(caplog.handler)
+        try:
+            with pytest.raises(ConfigurationError, match="APP_VALUE"):
+                get_required_env("APP_VALUE")
+        finally:
+            runtime_logger.removeHandler(caplog.handler)
 
         assert "Missing required environment variable: APP_VALUE" in caplog.text
 

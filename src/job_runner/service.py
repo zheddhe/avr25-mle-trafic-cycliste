@@ -45,8 +45,12 @@ class JobRunnerService:
             )
         except MlJobExecutionError as error:
             LOGGER.warning(
-                "Typed ML job execution failed: job_id=%s code=%s",
+                "Typed ML job execution failed: job_id=%s run_id=%s "
+                "job_type=%s counter_id=%s code=%s",
                 status.job_id,
+                job_request.run_id,
+                job_request.job_type.value,
+                job_request.counter_id,
                 error.code,
             )
             return self._state.set_failed(
@@ -59,8 +63,12 @@ class JobRunnerService:
             )
         except Exception as error:
             LOGGER.exception(
-                "Unexpected ML job execution failure: job_id=%s",
+                "Unexpected ML job execution failure: job_id=%s run_id=%s "
+                "job_type=%s counter_id=%s",
                 status.job_id,
+                job_request.run_id,
+                job_request.job_type.value,
+                job_request.counter_id,
             )
             return self._state.set_failed(
                 status.job_id,
@@ -71,7 +79,13 @@ class JobRunnerService:
                 ),
             )
 
-        LOGGER.info("ML job succeeded: job_id=%s", status.job_id)
+        LOGGER.info(
+            "ML job succeeded: job_id=%s run_id=%s job_type=%s counter_id=%s",
+            status.job_id,
+            job_request.run_id,
+            job_request.job_type.value,
+            job_request.counter_id,
+        )
         return self._state.set_succeeded(status.job_id, result)
 
     def get_job_status(self, job_id: str) -> JobStatus:
