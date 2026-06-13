@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from click import Command
-
 from src.ml.features.build_features import main
 
 

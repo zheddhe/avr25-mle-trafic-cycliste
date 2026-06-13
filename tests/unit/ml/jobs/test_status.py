@@ -6,7 +6,6 @@ from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
-
 from src.ml.jobs.contracts import MlJobType
 from src.ml.jobs.status import (
     TERMINAL_JOB_STATES,

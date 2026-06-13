@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
-
 from src.job_runner.main import app
 
 

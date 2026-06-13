@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
 from src.api.config import ApiSettings
 from src.api.serving import (
     PredictionCsvError,

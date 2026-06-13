@@ -6,7 +6,6 @@ from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
-
 from src.artifacts.schemas import ArtifactManifest, StorageBackend
 
 VALID_CHECKSUM = "a" * 64

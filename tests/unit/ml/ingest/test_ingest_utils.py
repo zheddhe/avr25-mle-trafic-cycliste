@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from src.ml.ingest.ingest_utils import apply_percent_range_selection
 
 

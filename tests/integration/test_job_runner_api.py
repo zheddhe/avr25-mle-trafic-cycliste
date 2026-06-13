@@ -6,7 +6,6 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
-
 from src.artifacts.schemas import ArtifactType
 from src.job_runner.api import create_app
 from src.job_runner.executor import MlJobExecutionError

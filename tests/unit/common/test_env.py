@@ -6,7 +6,6 @@ import logging
 import os
 
 import pytest
-
 from src.common import env as env_module
 from src.common.env import (
     ConfigurationError,

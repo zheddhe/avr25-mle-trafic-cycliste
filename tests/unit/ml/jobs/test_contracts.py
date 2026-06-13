@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
-
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
     FeatureJobRequest,

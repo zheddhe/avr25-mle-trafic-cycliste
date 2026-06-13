@@ -6,7 +6,6 @@ import os
 from datetime import UTC, datetime
 
 import pytest
-
 from src.artifacts.schemas import ArtifactType
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,

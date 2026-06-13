@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from src.ml.features.features_utils import (
     DatetimePeriodicsTransformer,
     extract_datetime_periodic_features,

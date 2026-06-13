@@ -8,7 +8,6 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-
 from src.api.app import ApiBusinessException, PredictionStore, create_app
 from src.api.config import ApiSettings
 from src.api.schemas import ArtifactSourceMetadata, CurrentArtifactMetadata

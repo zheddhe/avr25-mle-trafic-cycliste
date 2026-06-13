@@ -9,7 +9,6 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 import pytest
-
 from src.job_runner.executor import (
     DEFAULT_MAX_IN_FLIGHT_JOBS,
     JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV,

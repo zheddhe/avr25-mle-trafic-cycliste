@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from src.metrics import pipeline_metrics
 from src.metrics.pipeline_metrics import (
     canonical_site,
