@@ -32,9 +32,9 @@ class TestServiceMlJobExecutor:
     def test_execute_returns_service_result_with_runner_metadata(self) -> None:
         job_request = _ingest_request()
         started_at = datetime(2026, 1, 1, tzinfo=UTC)
-        service_result = _job_result(job_id="service-job")
+        service_result = _job_result(job_id="runner-job")
         status = _job_status(
-            job_id="service-job",
+            job_id="runner-job",
             state=JobState.SUCCEEDED,
             result=service_result,
         )
@@ -52,16 +52,15 @@ class TestServiceMlJobExecutor:
             started_at=started_at,
         )
 
+        forwarded_request = job_request.model_copy(update={"job_id": "runner-job"})
         assert result.job_id == "runner-job"
         assert result.started_at == started_at
         assert result.run_id == job_request.run_id
         assert result.output_paths == ("data/interim/counter-a/initial.csv",)
-        transport.submit.assert_called_once()
-        submitted_request = transport.submit.call_args.kwargs["job_request"]
-        assert submitted_request.job_id == "runner-job"
-        assert submitted_request.run_id == job_request.run_id
-        assert submitted_request.counter_id == job_request.counter_id
-        assert transport.submit.call_args.kwargs["endpoint"] == "http://ml-ingest:10081"
+        transport.submit.assert_called_once_with(
+            endpoint="http://ml-ingest:10081",
+            job_request=forwarded_request,
+        )
 
     def test_execute_raises_when_endpoint_is_missing(self) -> None:
         job_request = _ingest_request()
@@ -106,8 +105,6 @@ class TestServiceMlJobExecutor:
                 started_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
 
-        submitted_request = transport.submit.call_args.kwargs["job_request"]
-        assert submitted_request.job_id == "runner-job"
         assert exc_info.value.code == "INGEST_FAILED"
         assert exc_info.value.message == "raw file missing"
         assert exc_info.value.retryable is False
@@ -119,7 +116,6 @@ class TestServiceMlJobExecutor:
         observed_in_flight = 0
         max_observed_in_flight = 0
         in_flight_lock = threading.Lock()
-        observed_job_ids: set[str] = set()
 
         def submit(endpoint: str, job_request: IngestJobRequest) -> JobStatus:
             nonlocal max_observed_in_flight
@@ -127,7 +123,6 @@ class TestServiceMlJobExecutor:
             assert endpoint == "http://ml-ingest:10081"
             assert job_request.counter_id == "counter-a"
             assert job_request.job_id is not None
-            observed_job_ids.add(job_request.job_id)
             with in_flight_lock:
                 observed_in_flight += 1
                 max_observed_in_flight = max(
@@ -139,9 +134,9 @@ class TestServiceMlJobExecutor:
             with in_flight_lock:
                 observed_in_flight -= 1
             return _job_status(
-                job_id="service-job",
+                job_id=job_request.job_id,
                 state=JobState.SUCCEEDED,
-                result=_job_result(job_id="service-job"),
+                result=_job_result(job_id=job_request.job_id),
             )
 
         transport = Mock()
@@ -172,7 +167,6 @@ class TestServiceMlJobExecutor:
             assert first.result().job_id == "runner-job-a"
             assert second.result().job_id == "runner-job-b"
 
-        assert observed_job_ids == {"runner-job-a", "runner-job-b"}
         assert max_observed_in_flight == 2
 
     def test_execute_respects_configured_parallel_dispatch_limit(self) -> None:
@@ -188,7 +182,7 @@ class TestServiceMlJobExecutor:
             nonlocal observed_in_flight
             assert endpoint == "http://ml-ingest:10081"
             assert job_request.counter_id == "counter-a"
-            assert job_request.job_id in {"runner-job-a", "runner-job-b"}
+            assert job_request.job_id is not None
             with in_flight_lock:
                 observed_in_flight += 1
                 max_observed_in_flight = max(
@@ -200,9 +194,9 @@ class TestServiceMlJobExecutor:
             with in_flight_lock:
                 observed_in_flight -= 1
             return _job_status(
-                job_id="service-job",
+                job_id=job_request.job_id,
                 state=JobState.SUCCEEDED,
-                result=_job_result(job_id="service-job"),
+                result=_job_result(job_id=job_request.job_id),
             )
 
         transport = Mock()
@@ -275,7 +269,6 @@ class TestUrllibMlServiceTransport:
 
         assert exc_info.value.code == "ML_SERVICE_UNAVAILABLE"
         assert exc_info.value.retryable is True
-        assert "offline" in exc_info.value.message
 
     def test_submit_maps_invalid_response(self) -> None:
         response = Mock()

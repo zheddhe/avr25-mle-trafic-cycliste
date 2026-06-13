@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterator
-from contextlib import contextmanager
-from contextvars import ContextVar
 from pathlib import Path
 
 _LOG_FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
@@ -14,22 +11,7 @@ _PROJECT_LOGGER_NAME = "src"
 _MANAGED_HANDLER_FLAG = "_bike_traffic_managed_handler"
 _MANAGED_STREAM_FLAG = "_bike_traffic_stream_handler"
 _MANAGED_FILE_PATH = "_bike_traffic_log_file_path"
-_CONTEXT_FILE_PATH: ContextVar[str | None] = ContextVar(
-    "bike_traffic_log_file_path",
-    default=None,
-)
 _SAFE_LOG_PART_PATTERN = re.compile(r"[^A-Za-z0-9_.=-]+")
-
-
-class _ContextLogFileFilter(logging.Filter):
-    """Keep temporary job file handlers scoped to one execution context."""
-
-    def __init__(self, log_file_path: Path) -> None:
-        super().__init__()
-        self.log_file_path = str(log_file_path)
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return _CONTEXT_FILE_PATH.get() == self.log_file_path
 
 
 def configure_logging(
@@ -68,38 +50,34 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-@contextmanager
-def job_logging_context(
-    log_file_path: str | Path,
-    *,
-    level: int | str | None = "INFO",
-    logger_name: str = _PROJECT_LOGGER_NAME,
-) -> Iterator[Path]:
-    """Write project logs to a job-scoped file for one execution context."""
-
-    log_level = _normalize_log_level(level)
-    logger = logging.getLogger(logger_name)
-    configure_logging(level=log_level, logger_name=logger_name)
-
-    resolved_path = _resolve_log_file_path(log_file_path)
-    file_handler = _build_file_handler(resolved_path, log_level)
-    file_handler.addFilter(_ContextLogFileFilter(resolved_path))
-
-    logger.addHandler(file_handler)
-    token = _CONTEXT_FILE_PATH.set(str(resolved_path))
-    try:
-        yield resolved_path
-    finally:
-        _CONTEXT_FILE_PATH.reset(token)
-        logger.removeHandler(file_handler)
-        file_handler.close()
-
-
 def build_log_file_path(*parts: str) -> Path:
     """Build a safe path below the repository-local logs directory."""
 
     safe_parts = [safe_log_path_part(part) for part in parts]
     return Path("logs", *safe_parts)
+
+
+def build_service_instance_id(
+    service_name: str,
+    *,
+    hostname: str | None = None,
+) -> str:
+    """Build the readable instance id used in service log file names."""
+
+    service_part = safe_log_path_part(service_name, fallback="service")
+    hostname_part = safe_log_path_part(hostname, fallback="local")
+    return f"{service_part}_{hostname_part}"
+
+
+def build_service_log_file_path(
+    *parts: str,
+    service_name: str,
+    hostname: str | None = None,
+) -> Path:
+    """Build a shared log file path for one runtime service instance."""
+
+    instance_id = build_service_instance_id(service_name, hostname=hostname)
+    return build_log_file_path(*parts, f"{instance_id}.log")
 
 
 def safe_log_path_part(value: str | None, *, fallback: str = "unknown") -> str:

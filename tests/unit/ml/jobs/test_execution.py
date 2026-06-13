@@ -22,12 +22,12 @@ from src.ml.jobs.execution import (
     _artifact_type_for_job,
     _execution_env,
     _execution_error,
-    _job_log_path,
     _metrics_label_values,
     _model_sub_dir,
     _patched_environ,
     _path_parent_name,
     _service_instance_id,
+    _service_log_path,
 )
 
 
@@ -58,9 +58,7 @@ def _build_feature_request(
         task_id="features",
         manifest_root=manifest_root,
         interim_input_path="/app/data/interim/counter-001/initial.csv",
-        processed_output_path=(
-            "/app/data/processed/counter-001/initial_with_feats.csv"
-        ),
+        processed_output_path=("/app/data/processed/counter-001/initial_with_feats.csv"),
         extra_drop=("unused_column",),
     )
 
@@ -74,9 +72,7 @@ def _build_model_request(
         run_id="run-001",
         counter_id="Sebastopol_N-S_airflow",
         manifest_root="/app/artifacts/manifests",
-        processed_input_path=(
-            "/app/data/processed/counter-001/initial_with_feats.csv"
-        ),
+        processed_input_path=("/app/data/processed/counter-001/initial_with_feats.csv"),
         prediction_output_path=prediction_output_path,
         model_output_path="/app/models/counter-001",
         mlflow_uri="http://mlflow:5000",
@@ -94,32 +90,20 @@ class TestMlJobExecutionHelpers:
         assert _artifact_type_for_job(MlJobType.MODELS) == "predictions"
 
     def test_path_parent_name_extracts_output_scenario(self) -> None:
-        assert _path_parent_name("/app/data/final/counter-001/y_full.csv") == (
-            "counter-001"
-        )
+        assert _path_parent_name("/app/data/final/counter-001/y_full.csv") == ("counter-001")
 
     def test_metrics_label_values_uses_ingest_orientation(self) -> None:
         job_request = _build_ingest_request()
 
         assert _metrics_label_values(job_request) == ("Sebastopol", "N-S")
 
-    def test_service_instance_id_prefers_explicit_ml_value(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv("ML_SERVICE_INSTANCE_ID", "ml service/01")
-        monkeypatch.setenv("SERVICE_INSTANCE_ID", "service-instance")
-        monkeypatch.setenv("HOSTNAME", "container-host")
-
-        assert _service_instance_id() == "ml_service_01"
-
     def test_execution_env_contains_traceability_labels(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.delenv("ML_SERVICE_INSTANCE_ID", raising=False)
-        monkeypatch.setenv("SERVICE_INSTANCE_ID", "ml-service-01")
         job_request = _build_feature_request()
+        monkeypatch.setenv("HOSTNAME", "ml-host-1")
+        monkeypatch.delenv("SERVICE_NAME", raising=False)
 
         env = _execution_env(job_request, "runner-job-001")
 
@@ -127,7 +111,7 @@ class TestMlJobExecutionHelpers:
             "RUN_ID": "run-001",
             "TRACE_ID": "run-001",
             "JOB_ID": "runner-job-001",
-            "SERVICE_INSTANCE_ID": "ml-service-01",
+            "SERVICE_INSTANCE_ID": "ml-features_ml-host-1",
             "COUNTER_ID": "Sebastopol_N-S_airflow",
             "SITE_SHORT": "Sebastopol",
             "SITE": "Sebastopol",
@@ -138,19 +122,25 @@ class TestMlJobExecutionHelpers:
             "ARTIFACT_MANIFEST_ROOT": "/app/artifacts/manifests",
         }
 
-    def test_job_log_path_uses_service_instance_and_job_id(self) -> None:
+    def test_service_instance_id_uses_runtime_name_and_hostname(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         job_request = _build_feature_request()
+        monkeypatch.setenv("SERVICE_NAME", "ml-features")
+        monkeypatch.setenv("HOSTNAME", "42fb94a58f")
 
-        log_path = _job_log_path(
-            job_request,
-            "job-features-counter-001",
-            service_instance_id="ml instance/01",
-        )
+        assert _service_instance_id(job_request) == "ml-features_42fb94a58f"
 
-        assert log_path == (
-            "logs/ml/features/"
-            "ml_instance_01_run-001_job-features-counter-001.log"
-        )
+    def test_service_log_path_uses_shared_service_instance_file(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job_request = _build_feature_request()
+        monkeypatch.setenv("SERVICE_NAME", "ml-features")
+        monkeypatch.setenv("HOSTNAME", "42fb94a58f")
+
+        assert _service_log_path(job_request) == ("logs/ml/features/ml-features_42fb94a58f.log")
 
     def test_patched_environ_restores_previous_values(
         self,
@@ -190,9 +180,10 @@ class TestStepCommandExecutor:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("SERVICE_INSTANCE_ID", "ml-service-01")
         executor = StepCommandExecutor()
         job_request = _build_feature_request()
+        monkeypatch.setenv("HOSTNAME", "ml-host-1")
+        monkeypatch.delenv("SERVICE_NAME", raising=False)
 
         def fake_execute_features(
             request: FeatureJobRequest,
@@ -212,21 +203,17 @@ class TestStepCommandExecutor:
         assert result.job_id == "runner-job-001"
         assert result.output_paths == (job_request.processed_output_path,)
         assert result.metrics is not None
-        assert result.metrics.metrics_reference == (
-            "logs/ml/features/ml-service-01_run-001_runner-job-001.log"
-        )
+        assert result.metrics.metrics_reference == ("logs/ml/features/ml-features_ml-host-1.log")
         assert result.manifest is not None
         assert result.manifest.artifact_type == ArtifactType.FEATURE_DATASET
         assert result.manifest.manifest_path == (
-            "/app/artifacts/manifests/feature_dataset/"
-            "Sebastopol_N-S_airflow/run-001/manifest.json"
+            "/app/artifacts/manifests/feature_dataset/Sebastopol_N-S_airflow/run-001/manifest.json"
         )
 
     def test_execute_ingest_job_returns_no_manifest_without_manifest_root(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("SERVICE_INSTANCE_ID", "ml-service-01")
         executor = StepCommandExecutor()
         job_request = _build_ingest_request()
 
@@ -252,14 +239,11 @@ class TestStepCommandExecutor:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("SERVICE_INSTANCE_ID", "ml-service-01")
         expected_manifest = ArtifactManifestReference(
             artifact_type=ArtifactType.PREDICTIONS,
             counter_id="Sebastopol_N-S_airflow",
             run_id="run-001",
-            manifest_path=(
-                "artifacts/manifests/predictions/counter/run/manifest.json"
-            ),
+            manifest_path=("artifacts/manifests/predictions/counter/run/manifest.json"),
             current_path="artifacts/manifests/predictions/counter/current.json",
             object_uri="s3://bucket/counter-001/y_full.csv",
         )
@@ -293,7 +277,6 @@ class TestStepCommandExecutor:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("SERVICE_INSTANCE_ID", "ml-service-01")
         job_request = _build_model_request()
         executor = StepCommandExecutor()
 

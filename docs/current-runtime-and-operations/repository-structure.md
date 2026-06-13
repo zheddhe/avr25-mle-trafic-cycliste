@@ -206,16 +206,14 @@ Runtime service logs are written below repository-local `logs/` paths:
 
 - the serving API writes project logs to `logs/api/main.log`;
 - the job runner API writes project logs to `logs/job-runner/main.log`;
-- typed ML service jobs write to
-  `logs/ml/<step>/<service_instance_id>_<job_id>.log`, where `<step>` is
-  `ingest`, `features`, or `models`. The service instance identifier
-  comes from `ML_SERVICE_INSTANCE_ID`, `SERVICE_INSTANCE_ID`, `HOSTNAME`,
-  or a process-local fallback.
+- typed ML services write project logs to
+  `logs/ml/<step>/<service_name>_<hostname>.log`, where `<step>` is `ingest`,
+  `features`, or `models`.
 
 Direct CLI launches keep console-only project logging. This keeps ad-hoc unit
 runs visible in the terminal or container logs without creating local files.
 The job runner API logs `job_id`, `run_id`, `job_type`, and `counter_id`
-so operators can correlate `logs/job-runner/main.log` with ML job files.
+so operators can correlate `logs/job-runner/main.log` with ML service files.
 
 Log levels should remain operational: `DEBUG` for diagnostics, `INFO` for
 lifecycle milestones, `WARNING` for recoverable abnormal states, and `ERROR`
@@ -229,9 +227,9 @@ readability.
 Runner-dispatched ML jobs keep end-to-end traceability through `run_id` and
 `job_id`. The Airflow-generated `run_id` is passed to the job-runner API and
 then to the ML service. The runner-assigned `job_id` is forwarded unchanged to
-the ML service so job-runner logs, Airflow logs, returned `metrics_reference`,
-and ML job log files can be correlated. ML service log files use this pattern:
-`logs/ml/<step>/<service_instance_id>_<run_id>_<job_id>.log`.
+the ML service. The ML service file name identifies the service instance, while
+job lifecycle log records include `service_instance_id`, `run_id`, `trace_id`,
+`job_id`, `job_type`, `counter_id`, and `metrics_reference`.
 
 ## Local-only files
 
