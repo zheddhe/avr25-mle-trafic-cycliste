@@ -69,8 +69,9 @@ class StepCommandExecutor:
         ):
             LOGGER.debug(
                 "Executing typed ML job: job_id=%s run_id=%s "
-                "service_instance_id=%s job_type=%s counter_id=%s",
+                "trace_id=%s service_instance_id=%s job_type=%s counter_id=%s",
                 job_id,
+                job_request.run_id,
                 job_request.run_id,
                 service_instance_id,
                 job_request.job_type.value,
@@ -91,8 +92,10 @@ class StepCommandExecutor:
                 )
 
             LOGGER.debug(
-                "Typed ML job command completed: job_id=%s run_id=%s outputs=%s",
+                "Typed ML job command completed: job_id=%s run_id=%s "
+                "trace_id=%s outputs=%s",
                 job_id,
+                job_request.run_id,
                 job_request.run_id,
                 output_paths,
             )
@@ -277,6 +280,7 @@ def _execution_env(
     site_short, orientation = _metrics_label_values(job_request)
     env = {
         "RUN_ID": job_request.run_id,
+        "TRACE_ID": job_request.run_id,
         "JOB_ID": job_id,
         "SERVICE_INSTANCE_ID": service_instance_id,
         "COUNTER_ID": job_request.counter_id,
@@ -306,6 +310,7 @@ def _job_log_path(
     instance_id = service_instance_id or _service_instance_id()
     file_name = (
         f"{safe_log_path_part(instance_id)}_"
+        f"{safe_log_path_part(job_request.run_id)}_"
         f"{safe_log_path_part(job_id)}.log"
     )
     return str(build_log_file_path("ml", job_request.job_type.value, file_name))

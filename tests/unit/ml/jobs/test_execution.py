@@ -124,6 +124,7 @@ class TestMlJobExecutionHelpers:
 
         assert env == {
             "RUN_ID": "run-001",
+            "TRACE_ID": "run-001",
             "JOB_ID": "runner-job-001",
             "SERVICE_INSTANCE_ID": "ml-service-01",
             "COUNTER_ID": "Sebastopol_N-S_airflow",
@@ -147,7 +148,7 @@ class TestMlJobExecutionHelpers:
 
         assert log_path == (
             "logs/ml/features/"
-            "ml_instance_01_job-features-counter-001.log"
+            "ml_instance_01_run-001_job-features-counter-001.log"
         )
 
     def test_patched_environ_restores_previous_values(
@@ -211,7 +212,7 @@ class TestStepCommandExecutor:
         assert result.output_paths == (job_request.processed_output_path,)
         assert result.metrics is not None
         assert result.metrics.metrics_reference == (
-            "logs/ml/features/ml-service-01_runner-job-001.log"
+            "logs/ml/features/ml-service-01_run-001_runner-job-001.log"
         )
         assert result.manifest is not None
         assert result.manifest.artifact_type == ArtifactType.FEATURE_DATASET

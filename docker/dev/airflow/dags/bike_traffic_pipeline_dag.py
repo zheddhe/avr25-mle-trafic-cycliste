@@ -169,12 +169,20 @@ def _submit_runner_job(job_type: str, **ctx) -> dict[str, Any]:
         payload["run_id"],
     )
     status = _post_json(f"{JOB_RUNNER_URL}/jobs", payload)
+    result = status.get("result") or {}
+    metrics = result.get("metrics") or {}
+    metrics_reference = metrics.get("metrics_reference")
+    runner_job_id = status.get("job_id")
     if status.get("state") != "succeeded":
         error = status.get("error") or {}
         message = error.get("message") or "Runner job did not succeed."
         LOGGER.error(
-            "[pipeline] Runner job failed: job_type=%s state=%s message=%s",
+            "[pipeline] Runner job failed: job_id=%s job_type=%s "
+            "counter=%s run_id=%s state=%s message=%s",
+            runner_job_id,
             job_type,
+            payload["counter_id"],
+            payload["run_id"],
             status.get("state"),
             message,
         )
@@ -182,12 +190,15 @@ def _submit_runner_job(job_type: str, **ctx) -> dict[str, Any]:
             f"Runner job failed with state={status.get('state')}: {message}"
         )
     LOGGER.info(
-        "[pipeline] Runner job succeeded: job_type=%s counter=%s run_id=%s",
+        "[pipeline] Runner job succeeded: job_id=%s job_type=%s "
+        "counter=%s run_id=%s metrics_reference=%s",
+        runner_job_id,
         job_type,
         payload["counter_id"],
         payload["run_id"],
+        metrics_reference,
     )
-    manifest = ((status.get("result") or {}).get("manifest") or {})
+    manifest = result.get("manifest") or {}
     if manifest:
         ti.xcom_push(key=f"{job_type.upper()}_MANIFEST", value=manifest)
     return status

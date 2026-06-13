@@ -79,10 +79,11 @@ class ServiceMlJobExecutor:
                 retryable=False,
             )
 
+        forwarded_request = job_request.model_copy(update={"job_id": job_id})
         with self._concurrency_limiter:
             status = self._transport.submit(
                 endpoint=endpoint,
-                job_request=job_request,
+                job_request=forwarded_request,
             )
         if status.state.value != "succeeded" or status.result is None:
             raise MlJobExecutionError(

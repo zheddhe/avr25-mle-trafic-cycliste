@@ -226,6 +226,13 @@ arguments, for example `LOGGER.info("Loaded %s rows", row_count)`. Regular
 non-logging strings should use f-strings when interpolation improves
 readability.
 
+Runner-dispatched ML jobs keep end-to-end traceability through `run_id` and
+`job_id`. The Airflow-generated `run_id` is passed to the job-runner API and
+then to the ML service. The runner-assigned `job_id` is forwarded unchanged to
+the ML service so job-runner logs, Airflow logs, returned `metrics_reference`,
+and ML job log files can be correlated. ML service log files use this pattern:
+`logs/ml/<step>/<service_instance_id>_<run_id>_<job_id>.log`.
+
 ## Local-only files
 
 - `.env.template` is versioned and contains placeholders or safe defaults.
