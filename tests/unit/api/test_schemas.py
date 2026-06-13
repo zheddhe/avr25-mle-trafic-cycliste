@@ -34,8 +34,8 @@ class TestApiSchemas:
 
     def test_prediction_list_accepts_paginated_items(self) -> None:
         item = PredictionItem(
-            date_et_heure_de_comptage_local="2025-09-23T08:00:00+02:00",
-            date_et_heure_de_comptage_utc="2025-09-23T06:00:00+00:00",
+            date_et_heure_de_comptage_local=datetime.fromisoformat("2025-09-23T08:00:00+02:00"),
+            date_et_heure_de_comptage_utc=datetime.fromisoformat("2025-09-23T06:00:00+00:00"),
             y_true=123,
             y_pred=120.5,
             forecast_mode=False,

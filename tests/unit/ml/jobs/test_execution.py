@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from typing import NoReturn
 
+import click
 import pytest
 from src.artifacts.schemas import ArtifactType
 from src.ml.jobs.contracts import (
@@ -426,10 +428,11 @@ class TestStepCommandExecutor:
     def test_invoke_ignores_successful_system_exit(self) -> None:
         executor = StepCommandExecutor()
 
-        class SuccessfulCommand:
-            name = "success"
+        class SuccessfulCommand(click.Command):
+            def __init__(self) -> None:
+                super().__init__("success")
 
-            def main(self, *args, **kwargs) -> None:
+            def main(self, *args, **kwargs) -> NoReturn:
                 raise SystemExit(0)
 
         executor._invoke(
@@ -442,10 +445,11 @@ class TestStepCommandExecutor:
     def test_invoke_maps_failed_system_exit_to_step_error(self) -> None:
         executor = StepCommandExecutor()
 
-        class FailingCommand:
-            name = "failing"
+        class FailingCommand(click.Command):
+            def __init__(self) -> None:
+                super().__init__("failing")
 
-            def main(self, *args, **kwargs) -> None:
+            def main(self, *args, **kwargs) -> NoReturn:
                 raise SystemExit(2)
 
         with pytest.raises(MlStepExecutionError) as exc_info:
@@ -462,10 +466,11 @@ class TestStepCommandExecutor:
     def test_invoke_maps_runtime_error_to_step_error(self) -> None:
         executor = StepCommandExecutor()
 
-        class FailingCommand:
-            name = "failing"
+        class FailingCommand(click.Command):
+            def __init__(self) -> None:
+                super().__init__("failing")
 
-            def main(self, *args, **kwargs) -> None:
+            def main(self, *args, **kwargs) -> NoReturn:
                 raise RuntimeError("boom")
 
         with pytest.raises(MlStepExecutionError, match="boom"):

@@ -5,6 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from email.message import Message
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
@@ -20,7 +21,10 @@ from src.job_runner.executor import (
     _resolve_max_in_flight_jobs,
 )
 from src.job_runner.service import build_default_executor
-from src.ml.jobs.contracts import IngestJobRequest
+from src.ml.jobs.contracts import (
+    IngestJobRequest,
+    MlJobType,
+)
 from src.ml.jobs.status import JobError, JobResult, JobState, JobStatus
 
 
@@ -240,7 +244,7 @@ class TestUrllibMlServiceTransport:
             url="http://service/jobs",
             code=500,
             msg="Server error",
-            hdrs=None,
+            hdrs=Message(),
             fp=Mock(read=Mock(return_value=b"boom")),
         )
 
@@ -373,7 +377,7 @@ def _job_result(job_id: str) -> JobResult:
         job_id=job_id,
         run_id="run-a",
         counter_id="counter-a",
-        job_type="ingest",
+        job_type=MlJobType.INGEST,
         started_at=datetime(2026, 1, 1, tzinfo=UTC),
         finished_at=datetime(2026, 1, 1, 0, 1, tzinfo=UTC),
         output_paths=("data/interim/counter-a/initial.csv",),
@@ -391,7 +395,7 @@ def _job_status(
         job_id=job_id,
         run_id="run-a",
         counter_id="counter-a",
-        job_type="ingest",
+        job_type=MlJobType.INGEST,
         state=state,
         requested_at=datetime(2026, 1, 1, tzinfo=UTC),
         updated_at=datetime(2026, 1, 1, 0, 1, tzinfo=UTC),

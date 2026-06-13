@@ -43,15 +43,24 @@ class JobNotFoundError(JobRunnerError):
 
 
 def job_runner_error_handler(
-    _request: Request,
-    exception: JobRunnerError,
+    request: Request,
+    exception: Exception,
 ) -> JSONResponse:
     """Convert runner domain errors to explicit JSON responses."""
 
+    if isinstance(exception, JobRunnerError):
+        status_code = exception.status_code
+        error_code = exception.code
+        message = exception.message
+    else:
+        status_code = 500
+        error_code = "INTERNAL_ERROR"
+        message = "An unexpected error occurred."
+
     return JSONResponse(
-        status_code=exception.status_code,
+        status_code=status_code,
         content=ErrorResponse(
-            code=exception.code,
-            message=exception.message,
+            code=error_code,
+            message=message,
         ).model_dump(),
     )

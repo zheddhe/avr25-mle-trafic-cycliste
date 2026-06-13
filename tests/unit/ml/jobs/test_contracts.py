@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
+    ArtifactType,
     FeatureJobRequest,
     IngestJobRequest,
     MlJobType,
@@ -37,9 +38,7 @@ class TestMlJobRequests:
             "range_start": 0.0,
             "range_end": 75.0,
             "sub_dir": "Sebastopol_N-S_dvcrepro",
-            "interim_output_path": (
-                "data/interim/Sebastopol_N-S_dvcrepro/initial.csv"
-            ),
+            "interim_output_path": ("data/interim/Sebastopol_N-S_dvcrepro/initial.csv"),
         }
 
     @pytest.fixture
@@ -50,12 +49,9 @@ class TestMlJobRequests:
             "counter_id": "Sebastopol_N-S_dvcrepro",
             "requested_at": "2026-06-07T17:00:00Z",
             "manifest_root": "docker/prod/runtime/artifacts/manifests",
-            "interim_input_path": (
-                "data/interim/Sebastopol_N-S_dvcrepro/initial.csv"
-            ),
+            "interim_input_path": ("data/interim/Sebastopol_N-S_dvcrepro/initial.csv"),
             "processed_output_path": (
-                "data/processed/Sebastopol_N-S_dvcrepro/"
-                "initial_with_feats.csv"
+                "data/processed/Sebastopol_N-S_dvcrepro/initial_with_feats.csv"
             ),
             "extra_drop": ["unused_column"],
         }
@@ -69,12 +65,9 @@ class TestMlJobRequests:
             "requested_at": "2026-06-07T17:00:00Z",
             "manifest_root": "docker/prod/runtime/artifacts/manifests",
             "processed_input_path": (
-                "data/processed/Sebastopol_N-S_dvcrepro/"
-                "initial_with_feats.csv"
+                "data/processed/Sebastopol_N-S_dvcrepro/initial_with_feats.csv"
             ),
-            "prediction_output_path": (
-                "data/final/Sebastopol_N-S_dvcrepro/y_full.csv"
-            ),
+            "prediction_output_path": ("data/final/Sebastopol_N-S_dvcrepro/y_full.csv"),
             "model_output_path": "models/Sebastopol_N-S_dvcrepro",
             "target_col": "comptage_horaire",
             "ts_col_utc": "date_et_heure_de_comptage_utc",
@@ -172,7 +165,7 @@ class TestMlJobRequests:
     def test_manifest_reference_rejects_invalid_object_uri(self) -> None:
         with pytest.raises(ValidationError, match="object_uri"):
             ArtifactManifestReference(
-                artifact_type="predictions",
+                artifact_type=ArtifactType.PREDICTIONS,
                 counter_id="counter-001",
                 run_id="run-001",
                 manifest_path="artifacts/manifests/predictions/run/manifest.json",
@@ -182,7 +175,7 @@ class TestMlJobRequests:
     def test_manifest_reference_rejects_embedded_credentials(self) -> None:
         with pytest.raises(ValidationError, match="credentials"):
             ArtifactManifestReference(
-                artifact_type="predictions",
+                artifact_type=ArtifactType.PREDICTIONS,
                 counter_id="counter-001",
                 run_id="run-001",
                 manifest_path="artifacts/manifests/predictions/run/manifest.json",
