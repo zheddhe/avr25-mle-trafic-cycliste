@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
@@ -26,7 +28,7 @@ dict_credentials = _default_credentials()
 
 
 def check_credentials(
-    credentials: HTTPBasicCredentials = Depends(security),
+    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
 ) -> dict[str, str]:
     """Validate Basic Auth credentials and return sanitized user details."""
 
@@ -44,23 +46,20 @@ def check_credentials(
 
 
 def check_admin_role(
-    user_info: dict[str, str] = Depends(check_credentials),
+    user_info: Annotated[dict[str, str], Depends(check_credentials)],
 ) -> dict[str, str]:
     """Ensure the current user has the admin role."""
 
     if user_info["role"] != "admin":
         raise HTTPException(
             status_code=403,
-            detail=(
-                "Access denied. Admin role required. "
-                f"Current role: {user_info['role']}"
-            ),
+            detail=(f"Access denied. Admin role required. Current role: {user_info['role']}"),
         )
     return user_info
 
 
 def check_user_or_admin_role(
-    user_info: dict[str, str] = Depends(check_credentials),
+    user_info: Annotated[dict[str, str], Depends(check_credentials)],
 ) -> dict[str, str]:
     """Ensure the current user has user or admin privileges."""
 
@@ -68,8 +67,7 @@ def check_user_or_admin_role(
         raise HTTPException(
             status_code=403,
             detail=(
-                "Access denied. User or Admin role required. "
-                f"Current role: {user_info['role']}"
+                f"Access denied. User or Admin role required. Current role: {user_info['role']}"
             ),
         )
     return user_info

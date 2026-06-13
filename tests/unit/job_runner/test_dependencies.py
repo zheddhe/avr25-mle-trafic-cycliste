@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from typing import cast
+from unittest.mock import MagicMock
 
+from fastapi import Request
 from src.job_runner.dependencies import get_job_runner_service
 
 
@@ -12,7 +14,7 @@ class TestGetJobRunnerService:
 
     def test_returns_application_scoped_service(self) -> None:
         service = object()
-        state = SimpleNamespace(job_runner_service=service)
-        request = SimpleNamespace(app=SimpleNamespace(state=state))
+        request = cast(Request, MagicMock())
+        request.app.state.job_runner_service = service
 
         assert get_job_runner_service(request) is service

@@ -6,7 +6,6 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-
 from src.artifacts.checksums import compute_sha256
 from src.artifacts.exceptions import (
     ArtifactChecksumMismatchError,

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-import os
 import re
 import time
 import unicodedata
@@ -16,10 +14,13 @@ from prometheus_client import (
     pushadd_to_gateway,
 )
 
+from src.common.env import get_env
+from src.common.logger import get_logger
+
 DEFAULT_PUSHGATEWAY_ADDR = "unknown_address:9091"
 METRICS_JOB_NAME = "bike-traffic"
 
-logger = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 
 def slug_label_value(value: str) -> str:
@@ -45,18 +46,18 @@ def canonical_site(raw: str | None) -> str:
     5. ``NA`` fallback.
     """
 
-    site_short = os.getenv("SITE_SHORT")
+    site_short = get_env("SITE_SHORT")
     if site_short:
         return site_short
 
     if raw:
         return raw
 
-    site = os.getenv("SITE")
+    site = get_env("SITE")
     if site:
         return site
 
-    site_path = os.getenv("SITE_PATH", "")
+    site_path = get_env("SITE_PATH", default="")
     return slug_label_value(site_path) if site_path else "NA"
 
 
@@ -74,14 +75,14 @@ def push_step_metrics(
     and local commands can run without a Pushgateway.
     """
 
-    if os.getenv("DISABLE_METRICS_PUSH", "1") == "1":
-        logger.info("Push metrics to gateway is disabled")
+    if get_env("DISABLE_METRICS_PUSH", default="1") == "1":
+        LOGGER.debug("Pushgateway metrics push disabled")
         return
 
     site = canonical_site(labels.get("site"))
-    orientation = labels.get("orientation") or os.getenv("ORIENTATION", "NA")
+    orientation = labels.get("orientation") or get_env("ORIENTATION", default="NA")
     normalized_status = "success" if status == "success" else "failed"
-    pushgateway_addr = os.getenv("PUSHGATEWAY_ADDR", DEFAULT_PUSHGATEWAY_ADDR)
+    pushgateway_addr = get_env("PUSHGATEWAY_ADDR", default=DEFAULT_PUSHGATEWAY_ADDR)
 
     registry = CollectorRegistry()
     duration_gauge = Gauge(
@@ -105,7 +106,7 @@ def push_step_metrics(
     ).set(float(duration_s))
     records_counter.labels(step, site, orientation).inc(max(int(records), 0))
 
-    logger.info(
+    LOGGER.info(
         f"Pushing metrics to [{pushgateway_addr}] "
         f"with grouping_key=[{site} {orientation}]"
     )
@@ -115,7 +116,7 @@ def push_step_metrics(
         grouping_key={"site": site, "orientation": orientation},
         registry=registry,
     )
-    logger.info("Metrics pushed to gateway")
+    LOGGER.info("Metrics pushed to gateway")
 
 
 @contextmanager

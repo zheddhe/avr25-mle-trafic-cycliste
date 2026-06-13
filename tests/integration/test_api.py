@@ -8,7 +8,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-
 from src.api.app import create_app
 from src.api.config import ApiSettings
 from src.api.serving import load_predictions_from_manifests

@@ -1,14 +1,15 @@
-# src/ml/features/features_utils.py
-from __future__ import annotations
+"""Feature engineering transformers for cyclist traffic datasets."""
 
-import logging
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import pytz
 from sklearn.base import BaseEstimator, TransformerMixin
 
-LOGGER = logging.getLogger(__name__)
+from src.common.logger import get_logger
+
+LOGGER = get_logger(__name__)
 
 
 def extract_datetime_periodic_features(
@@ -16,17 +17,7 @@ def extract_datetime_periodic_features(
     timestamp_col: str,
     tz_local: str = "Europe/Paris",
 ) -> pd.DataFrame:
-    """
-    Parse timestamps, convert them to local time, and add periodic features.
-
-    Args:
-        df: Input DataFrame.
-        timestamp_col: Column with timestamp strings.
-        tz_local: Timezone for local conversion.
-
-    Returns:
-        Enriched DataFrame copy.
-    """
+    """Add local timestamp components and cyclic calendar features."""
 
     df = df.copy()
     try:
@@ -37,9 +28,7 @@ def extract_datetime_periodic_features(
             format="%Y-%m-%d %H:%M:%S%z",
             utc=True,
         )
-        df[local_col] = df[utc_col].dt.tz_convert(
-            pytz.timezone(tz_local),
-        )
+        df[local_col] = df[utc_col].dt.tz_convert(pytz.timezone(tz_local))
         ts = df[local_col]
         df[f"{timestamp_col}_year"] = ts.dt.year
         df[f"{timestamp_col}_month"] = ts.dt.month
@@ -82,27 +71,30 @@ def extract_datetime_periodic_features(
             2 * np.pi * df[f"{timestamp_col}_day_of_year"] / 365,
         )
         return df
-
-    except Exception as exc:
-        LOGGER.error(
-            f"Error in datetime feature extraction for '{timestamp_col}': {exc}",
+    except Exception:
+        LOGGER.exception(
+            "Failed to extract datetime periodic features: column=%s",
+            timestamp_col,
         )
         raise
 
 
 class DatetimePeriodicsTransformer(BaseEstimator, TransformerMixin):
-    """Extract datetime components and periodic features from a timestamp column."""
+    """Scikit-learn transformer adding periodic datetime features."""
 
     def __init__(self, timestamp_col: str):
         self.timestamp_col = timestamp_col
 
     def fit(self, X, y=None):
+        """Keep a stateless fit contract for scikit-learn pipelines."""
+
         return self
 
     def transform(self, X):
+        """Return transformed data without the original timestamp column."""
+
         transformed = extract_datetime_periodic_features(
             X,
             timestamp_col=self.timestamp_col,
         )
-        cols_to_drop = [self.timestamp_col]
-        return transformed.drop(columns=cols_to_drop, errors="ignore")
+        return transformed.drop(columns=[self.timestamp_col], errors="ignore")

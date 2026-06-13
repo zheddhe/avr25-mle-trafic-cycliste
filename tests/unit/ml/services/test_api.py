@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-
-from src.ml.jobs.contracts import IngestJobRequest, MlJobType
+from src.ml.jobs.contracts import IngestJobRequest, MlJobType, StepJobRequest
+from src.ml.jobs.execution import StepCommandExecutor
 from src.ml.jobs.status import JobResult
 from src.ml.services.api import MlStepService, create_app
 
@@ -22,21 +22,27 @@ def _build_ingest_request() -> IngestJobRequest:
     )
 
 
-class FakeStepExecutor:
+class FakeStepExecutor(StepCommandExecutor):
     """Test double returning deterministic ML step evidence."""
 
     def __init__(self) -> None:
-        self.requests: list[IngestJobRequest] = []
+        self.requests: list[StepJobRequest] = []
 
-    def execute(self, job_request, *, job_id, started_at):
+    def execute(
+        self, job_request, *, job_id, started_at
+    ):
         self.requests.append(job_request)
+        if isinstance(job_request, IngestJobRequest):
+            output_paths = (job_request.interim_output_path,)
+        else:
+            output_paths = ()
         return JobResult(
             job_id=job_id,
             run_id=job_request.run_id,
             counter_id=job_request.counter_id,
             job_type=job_request.job_type,
             started_at=started_at,
-            output_paths=(job_request.interim_output_path,),
+            output_paths=output_paths,
         )
 
 

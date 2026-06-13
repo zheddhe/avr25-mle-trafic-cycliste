@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from src.common.env import ConfigurationError, get_env, get_required_env
 
 
 class ApiConfigurationError(RuntimeError):
@@ -21,7 +22,7 @@ class ApiSettings:
 
 
 def load_settings() -> ApiSettings:
-    """Load explicit API serving settings from environment variables."""
+    """Load validated API serving settings from process environment."""
 
     return ApiSettings(
         manifest_root=Path(_required_env("ARTIFACT_MANIFEST_ROOT")),
@@ -31,18 +32,18 @@ def load_settings() -> ApiSettings:
 
 
 def _required_env(name: str) -> str:
-    """Return a mandatory environment variable or raise an explicit error."""
+    """Return a mandatory API environment variable."""
 
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        raise ApiConfigurationError(
-            f"Missing required environment variable: {name}"
-        )
-    return value.strip()
+    try:
+        return get_required_env(name)
+    except ConfigurationError as exc:
+        raise ApiConfigurationError(str(exc)) from exc
 
 
 def _parse_csv_env(name: str) -> tuple[str, ...]:
-    raw_value = os.getenv(name, "")
+    """Parse a comma-separated optional environment variable."""
+
+    raw_value = get_env(name, default="") or ""
     return tuple(
         item.strip()
         for item in raw_value.split(",")

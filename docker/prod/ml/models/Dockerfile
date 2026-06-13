@@ -32,6 +32,7 @@ RUN groupadd --gid "${APP_GID}" app && \
         /app/src/ml/services
 
 COPY src/artifacts /app/src/artifacts
+COPY src/common /app/src/common
 COPY src/metrics /app/src/metrics
 COPY src/ml/jobs /app/src/ml/jobs
 COPY src/ml/services /app/src/ml/services

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from src.artifacts.schemas import (
     ArtifactType,
     StorageBackend,
 )
+from src.common.env import get_env
 
 DEFAULT_PRODUCER_SERVICE = "artifact-producer"
 
@@ -115,22 +115,22 @@ def build_artifact_manifest(
             ),
             image=(
                 clean_optional_value(producer_image)
-                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_IMAGE"))
+                or clean_optional_value(get_env("ARTIFACT_PRODUCER_IMAGE"))
             ),
             version=(
                 clean_optional_value(producer_version)
-                or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_VERSION"))
+                or clean_optional_value(get_env("ARTIFACT_PRODUCER_VERSION"))
             ),
         ),
         source=ArtifactSource(
             raw_file_name=Path(source_file_name).name,
             dataset_version=(
                 clean_optional_value(dataset_version)
-                or clean_optional_value(os.getenv("DATASET_VERSION"))
+                or clean_optional_value(get_env("DATASET_VERSION"))
             ),
             model_version=(
                 clean_optional_value(model_version)
-                or clean_optional_value(os.getenv("MODEL_VERSION"))
+                or clean_optional_value(get_env("MODEL_VERSION"))
             ),
         ),
         storage=ArtifactStorage(
@@ -138,7 +138,7 @@ def build_artifact_manifest(
             local_path=local_path,
             object_uri=(
                 clean_optional_value(object_uri)
-                or clean_optional_value(os.getenv("ARTIFACT_OBJECT_URI"))
+                or clean_optional_value(get_env("ARTIFACT_OBJECT_URI"))
             ),
             checksum_sha256=compute_sha256(payload_file),
         ),
@@ -154,7 +154,7 @@ def resolve_producer_service(
 
     return (
         clean_optional_value(explicit_service)
-        or clean_optional_value(os.getenv("ARTIFACT_PRODUCER_SERVICE"))
+        or clean_optional_value(get_env("ARTIFACT_PRODUCER_SERVICE"))
         or default_service
     )
 
@@ -164,8 +164,8 @@ def resolve_run_id(run_id: str | None) -> str:
 
     candidate = (
         clean_optional_value(run_id)
-        or clean_optional_value(os.getenv("RUN_ID"))
-        or clean_optional_value(os.getenv("AIRFLOW_CTX_DAG_RUN_ID"))
+        or clean_optional_value(get_env("RUN_ID"))
+        or clean_optional_value(get_env("AIRFLOW_CTX_DAG_RUN_ID"))
     )
     if candidate:
         return candidate
@@ -178,7 +178,7 @@ def resolve_counter_id(counter_id: str | None, sub_dir: str) -> str:
 
     return (
         clean_optional_value(counter_id)
-        or clean_optional_value(os.getenv("COUNTER_ID"))
+        or clean_optional_value(get_env("COUNTER_ID"))
         or sub_dir
     )
 

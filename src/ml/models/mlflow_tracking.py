@@ -1,52 +1,45 @@
-# src/ml/models/mlflow_tracking.py
+"""MLflow helpers for model training runs."""
+
 from __future__ import annotations
 
 import importlib
-import logging
 import os
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from src.common.env import get_env
+from src.common.logger import get_logger
+
+LOGGER = get_logger(__name__)
 
 
 def _get_mlflow() -> Any:
-    """Return the MLflow module only when tracking operations need it."""
+    """Import MLflow lazily when tracking is used."""
 
     return importlib.import_module("mlflow")
 
 
 def _get_mlflow_sklearn() -> Any:
-    """Return the MLflow sklearn flavor module lazily."""
+    """Import the MLflow sklearn flavor lazily."""
 
     return importlib.import_module("mlflow.sklearn")
 
 
-def configure_mlflow_from_env(
-    explicit_uri: str | None = None,
-) -> None:
-    """
-    Configure MLflow tracking URI from arg or env.
-    Respects MLFLOW_TRACKING_URI if set.
-    """
+def configure_mlflow_from_env(explicit_uri: str | None = None) -> None:
+    """Configure MLflow tracking from CLI or process environment."""
 
-    uri = explicit_uri or os.getenv("MLFLOW_TRACKING_URI")
+    uri = explicit_uri or get_env("MLFLOW_TRACKING_URI")
     if uri:
         _get_mlflow().set_tracking_uri(uri)
-        logger.info(f"MLflow tracking URI set to [{uri}]")
-    else:
-        logger.info("MLflow tracking URI not set (using default/local).")
+        LOGGER.info("MLflow tracking URI configured: %s", uri)
+        return
+
+    LOGGER.debug("MLflow tracking URI not set, using default local tracking.")
 
 
 def is_model_registry_enabled(explicit_uri: str | None = None) -> bool:
-    """
-    Return whether model registry operations should be attempted.
+    """Return whether MLflow registry operations should be attempted."""
 
-    Local file-based MLflow runs remain artifact-only by default. Registry
-    registration and alias promotion are enabled only when a tracking URI is
-    explicitly provided through CLI or environment configuration.
-    """
-
-    return bool(explicit_uri or os.getenv("MLFLOW_TRACKING_URI"))
+    return bool(explicit_uri or get_env("MLFLOW_TRACKING_URI"))
 
 
 def start_run(
@@ -54,9 +47,7 @@ def start_run(
     run_name: str | None = None,
     tags: dict[str, str] | None = None,
 ):
-    """
-    Set experiment and start a run with optional tags.
-    """
+    """Start an MLflow run under the configured experiment."""
 
     mlflow = _get_mlflow()
     mlflow.set_experiment(experiment_name)
@@ -67,49 +58,47 @@ def start_run(
 
 
 def _log_params_flat(params: dict[str, Any] | None) -> None:
-    """
-    Log dict of hyperparams (if present), flattening as needed.
-    """
+    """Log nested parameter dictionaries with flattened keys."""
 
     if not params:
         return
 
     mlflow = _get_mlflow()
     flat = {}
-    for k, v in params.items():
-        if isinstance(v, dict):
-            for kk, vv in v.items():
-                flat[f"{k}.{kk}"] = vv
+    for key, value in params.items():
+        if isinstance(value, dict):
+            for nested_key, nested_value in value.items():
+                flat[f"{key}.{nested_key}"] = nested_value
         else:
-            flat[k] = v
-    for k, v in flat.items():
-        mlflow.log_param(k, v)
+            flat[key] = value
+    for key, value in flat.items():
+        mlflow.log_param(key, value)
 
 
 def log_report_content(
     report: dict[str, Any],
     target_col: str,
 ) -> None:
-    """
-    Log metrics, shapes, hyperparameters, and model tags to MLflow.
-    """
+    """Log metrics, dataset shapes, hyperparameters, and model tags."""
 
     mlflow = _get_mlflow()
     metrics = report.get("metrics", {})
-    for split, m in metrics.items():
-        for k, v in m.items():
-            mlflow.log_metric(f"{split}.{k}", float(v))
+    for split, split_metrics in metrics.items():
+        for key, value in split_metrics.items():
+            mlflow.log_metric(f"{split}.{key}", float(value))
 
-    xtr, xte = report.get("X_train"), report.get("X_test")
-    ytr, yte = report.get("y_train"), report.get("y_test")
-    if xtr is not None:
-        mlflow.log_param("shape.X_train", f"{xtr.shape}")
-    if xte is not None:
-        mlflow.log_param("shape.X_test", f"{xte.shape}")
-    if ytr is not None:
-        mlflow.log_param("shape.y_train", f"{ytr.shape}")
-    if yte is not None:
-        mlflow.log_param("shape.y_test", f"{yte.shape}")
+    x_train = report.get("X_train")
+    x_test = report.get("X_test")
+    y_train = report.get("y_train")
+    y_test = report.get("y_test")
+    if x_train is not None:
+        mlflow.log_param("shape.X_train", f"{x_train.shape}")
+    if x_test is not None:
+        mlflow.log_param("shape.X_test", f"{x_test.shape}")
+    if y_train is not None:
+        mlflow.log_param("shape.y_train", f"{y_train.shape}")
+    if y_test is not None:
+        mlflow.log_param("shape.y_test", f"{y_test.shape}")
 
     _log_params_flat(report.get("params"))
 
@@ -124,12 +113,7 @@ def log_model_with_signature(
     registered_name: str | None = None,
     registry_enabled: bool | None = None,
 ) -> None:
-    """
-    Log the sklearn Pipeline with a signature inferred from a sample row.
-
-    MLflow 3.x uses ``name`` for model artifact logging. Registry registration
-    remains explicit and is disabled for local artifact-only runs by default.
-    """
+    """Log the sklearn pipeline and optionally register it in MLflow."""
 
     from mlflow.exceptions import MlflowException
     from mlflow.models.signature import infer_signature
@@ -140,8 +124,8 @@ def log_model_with_signature(
         for col in sample_input_df.select_dtypes(include="int").columns:
             df[col] = df[col].astype("float64")
         signature = infer_signature(df, pipe_model.predict(df))
-    except Exception as exc:  # pragma: no cover (safety)
-        logger.warning(f"Signature inference failed: {exc}")
+    except Exception:  # pragma: no cover - defensive MLflow safety net.
+        LOGGER.exception("MLflow signature inference failed")
         signature = None
 
     effective_registry_enabled = (
@@ -149,18 +133,19 @@ def log_model_with_signature(
         if registry_enabled is None
         else registry_enabled
     )
-    reg_name = registered_name if effective_registry_enabled else None
+    registered_model_name = registered_name if effective_registry_enabled else None
 
     try:
         mlflow_sklearn.log_model(
             sk_model=pipe_model,
             name=model_artifact_name,
             signature=signature,  # type: ignore[arg-type]
-            registered_model_name=reg_name,
+            registered_model_name=registered_model_name,
         )
     except MlflowException as exc:
-        logger.warning(
-            f"Model registry not available, fallback to artifact-only: {exc}"
+        LOGGER.warning(
+            "Model registry unavailable, falling back to artifact-only log: %s",
+            exc,
         )
         mlflow_sklearn.log_model(
             sk_model=pipe_model,
@@ -176,9 +161,7 @@ def log_local_artifacts(
     models_rel_dir: str = os.path.join("models"),
     logs_rel_dir: str = os.path.join("logs", "ml"),
 ) -> None:
-    """
-    Log all produced files/directories as MLflow artifacts.
-    """
+    """Log local training outputs as MLflow artifacts when present."""
 
     mlflow = _get_mlflow()
     final_dir = os.path.join(final_rel_dir, save_subdir)

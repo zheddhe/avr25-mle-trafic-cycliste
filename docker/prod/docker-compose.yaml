@@ -158,6 +158,7 @@ services:
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-ingest-prod
       ARTIFACT_PRODUCER_IMAGE: ml-ingest:prod
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - type: volume
         source: prod-runtime
@@ -210,6 +211,7 @@ services:
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-features-prod
       ARTIFACT_PRODUCER_IMAGE: ml-features:prod
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - type: volume
         source: prod-runtime
@@ -267,6 +269,7 @@ services:
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-models-prod
       ARTIFACT_PRODUCER_IMAGE: ml-models:prod
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - type: volume
         source: prod-runtime
@@ -345,6 +348,7 @@ services:
     environment:
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - type: volume
         source: prod-runtime
@@ -398,6 +402,7 @@ services:
       ML_INGEST_SERVICE_URL: http://ml-gateway:10090/ingest
       ML_FEATURES_SERVICE_URL: http://ml-gateway:10090/features
       ML_MODELS_SERVICE_URL: http://ml-gateway:10090/models
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - type: volume
         source: prod-runtime

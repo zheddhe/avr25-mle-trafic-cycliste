@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,8 +12,9 @@ from src.api.schemas import ArtifactSourceMetadata, CurrentArtifactMetadata
 from src.artifacts.exceptions import ArtifactManifestNotFoundError
 from src.artifacts.manifest_store import read_current_manifest, verify_local_payload
 from src.artifacts.schemas import ArtifactManifest, ArtifactType, StorageBackend
+from src.common.logger import get_logger
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger(__name__)
 
 REQUIRED_PREDICTION_COLUMNS = {
     "date_et_heure_de_comptage_local",

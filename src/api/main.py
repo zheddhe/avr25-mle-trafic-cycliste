@@ -2,25 +2,20 @@
 
 from __future__ import annotations
 
-import logging
-import os
-
 from prometheus_client import Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.api.app import create_app
+from src.common.env import get_env
+from src.common.logger import build_service_log_file_path, configure_logging
 
-LOG_DIR = os.path.join("logs", "api")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(LOG_DIR, "main.log")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_PATH, mode="a", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+configure_logging(
+    level=get_env("LOG_LEVEL", default="INFO"),
+    log_file_path=build_service_log_file_path(
+        "api",
+        service_name=get_env("SERVICE_NAME", default="api"),
+        hostname=get_env("HOSTNAME", default="local"),
+    ),
 )
 
 app = create_app()

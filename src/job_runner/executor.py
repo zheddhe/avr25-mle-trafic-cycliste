@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import urllib.error
 import urllib.request
 from datetime import datetime
 from typing import Any, Protocol
 
+from src.common.env import get_env
 from src.ml.jobs.contracts import MlJobType, StepJobRequest
 from src.ml.jobs.execution import MlStepExecutionError, StepCommandExecutor
 from src.ml.jobs.status import JobResult, JobStatus
@@ -79,10 +79,11 @@ class ServiceMlJobExecutor:
                 retryable=False,
             )
 
+        forwarded_request = job_request.model_copy(update={"job_id": job_id})
         with self._concurrency_limiter:
             status = self._transport.submit(
                 endpoint=endpoint,
-                job_request=job_request,
+                job_request=forwarded_request,
             )
         if status.state.value != "succeeded" or status.result is None:
             raise MlJobExecutionError(
@@ -116,7 +117,7 @@ class UrllibMlServiceTransport:
 
     def __init__(self, timeout_seconds: float | None = None) -> None:
         self._timeout_seconds = timeout_seconds or float(
-            os.getenv("JOB_RUNNER_SERVICE_TIMEOUT_SECONDS", "3600")
+            get_env("JOB_RUNNER_SERVICE_TIMEOUT_SECONDS", default="3600")
         )
 
     def submit(self, *, endpoint: str, job_request: StepJobRequest) -> JobStatus:
@@ -162,17 +163,17 @@ class UrllibMlServiceTransport:
 
 def _load_service_endpoints() -> dict[MlJobType, str]:
     return {
-        MlJobType.INGEST: os.getenv(
+        MlJobType.INGEST: get_env(
             "ML_INGEST_SERVICE_URL",
-            "http://ml-ingest-prod:10081",
+            default="http://ml-ingest-prod:10081",
         ),
-        MlJobType.FEATURES: os.getenv(
+        MlJobType.FEATURES: get_env(
             "ML_FEATURES_SERVICE_URL",
-            "http://ml-features-prod:10082",
+            default="http://ml-features-prod:10082",
         ),
-        MlJobType.MODELS: os.getenv(
+        MlJobType.MODELS: get_env(
             "ML_MODELS_SERVICE_URL",
-            "http://ml-models-prod:10083",
+            default="http://ml-models-prod:10083",
         ),
     }
 
@@ -184,9 +185,9 @@ def _resolve_max_in_flight_jobs(configured_value: int | None = None) -> int:
             name="max_in_flight_jobs",
         )
 
-    raw_value = os.getenv(
+    raw_value = get_env(
         JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV,
-        str(DEFAULT_MAX_IN_FLIGHT_JOBS),
+        default=str(DEFAULT_MAX_IN_FLIGHT_JOBS),
     )
     try:
         parsed_value = int(raw_value)

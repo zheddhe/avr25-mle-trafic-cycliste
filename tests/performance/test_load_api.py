@@ -128,7 +128,7 @@ def run_request(
         try:
             payload = json.loads(body.decode("utf-8"))
             items = payload.get("item", [])
-            return status, int(len(items))
+            return status, len(items)
         except Exception as exc:
             LOGGER.debug("Invalid JSON for %s: %s", url, exc)
             return status, 0

@@ -6,15 +6,18 @@ fallback and by the internal FastAPI ML step services.
 
 from __future__ import annotations
 
-import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import PurePosixPath
 
 from click import Command
 
 from src.artifacts.schemas import ArtifactType
+from src.common.env import get_env, patched_env
+from src.common.logger import (
+    build_log_file_path,
+    build_service_instance_id,
+    get_logger,
+)
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
     FeatureJobRequest,
@@ -24,6 +27,10 @@ from src.ml.jobs.contracts import (
     StepJobRequest,
 )
 from src.ml.jobs.status import JobResult, MetricsEvidence, utc_now
+
+LOGGER = get_logger(__name__)
+
+_patched_environ = patched_env
 
 
 class MlStepExecutionError(Exception):
@@ -48,19 +55,61 @@ class StepCommandExecutor:
     ) -> JobResult:
         """Execute one typed ML job and build step-level evidence."""
 
-        if isinstance(job_request, IngestJobRequest):
-            output_paths = self._execute_ingest(job_request)
-        elif isinstance(job_request, FeatureJobRequest):
-            output_paths = self._execute_features(job_request)
-        elif isinstance(job_request, ModelJobRequest):
-            output_paths = self._execute_models(job_request)
-        else:  # pragma: no cover - guarded by Pydantic request union.
-            raise MlStepExecutionError(
-                code="UNSUPPORTED_JOB_TYPE",
-                message="Unsupported typed ML job request.",
-                retryable=False,
+        service_instance_id = _service_instance_id(job_request)
+        metrics_reference = _service_log_path(
+            job_request,
+            service_instance_id=service_instance_id,
+        )
+        LOGGER.info(
+            "ML job started: service_instance_id=%s run_id=%s trace_id=%s "
+            "job_id=%s job_type=%s counter_id=%s metrics_reference=%s",
+            service_instance_id,
+            job_request.run_id,
+            job_request.run_id,
+            job_id,
+            job_request.job_type.value,
+            job_request.counter_id,
+            metrics_reference,
+        )
+        try:
+            output_paths = self._execute_by_type(job_request, job_id)
+        except MlStepExecutionError as error:
+            LOGGER.warning(
+                "ML job failed: service_instance_id=%s run_id=%s trace_id=%s "
+                "job_id=%s job_type=%s counter_id=%s code=%s",
+                service_instance_id,
+                job_request.run_id,
+                job_request.run_id,
+                job_id,
+                job_request.job_type.value,
+                job_request.counter_id,
+                error.code,
             )
+            raise
+        except Exception:
+            LOGGER.exception(
+                "Unexpected ML job failure: service_instance_id=%s run_id=%s "
+                "trace_id=%s job_id=%s job_type=%s counter_id=%s",
+                service_instance_id,
+                job_request.run_id,
+                job_request.run_id,
+                job_id,
+                job_request.job_type.value,
+                job_request.counter_id,
+            )
+            raise
 
+        LOGGER.info(
+            "ML job succeeded: service_instance_id=%s run_id=%s trace_id=%s "
+            "job_id=%s job_type=%s counter_id=%s outputs=%s",
+            service_instance_id,
+            job_request.run_id,
+            job_request.run_id,
+            job_id,
+            job_request.job_type.value,
+            job_request.counter_id,
+            output_paths,
+        )
         return JobResult(
             job_id=job_id,
             run_id=job_request.run_id,
@@ -70,12 +119,32 @@ class StepCommandExecutor:
             finished_at=utc_now(),
             output_paths=output_paths,
             manifest=self._build_manifest_reference(job_request),
-            metrics=MetricsEvidence(
-                metrics_reference=f"logs/ml/{job_request.job_type.value}.log",
-            ),
+            metrics=MetricsEvidence(metrics_reference=metrics_reference),
         )
 
-    def _execute_ingest(self, job_request: IngestJobRequest) -> tuple[str, ...]:
+    def _execute_by_type(
+        self,
+        job_request: StepJobRequest,
+        job_id: str,
+    ) -> tuple[str, ...]:
+        if isinstance(job_request, IngestJobRequest):
+            return self._execute_ingest(job_request, job_id)
+        if isinstance(job_request, FeatureJobRequest):
+            return self._execute_features(job_request, job_id)
+        if isinstance(job_request, ModelJobRequest):
+            return self._execute_models(job_request, job_id)
+
+        raise MlStepExecutionError(
+            code="UNSUPPORTED_JOB_TYPE",
+            message="Unsupported typed ML job request.",
+            retryable=False,
+        )
+
+    def _execute_ingest(
+        self,
+        job_request: IngestJobRequest,
+        job_id: str,
+    ) -> tuple[str, ...]:
         from src.ml.ingest.import_raw_data import main as ingest_command
 
         args = [
@@ -97,12 +166,13 @@ class StepCommandExecutor:
             job_request.interim_name,
         ]
         self._append_manifest_root(args, job_request)
-        self._invoke(ingest_command, args, job_request)
+        self._invoke(ingest_command, args, job_request, job_id)
         return (job_request.interim_output_path,)
 
     def _execute_features(
         self,
         job_request: FeatureJobRequest,
+        job_id: str,
     ) -> tuple[str, ...]:
         from src.ml.features.build_features import main as features_command
 
@@ -120,10 +190,14 @@ class StepCommandExecutor:
             args.extend(["--extra-drop", column])
 
         self._append_manifest_root(args, job_request)
-        self._invoke(features_command, args, job_request)
+        self._invoke(features_command, args, job_request, job_id)
         return (job_request.processed_output_path,)
 
-    def _execute_models(self, job_request: ModelJobRequest) -> tuple[str, ...]:
+    def _execute_models(
+        self,
+        job_request: ModelJobRequest,
+        job_id: str,
+    ) -> tuple[str, ...]:
         from src.ml.models.train_and_predict import main as models_command
 
         sub_dir = _model_sub_dir(job_request)
@@ -155,7 +229,7 @@ class StepCommandExecutor:
             args.extend(["--artifact-object-uri", job_request.artifact_object_uri])
 
         self._append_manifest_root(args, job_request)
-        self._invoke(models_command, args, job_request)
+        self._invoke(models_command, args, job_request, job_id)
 
         outputs = [job_request.prediction_output_path, job_request.model_output_path]
         return tuple(path for path in outputs if path is not None)
@@ -168,7 +242,7 @@ class StepCommandExecutor:
         if job_request.manifest_root:
             args.extend(["--artifact-manifest-root", job_request.manifest_root])
 
-        repository_root = os.getenv("ARTIFACT_REPOSITORY_ROOT", ".")
+        repository_root = get_env("ARTIFACT_REPOSITORY_ROOT", default=".")
         args.extend(["--artifact-repository-root", repository_root])
 
     def _invoke(
@@ -176,10 +250,11 @@ class StepCommandExecutor:
         command: Command,
         args: list[str],
         job_request: StepJobRequest,
+        job_id: str,
     ) -> None:
-        env = _execution_env(job_request)
+        env = _execution_env(job_request, job_id)
         try:
-            with _patched_environ(env):
+            with patched_env(env):
                 command.main(
                     args=args,
                     prog_name=command.name,
@@ -225,10 +300,17 @@ class StepCommandExecutor:
         )
 
 
-def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
+def _execution_env(
+    job_request: StepJobRequest,
+    job_id: str,
+) -> dict[str, str]:
+    service_instance_id = _service_instance_id(job_request)
     site_short, orientation = _metrics_label_values(job_request)
     env = {
         "RUN_ID": job_request.run_id,
+        "TRACE_ID": job_request.run_id,
+        "JOB_ID": job_id,
+        "SERVICE_INSTANCE_ID": service_instance_id,
         "COUNTER_ID": job_request.counter_id,
         "SITE_SHORT": site_short,
         "SITE": site_short,
@@ -245,6 +327,27 @@ def _execution_env(job_request: StepJobRequest) -> dict[str, str]:
         env["ARTIFACT_MANIFEST_ROOT"] = job_request.manifest_root
 
     return env
+
+
+def _service_log_path(
+    job_request: StepJobRequest,
+    *,
+    service_instance_id: str | None = None,
+) -> str:
+    instance_id = service_instance_id or _service_instance_id(job_request)
+    file_name = f"{instance_id}.log"
+    return str(build_log_file_path("ml", job_request.job_type.value, file_name))
+
+
+def _service_instance_id(job_request: StepJobRequest) -> str:
+    """Return the readable service instance id used in ML log file names."""
+
+    service_name = get_env(
+        "SERVICE_NAME",
+        default=f"ml-{job_request.job_type.value}",
+    )
+    hostname = get_env("HOSTNAME", default="local")
+    return build_service_instance_id(service_name, hostname=hostname)
 
 
 def _metrics_label_values(job_request: StepJobRequest) -> tuple[str, str]:
@@ -273,20 +376,6 @@ def _execution_error(
         message=message,
         retryable=True,
     )
-
-
-@contextmanager
-def _patched_environ(updates: dict[str, str]) -> Iterator[None]:
-    previous = {key: os.environ.get(key) for key in updates}
-    os.environ.update(updates)
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
 def _artifact_type_for_job(job_type: MlJobType) -> ArtifactType:

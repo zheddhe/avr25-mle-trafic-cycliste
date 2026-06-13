@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from src.artifacts.manifest_emission import build_artifact_manifest, emit_artifact_manifest
 from src.artifacts.schemas import ArtifactType
 

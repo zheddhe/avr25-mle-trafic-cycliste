@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
-
+from src.common.env import get_env
+from src.common.logger import get_logger
 from src.job_runner.errors import JobNotFoundError
 from src.job_runner.executor import (
     LocalMlJobExecutor,
@@ -14,6 +14,8 @@ from src.job_runner.executor import (
 from src.job_runner.state import InMemoryJobState
 from src.ml.jobs.contracts import StepJobRequest
 from src.ml.jobs.status import JobError, JobState, JobStatus
+
+LOGGER = get_logger(__name__)
 
 
 class JobRunnerService:
@@ -42,6 +44,15 @@ class JobRunnerService:
                 started_at=running_status.updated_at,
             )
         except MlJobExecutionError as error:
+            LOGGER.warning(
+                "Typed ML job execution failed: job_id=%s run_id=%s "
+                "job_type=%s counter_id=%s code=%s",
+                status.job_id,
+                job_request.run_id,
+                job_request.job_type.value,
+                job_request.counter_id,
+                error.code,
+            )
             return self._state.set_failed(
                 status.job_id,
                 JobError(
@@ -51,6 +62,14 @@ class JobRunnerService:
                 ),
             )
         except Exception as error:
+            LOGGER.exception(
+                "Unexpected ML job execution failure: job_id=%s run_id=%s "
+                "job_type=%s counter_id=%s",
+                status.job_id,
+                job_request.run_id,
+                job_request.job_type.value,
+                job_request.counter_id,
+            )
             return self._state.set_failed(
                 status.job_id,
                 JobError(
@@ -60,6 +79,13 @@ class JobRunnerService:
                 ),
             )
 
+        LOGGER.info(
+            "ML job succeeded: job_id=%s run_id=%s job_type=%s counter_id=%s",
+            status.job_id,
+            job_request.run_id,
+            job_request.job_type.value,
+            job_request.counter_id,
+        )
         return self._state.set_succeeded(status.job_id, result)
 
     def get_job_status(self, job_id: str) -> JobStatus:
@@ -75,7 +101,8 @@ class JobRunnerService:
 def build_default_executor() -> MlJobExecutor:
     """Build the runner executor selected by runtime configuration."""
 
-    executor_name = os.getenv("JOB_RUNNER_EXECUTOR", "service").strip().lower()
+    executor_name = get_env("JOB_RUNNER_EXECUTOR", default="service")
+    executor_name = (executor_name or "service").strip().lower()
     if executor_name == "local":
         return LocalMlJobExecutor()
     if executor_name == "service":

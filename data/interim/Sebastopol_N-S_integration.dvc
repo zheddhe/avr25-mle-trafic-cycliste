@@ -1,6 +1,6 @@
 outs:
-- md5: d1425409be80f2738a5d98ac1d63c541.dir
-  size: 477852
+- md5: 369bce6ab68cde639efe8a6073a26df1.dir
+  size: 240634
   nfiles: 1
   hash: md5
   path: Sebastopol_N-S_integration

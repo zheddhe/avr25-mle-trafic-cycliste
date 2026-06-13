@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from src.job_runner.routers.jobs import get_job_status, submit_job
 from src.ml.jobs.contracts import IngestJobRequest
 
@@ -36,7 +38,7 @@ class TestJobsRouter:
     """Unit tests for job runner jobs endpoints."""
 
     def test_submit_job_delegates_to_service(self) -> None:
-        service = FakeJobRunnerService()
+        service: Any = FakeJobRunnerService()
         job_request = _build_ingest_request()
 
         result = submit_job(job_request=job_request, service=service)
@@ -45,7 +47,7 @@ class TestJobsRouter:
         assert service.submitted_request is job_request
 
     def test_get_job_status_delegates_to_service(self) -> None:
-        service = FakeJobRunnerService()
+        service: Any = FakeJobRunnerService()
 
         result = get_job_status(job_id="job-001", service=service)
 

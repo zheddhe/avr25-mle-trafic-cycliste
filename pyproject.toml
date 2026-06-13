@@ -50,6 +50,7 @@ dev = [
 [tool.pytest.ini_options]
 addopts = ["--cov", "--cov-report=term"]
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = [
     "integration: component contract tests",
     "acceptance: production-like smoke tests against running services",
@@ -64,10 +65,38 @@ omit = ["*/__init__.py", "*/.vscode/*", "*/site-packages/*", "*/python_files/*"]
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if __name__ == '__main__':"]
 
+[tool.pyright]
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+typeCheckingMode = "standard"
+include = [ "src", "tests", "docker/dev/airflow/dag", "docker/prod/airflow/dag", ]
+exclude = [ "**/node_modules", "**/.*", "**/__pycache__", ".venv", "build", "dist", ".ruff_cache", ".pytest_cache", "data", "models", ]
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+extraPaths = [ ".", "docker/dev/airflow/dag", "docker/prod/airflow/dag", ]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = [".git", "__pycache__", "build", "dist", ".venv"]
+exclude = [".git", "__pycache__", "build", "dist", ".venv", "data", "models"]
+src = [ "src", "tests", "docker/dev/airflow/dag", "docker/prod/airflow/dag", ]
+include = [ "pyproject.toml", "src/**/*.py", "tests/**/*.py", "docker/dev/airflow/dag/**/*.py", "docker/prod/airflow/dag/**/*.py", ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP"]
+# select = ["E", "F", "W", "I", "UP"]
+select = [ "E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "A", "PT", "AIR", "FAST", ]
+# Group     Target
+# B	        Possible Python bugs, defects, mutables, traps
+# C4        Comprehension simplification
+# SIM       Lisibility simplification
+# RUF       Ruff own rules
+# A	        Avoid builtins masking like id, list, type
+# PT        pytest conventions
+# AIR       Airflow specific checks
+# FAST      FastAPI specific checks
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

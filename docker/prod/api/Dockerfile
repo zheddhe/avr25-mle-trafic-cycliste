@@ -28,6 +28,7 @@ RUN groupadd --gid "${APP_GID}" app && \
 
 COPY src/api /app/src/api
 COPY src/artifacts /app/src/artifacts
+COPY src/common /app/src/common
 
 RUN chown -R app:app /app
 

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
-from common.utils import _list_counters_payload, _load_concurrency_config
+from common.utils import (
+    _list_counters_payload,
+    _load_concurrency_config,
+    get_airflow_task_logger,
+)
 
-logger = logging.getLogger("airflow.task")
-logger.info("[orchestrator] Development DAG loaded")
+LOGGER = get_airflow_task_logger()
+LOGGER.debug("[orchestrator] Development DAG parsed")
 
 concurrency = _load_concurrency_config()
 
@@ -25,8 +28,6 @@ with DAG(
     max_active_tasks=concurrency.orchestrator_max_active_tasks,
     tags=["ops", "orchestration", "bike", "dev"],
 ) as dag:
-    logger.info("[orchestrator] Production-like DAG loaded")
-
     get_counters = PythonOperator(
         task_id="get_counters",
         python_callable=_list_counters_payload,

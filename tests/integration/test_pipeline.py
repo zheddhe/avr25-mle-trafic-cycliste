@@ -117,7 +117,7 @@ def _invoke_click(script_key: str, argv: list[str]) -> int:
 
 def _read_csv_nrows(p: Path) -> int:
     df = pd.read_csv(p, nrows=10_000)  # guard memory
-    return int(len(df))
+    return len(df)
 
 
 # ---------------------------------------------------------------------
@@ -162,7 +162,7 @@ def isolate_mlflow(tmp_path, monkeypatch):
     monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
     monkeypatch.delenv("MLFLOW_REGISTRY_URI", raising=False)
     monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
-    yield
+    return
 
 
 # ---------------------------------------------------------------------

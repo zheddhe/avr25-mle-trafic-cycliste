@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-
 from src.api.config import ApiSettings
 from src.api.serving import (
     PredictionCsvError,
@@ -130,9 +129,7 @@ class TestApiServing:
         )
         _write_current_manifest(manifest_root=manifest_root, manifest=manifest)
 
-        result = load_predictions_from_manifests(
-            _settings(repository_root, manifest_root)
-        )
+        result = load_predictions_from_manifests(_settings(repository_root, manifest_root))
 
         assert sorted(result.predictions.keys()) == [COUNTER_ID]
         assert result.predictions[COUNTER_ID].shape == (1, 5)
@@ -185,7 +182,7 @@ class TestApiServing:
         raw_manifest["storage"]["primary_backend"] = "local"
         raw_manifest["storage"].pop("local_path")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="local_path"):
             ArtifactManifest.model_validate(raw_manifest)
 
     def test_load_prediction_dataframe_rejects_checksum_mismatch(

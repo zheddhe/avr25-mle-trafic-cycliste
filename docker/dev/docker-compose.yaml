@@ -131,6 +131,7 @@ services:
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-features-dev
       ARTIFACT_PRODUCER_IMAGE: ml-features:dev
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/logs:/app/logs
@@ -169,6 +170,7 @@ services:
       ARTIFACT_REPOSITORY_ROOT: /app
       ARTIFACT_PRODUCER_SERVICE: ml-models-dev
       ARTIFACT_PRODUCER_IMAGE: ml-models:dev
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/models:/app/models
@@ -223,6 +225,7 @@ services:
     environment:
       ARTIFACT_MANIFEST_ROOT: /app/artifacts/manifests
       ARTIFACT_REPOSITORY_ROOT: /app
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - ./runtime/data/final:/app/data/final:ro
       - ./runtime/logs:/app/logs
@@ -258,6 +261,7 @@ services:
       ML_INGEST_SERVICE_URL: http://ml-gateway:10090/ingest
       ML_FEATURES_SERVICE_URL: http://ml-gateway:10090/features
       ML_MODELS_SERVICE_URL: http://ml-gateway:10090/models
+      LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - ./runtime/logs/job-runner:/app/logs/job-runner
     healthcheck:

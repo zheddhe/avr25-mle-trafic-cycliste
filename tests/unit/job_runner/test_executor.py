@@ -5,11 +5,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from email.message import Message
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 import pytest
-
 from src.job_runner.executor import (
     DEFAULT_MAX_IN_FLIGHT_JOBS,
     JOB_RUNNER_MAX_IN_FLIGHT_JOBS_ENV,
@@ -21,7 +21,10 @@ from src.job_runner.executor import (
     _resolve_max_in_flight_jobs,
 )
 from src.job_runner.service import build_default_executor
-from src.ml.jobs.contracts import IngestJobRequest
+from src.ml.jobs.contracts import (
+    IngestJobRequest,
+    MlJobType,
+)
 from src.ml.jobs.status import JobError, JobResult, JobState, JobStatus
 
 
@@ -29,9 +32,9 @@ class TestServiceMlJobExecutor:
     def test_execute_returns_service_result_with_runner_metadata(self) -> None:
         job_request = _ingest_request()
         started_at = datetime(2026, 1, 1, tzinfo=UTC)
-        service_result = _job_result(job_id="service-job")
+        service_result = _job_result(job_id="runner-job")
         status = _job_status(
-            job_id="service-job",
+            job_id="runner-job",
             state=JobState.SUCCEEDED,
             result=service_result,
         )
@@ -49,13 +52,14 @@ class TestServiceMlJobExecutor:
             started_at=started_at,
         )
 
+        forwarded_request = job_request.model_copy(update={"job_id": "runner-job"})
         assert result.job_id == "runner-job"
         assert result.started_at == started_at
         assert result.run_id == job_request.run_id
         assert result.output_paths == ("data/interim/counter-a/initial.csv",)
         transport.submit.assert_called_once_with(
             endpoint="http://ml-ingest:10081",
-            job_request=job_request,
+            job_request=forwarded_request,
         )
 
     def test_execute_raises_when_endpoint_is_missing(self) -> None:
@@ -118,6 +122,7 @@ class TestServiceMlJobExecutor:
             nonlocal observed_in_flight
             assert endpoint == "http://ml-ingest:10081"
             assert job_request.counter_id == "counter-a"
+            assert job_request.job_id is not None
             with in_flight_lock:
                 observed_in_flight += 1
                 max_observed_in_flight = max(
@@ -129,9 +134,9 @@ class TestServiceMlJobExecutor:
             with in_flight_lock:
                 observed_in_flight -= 1
             return _job_status(
-                job_id="service-job",
+                job_id=job_request.job_id,
                 state=JobState.SUCCEEDED,
-                result=_job_result(job_id="service-job"),
+                result=_job_result(job_id=job_request.job_id),
             )
 
         transport = Mock()
@@ -177,6 +182,7 @@ class TestServiceMlJobExecutor:
             nonlocal observed_in_flight
             assert endpoint == "http://ml-ingest:10081"
             assert job_request.counter_id == "counter-a"
+            assert job_request.job_id is not None
             with in_flight_lock:
                 observed_in_flight += 1
                 max_observed_in_flight = max(
@@ -188,9 +194,9 @@ class TestServiceMlJobExecutor:
             with in_flight_lock:
                 observed_in_flight -= 1
             return _job_status(
-                job_id="service-job",
+                job_id=job_request.job_id,
                 state=JobState.SUCCEEDED,
-                result=_job_result(job_id="service-job"),
+                result=_job_result(job_id=job_request.job_id),
             )
 
         transport = Mock()
@@ -232,16 +238,18 @@ class TestUrllibMlServiceTransport:
             url="http://service/jobs",
             code=500,
             msg="Server error",
-            hdrs=None,
+            hdrs=Message(),
             fp=Mock(read=Mock(return_value=b"boom")),
         )
 
-        with patch("urllib.request.urlopen", side_effect=error):
-            with pytest.raises(MlJobExecutionError) as exc_info:
-                transport.submit(
-                    endpoint="http://service",
-                    job_request=_ingest_request(),
-                )
+        with (
+            patch("urllib.request.urlopen", side_effect=error),
+            pytest.raises(MlJobExecutionError) as exc_info,
+        ):
+            transport.submit(
+                endpoint="http://service",
+                job_request=_ingest_request(),
+            )
 
         assert exc_info.value.code == "ML_SERVICE_HTTP_ERROR"
         assert exc_info.value.retryable is True
@@ -250,12 +258,14 @@ class TestUrllibMlServiceTransport:
     def test_submit_maps_url_error(self) -> None:
         transport = UrllibMlServiceTransport(timeout_seconds=1)
 
-        with patch("urllib.request.urlopen", side_effect=URLError("offline")):
-            with pytest.raises(MlJobExecutionError) as exc_info:
-                transport.submit(
-                    endpoint="http://service",
-                    job_request=_ingest_request(),
-                )
+        with (
+            patch("urllib.request.urlopen", side_effect=URLError("offline")),
+            pytest.raises(MlJobExecutionError) as exc_info,
+        ):
+            transport.submit(
+                endpoint="http://service",
+                job_request=_ingest_request(),
+            )
 
         assert exc_info.value.code == "ML_SERVICE_UNAVAILABLE"
         assert exc_info.value.retryable is True
@@ -267,12 +277,14 @@ class TestUrllibMlServiceTransport:
         response.read.return_value = b"not-json"
         transport = UrllibMlServiceTransport(timeout_seconds=1)
 
-        with patch("urllib.request.urlopen", return_value=response):
-            with pytest.raises(MlJobExecutionError) as exc_info:
-                transport.submit(
-                    endpoint="http://service",
-                    job_request=_ingest_request(),
-                )
+        with (
+            patch("urllib.request.urlopen", return_value=response),
+            pytest.raises(MlJobExecutionError) as exc_info,
+        ):
+            transport.submit(
+                endpoint="http://service",
+                job_request=_ingest_request(),
+            )
 
         assert exc_info.value.code == "ML_SERVICE_INVALID_RESPONSE"
 
@@ -306,7 +318,7 @@ class TestRunnerExecutorConfiguration:
     ) -> None:
         monkeypatch.setenv("JOB_RUNNER_EXECUTOR", "docker")
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"local|service") as exc_info:
             build_default_executor()
 
         assert "JOB_RUNNER_EXECUTOR" in str(exc_info.value)
@@ -358,7 +370,7 @@ def _job_result(job_id: str) -> JobResult:
         job_id=job_id,
         run_id="run-a",
         counter_id="counter-a",
-        job_type="ingest",
+        job_type=MlJobType.INGEST,
         started_at=datetime(2026, 1, 1, tzinfo=UTC),
         finished_at=datetime(2026, 1, 1, 0, 1, tzinfo=UTC),
         output_paths=("data/interim/counter-a/initial.csv",),
@@ -376,7 +388,7 @@ def _job_status(
         job_id=job_id,
         run_id="run-a",
         counter_id="counter-a",
-        job_type="ingest",
+        job_type=MlJobType.INGEST,
         state=state,
         requested_at=datetime(2026, 1, 1, tzinfo=UTC),
         updated_at=datetime(2026, 1, 1, 0, 1, tzinfo=UTC),

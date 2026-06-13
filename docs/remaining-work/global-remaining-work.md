@@ -1,31 +1,33 @@
 # Global remaining work
 
 This document lists improvement axes that remain outside the validated local
-production-like baseline.
+runtime baseline.
 
 The current baseline is documented in:
 
 - [`../current-runtime-and-operations/local-prod-runtime.md`](../current-runtime-and-operations/local-prod-runtime.md);
+- [`../current-runtime-and-operations/runtime-logging.md`](../current-runtime-and-operations/runtime-logging.md);
 - [`../architecture-references/runtime-communication-matrix.md`](../architecture-references/runtime-communication-matrix.md);
 - [`../architecture-references/local-prod-network-topology.md`](../architecture-references/local-prod-network-topology.md).
 
 ## Current validated baseline
 
-The local production-like runtime validates this path:
+The local runtime validates this functional path:
 
 ```text
 Airflow DAG task
   -> job-runner-api
-  -> ml-ingest-prod / ml-features-prod / ml-models-prod
+  -> ml-gateway
+  -> ML step service replica
   -> promoted prediction manifest
   -> authenticated API refresh
   -> FastAPI serving from the promoted manifest payload
   -> Prometheus and Grafana observability
 ```
 
-Acceptance tests cover the production-like Compose contract, internal-only ML
-services, manifest-first API serving, promoted prediction payload loading, and
-monitoring wiring.
+Acceptance coverage targets the production-like Compose contract,
+internal-only ML services, manifest-first API serving, promoted prediction
+payload loading, and monitoring wiring.
 
 ## Security hardening
 
@@ -37,28 +39,26 @@ baseline. Future work should cover:
 - stricter network exposure reviews;
 - authentication and authorization hardening;
 - production-grade configuration management;
-- container user, volume permission, and service capability reviews.
+- container user, volume permission, and capability reviews.
 
-Security hardening will be reassessed after Phase 9 scale-out work clarifies the
-runtime concurrency and resource model.
+Security hardening should preserve the current Docker socket boundary: normal
+pipeline execution must not require Docker socket access from Airflow, runner,
+API, gateway, or ML step services.
 
 ## Scale-out execution
 
-The current multi-counter orchestration remains intentionally sequential for the
-local production-like path.
+The runtime now has the structural pieces needed for local bounded scale-out:
+Airflow submits typed jobs, `job-runner-api` dispatches through `ml-gateway`, and
+ML step services can be replicated behind the gateway.
 
-Phase 9 starts from the bounded local scale-out contract documented in
-[`phase-9-bounded-scale-out-contract.md`](phase-9-bounded-scale-out-contract.md).
-That contract defines the future-state scope before implementation stories
-change the current runtime behavior.
+Remaining work should focus on proving and hardening the scale-out behavior:
 
-Phase 9 should address:
-
-- safe bounded parallel execution across counters;
-- concurrency control for manifests and promoted `current.json` files;
-- retry and idempotency policies for larger local workloads;
-- per-service resource limits and backpressure strategy;
-- acceptance validation and observability for bounded scale-out.
+- bounded multi-counter fan-out with conservative defaults;
+- retry and idempotency policies under larger local workloads;
+- resource limits and backpressure behavior per service family;
+- acceptance validation for scaled ML service replicas;
+- dashboard and alert coverage for queueing, failures, and slow jobs;
+- concurrency review for manifest promotion and API refresh behavior.
 
 Distributed orchestration remains future work when local Compose is no longer
 enough.
@@ -97,11 +97,12 @@ Future tracks may cover:
 
 ## Observability hardening
 
-The current production-like runtime validates Pushgateway, Prometheus, and
-Grafana wiring. Future observability work should cover:
+The current runtime records traceable identifiers across Airflow, runner, and ML
+service logs. Future observability work should cover:
 
 - alert rules aligned with model and API business impact;
 - dashboard review for multi-counter scale;
 - metric cardinality control;
-- production retention strategy;
-- run-level traceability from Airflow to API artifact state.
+- log retention and aggregation strategy;
+- trace export beyond local log files;
+- production retention strategy.

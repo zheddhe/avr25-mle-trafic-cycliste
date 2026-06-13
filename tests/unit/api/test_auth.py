@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPBasicCredentials
-
 from src.api.auth import (
     check_admin_role,
     check_credentials,

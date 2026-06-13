@@ -133,11 +133,10 @@ class JobResult(StrictMlJobContract):
 
         started_at = self.started_at
         finished_at = self.finished_at
-        if started_at is not None and finished_at is not None:
-            if finished_at < started_at:
-                raise ValueError(
-                    "finished_at must be greater than or equal to started_at",
-                )
+        if started_at is not None and finished_at is not None and finished_at < started_at:
+            raise ValueError(
+                "finished_at must be greater than or equal to started_at",
+            )
 
         return self
 

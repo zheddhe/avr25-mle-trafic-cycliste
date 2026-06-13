@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from src.job_runner.errors import JobNotFoundError
 from src.job_runner.executor import MlJobExecutionError, ServiceMlJobExecutor
 from src.job_runner.service import JobRunnerService, build_default_executor

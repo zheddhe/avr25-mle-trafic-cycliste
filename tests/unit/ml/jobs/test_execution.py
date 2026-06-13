@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from typing import NoReturn
 
+import click
 import pytest
-
 from src.artifacts.schemas import ArtifactType
 from src.ml.jobs.contracts import (
     ArtifactManifestReference,
@@ -25,6 +26,8 @@ from src.ml.jobs.execution import (
     _model_sub_dir,
     _patched_environ,
     _path_parent_name,
+    _service_instance_id,
+    _service_log_path,
 )
 
 
@@ -55,9 +58,7 @@ def _build_feature_request(
         task_id="features",
         manifest_root=manifest_root,
         interim_input_path="/app/data/interim/counter-001/initial.csv",
-        processed_output_path=(
-            "/app/data/processed/counter-001/initial_with_feats.csv"
-        ),
+        processed_output_path=("/app/data/processed/counter-001/initial_with_feats.csv"),
         extra_drop=("unused_column",),
     )
 
@@ -71,9 +72,7 @@ def _build_model_request(
         run_id="run-001",
         counter_id="Sebastopol_N-S_airflow",
         manifest_root="/app/artifacts/manifests",
-        processed_input_path=(
-            "/app/data/processed/counter-001/initial_with_feats.csv"
-        ),
+        processed_input_path=("/app/data/processed/counter-001/initial_with_feats.csv"),
         prediction_output_path=prediction_output_path,
         model_output_path="/app/models/counter-001",
         mlflow_uri="http://mlflow:5000",
@@ -91,22 +90,28 @@ class TestMlJobExecutionHelpers:
         assert _artifact_type_for_job(MlJobType.MODELS) == "predictions"
 
     def test_path_parent_name_extracts_output_scenario(self) -> None:
-        assert _path_parent_name("/app/data/final/counter-001/y_full.csv") == (
-            "counter-001"
-        )
+        assert _path_parent_name("/app/data/final/counter-001/y_full.csv") == ("counter-001")
 
     def test_metrics_label_values_uses_ingest_orientation(self) -> None:
         job_request = _build_ingest_request()
 
         assert _metrics_label_values(job_request) == ("Sebastopol", "N-S")
 
-    def test_execution_env_contains_traceability_labels(self) -> None:
+    def test_execution_env_contains_traceability_labels(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         job_request = _build_feature_request()
+        monkeypatch.setenv("HOSTNAME", "ml-host-1")
+        monkeypatch.delenv("SERVICE_NAME", raising=False)
 
-        env = _execution_env(job_request)
+        env = _execution_env(job_request, "runner-job-001")
 
         assert env == {
             "RUN_ID": "run-001",
+            "TRACE_ID": "run-001",
+            "JOB_ID": "runner-job-001",
+            "SERVICE_INSTANCE_ID": "ml-features_ml-host-1",
             "COUNTER_ID": "Sebastopol_N-S_airflow",
             "SITE_SHORT": "Sebastopol",
             "SITE": "Sebastopol",
@@ -116,6 +121,26 @@ class TestMlJobExecutionHelpers:
             "AIRFLOW_CTX_TASK_ID": "features",
             "ARTIFACT_MANIFEST_ROOT": "/app/artifacts/manifests",
         }
+
+    def test_service_instance_id_uses_runtime_name_and_hostname(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job_request = _build_feature_request()
+        monkeypatch.setenv("SERVICE_NAME", "ml-features")
+        monkeypatch.setenv("HOSTNAME", "42fb94a58f")
+
+        assert _service_instance_id(job_request) == "ml-features_42fb94a58f"
+
+    def test_service_log_path_uses_shared_service_instance_file(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        job_request = _build_feature_request()
+        monkeypatch.setenv("SERVICE_NAME", "ml-features")
+        monkeypatch.setenv("HOSTNAME", "42fb94a58f")
+
+        assert _service_log_path(job_request) == ("logs/ml/features/ml-features_42fb94a58f.log")
 
     def test_patched_environ_restores_previous_values(
         self,
@@ -157,8 +182,14 @@ class TestStepCommandExecutor:
     ) -> None:
         executor = StepCommandExecutor()
         job_request = _build_feature_request()
+        monkeypatch.setenv("HOSTNAME", "ml-host-1")
+        monkeypatch.delenv("SERVICE_NAME", raising=False)
 
-        def fake_execute_features(request: FeatureJobRequest) -> tuple[str, ...]:
+        def fake_execute_features(
+            request: FeatureJobRequest,
+            job_id: str,
+        ) -> tuple[str, ...]:
+            assert job_id == "runner-job-001"
             return (request.processed_output_path,)
 
         monkeypatch.setattr(executor, "_execute_features", fake_execute_features)
@@ -171,11 +202,12 @@ class TestStepCommandExecutor:
 
         assert result.job_id == "runner-job-001"
         assert result.output_paths == (job_request.processed_output_path,)
+        assert result.metrics is not None
+        assert result.metrics.metrics_reference == ("logs/ml/features/ml-features_ml-host-1.log")
         assert result.manifest is not None
         assert result.manifest.artifact_type == ArtifactType.FEATURE_DATASET
         assert result.manifest.manifest_path == (
-            "/app/artifacts/manifests/feature_dataset/"
-            "Sebastopol_N-S_airflow/run-001/manifest.json"
+            "/app/artifacts/manifests/feature_dataset/Sebastopol_N-S_airflow/run-001/manifest.json"
         )
 
     def test_execute_ingest_job_returns_no_manifest_without_manifest_root(
@@ -185,7 +217,11 @@ class TestStepCommandExecutor:
         executor = StepCommandExecutor()
         job_request = _build_ingest_request()
 
-        def fake_execute_ingest(request: IngestJobRequest) -> tuple[str, ...]:
+        def fake_execute_ingest(
+            request: IngestJobRequest,
+            job_id: str,
+        ) -> tuple[str, ...]:
+            assert job_id == "runner-job-000"
             return (request.interim_output_path,)
 
         monkeypatch.setattr(executor, "_execute_ingest", fake_execute_ingest)
@@ -207,16 +243,20 @@ class TestStepCommandExecutor:
             artifact_type=ArtifactType.PREDICTIONS,
             counter_id="Sebastopol_N-S_airflow",
             run_id="run-001",
-            manifest_path=(
-                "artifacts/manifests/predictions/counter/run/manifest.json"
-            ),
+            manifest_path=("artifacts/manifests/predictions/counter/run/manifest.json"),
             current_path="artifacts/manifests/predictions/counter/current.json",
             object_uri="s3://bucket/counter-001/y_full.csv",
         )
         job_request = _build_model_request(expected_manifest=expected_manifest)
         executor = StepCommandExecutor()
 
-        def fake_execute_models(request: ModelJobRequest) -> tuple[str, ...]:
+        def fake_execute_models(
+            request: ModelJobRequest,
+            job_id: str,
+        ) -> tuple[str, ...]:
+            assert job_id == "runner-job-002"
+            assert request.prediction_output_path is not None
+            assert request.model_output_path is not None
             return (request.prediction_output_path, request.model_output_path)
 
         monkeypatch.setattr(executor, "_execute_models", fake_execute_models)
@@ -240,7 +280,12 @@ class TestStepCommandExecutor:
         job_request = _build_model_request()
         executor = StepCommandExecutor()
 
-        def fake_execute_models(request: ModelJobRequest) -> tuple[str, ...]:
+        def fake_execute_models(
+            request: ModelJobRequest,
+            job_id: str,
+        ) -> tuple[str, ...]:
+            assert job_id == "runner-job-003"
+            assert request.prediction_output_path is not None
             return (request.prediction_output_path,)
 
         monkeypatch.setattr(executor, "_execute_models", fake_execute_models)
@@ -265,13 +310,14 @@ class TestStepCommandExecutor:
         )
         captured_args = []
 
-        def fake_invoke(command, args, request) -> None:
+        def fake_invoke(command, args, request, job_id) -> None:
+            assert job_id == "runner-job-001"
             captured_args.extend(args)
 
         monkeypatch.setenv("ARTIFACT_REPOSITORY_ROOT", "/app/repository")
         monkeypatch.setattr(executor, "_invoke", fake_invoke)
 
-        output_paths = executor._execute_ingest(job_request)
+        output_paths = executor._execute_ingest(job_request, "runner-job-001")
 
         assert output_paths == (job_request.interim_output_path,)
         assert captured_args == [
@@ -305,12 +351,13 @@ class TestStepCommandExecutor:
         job_request = _build_feature_request()
         captured_args = []
 
-        def fake_invoke(command, args, request) -> None:
+        def fake_invoke(command, args, request, job_id) -> None:
+            assert job_id == "runner-job-001"
             captured_args.extend(args)
 
         monkeypatch.setattr(executor, "_invoke", fake_invoke)
 
-        output_paths = executor._execute_features(job_request)
+        output_paths = executor._execute_features(job_request, "runner-job-001")
 
         assert output_paths == (job_request.processed_output_path,)
         assert captured_args == [
@@ -338,12 +385,13 @@ class TestStepCommandExecutor:
         job_request = _build_model_request()
         captured_args = []
 
-        def fake_invoke(command, args, request) -> None:
+        def fake_invoke(command, args, request, job_id) -> None:
+            assert job_id == "runner-job-001"
             captured_args.extend(args)
 
         monkeypatch.setattr(executor, "_invoke", fake_invoke)
 
-        output_paths = executor._execute_models(job_request)
+        output_paths = executor._execute_models(job_request, "runner-job-001")
 
         assert output_paths == (
             "/app/data/final/counter-001/y_full.csv",
@@ -363,25 +411,37 @@ class TestStepCommandExecutor:
     def test_invoke_ignores_successful_system_exit(self) -> None:
         executor = StepCommandExecutor()
 
-        class SuccessfulCommand:
-            name = "success"
+        class SuccessfulCommand(click.Command):
+            def __init__(self) -> None:
+                super().__init__("success")
 
-            def main(self, *args, **kwargs) -> None:
+            def main(self, *args, **kwargs) -> NoReturn:
                 raise SystemExit(0)
 
-        executor._invoke(SuccessfulCommand(), [], _build_ingest_request())
+        executor._invoke(
+            SuccessfulCommand(),
+            [],
+            _build_ingest_request(),
+            "runner-job-001",
+        )
 
     def test_invoke_maps_failed_system_exit_to_step_error(self) -> None:
         executor = StepCommandExecutor()
 
-        class FailingCommand:
-            name = "failing"
+        class FailingCommand(click.Command):
+            def __init__(self) -> None:
+                super().__init__("failing")
 
-            def main(self, *args, **kwargs) -> None:
+            def main(self, *args, **kwargs) -> NoReturn:
                 raise SystemExit(2)
 
         with pytest.raises(MlStepExecutionError) as exc_info:
-            executor._invoke(FailingCommand(), [], _build_ingest_request())
+            executor._invoke(
+                FailingCommand(),
+                [],
+                _build_ingest_request(),
+                "runner-job-001",
+            )
 
         assert exc_info.value.code == "INGEST_JOB_FAILED"
         assert exc_info.value.retryable is True
@@ -389,11 +449,17 @@ class TestStepCommandExecutor:
     def test_invoke_maps_runtime_error_to_step_error(self) -> None:
         executor = StepCommandExecutor()
 
-        class FailingCommand:
-            name = "failing"
+        class FailingCommand(click.Command):
+            def __init__(self) -> None:
+                super().__init__("failing")
 
-            def main(self, *args, **kwargs) -> None:
+            def main(self, *args, **kwargs) -> NoReturn:
                 raise RuntimeError("boom")
 
         with pytest.raises(MlStepExecutionError, match="boom"):
-            executor._invoke(FailingCommand(), [], _build_ingest_request())
+            executor._invoke(
+                FailingCommand(),
+                [],
+                _build_ingest_request(),
+                "runner-job-001",
+            )
