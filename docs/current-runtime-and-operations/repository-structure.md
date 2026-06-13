@@ -204,20 +204,24 @@ Optional variables must use an explicit default or return `None`.
 
 Runtime service logs are written below repository-local `logs/` paths:
 
-- the serving API writes project logs to `logs/api/main.log`;
-- the job runner API writes project logs to `logs/job-runner/main.log`;
+- the serving API writes project logs to `logs/api/<service_name>_<hostname>.log`,
+  defaulting to `logs/api/api_local.log` when runtime identity is not provided;
+- the job runner API writes project logs to
+  `logs/job-runner/<service_name>_<hostname>.log`, defaulting to
+  `logs/job-runner/job-runner-api_local.log` when runtime identity is not
+  provided;
 - typed ML services write project logs to
   `logs/ml/<step>/<service_name>_<hostname>.log`, where `<step>` is `ingest`,
   `features`, or `models`.
 
 Direct CLI launches keep console-only project logging. This keeps ad-hoc unit
 runs visible in the terminal or container logs without creating local files.
-The job runner API logs `job_id`, `run_id`, `job_type`, and `counter_id`
-so operators can correlate `logs/job-runner/main.log` with ML service files.
+The job runner API logs `job_id`, `run_id`, `job_type`, and `counter_id` so
+operators can correlate its service log with ML service files.
 
 Log levels should remain operational: `DEBUG` for diagnostics, `INFO` for
-lifecycle milestones, `WARNING` for recoverable abnormal states, and `ERROR`
-for failed operations.
+lifecycle milestones, `WARNING` for recoverable abnormal states, and `ERROR` for
+failed operations.
 
 Logger calls should use lazy interpolation by passing values as logger
 arguments, for example `LOGGER.info("Loaded %s rows", row_count)`. Regular
