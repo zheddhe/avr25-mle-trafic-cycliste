@@ -73,7 +73,7 @@ include = [ "src", "tests", "docker/dev/airflow/dag", "docker/prod/airflow/dag",
 exclude = [ "**/node_modules", "**/.*", "**/__pycache__", ".venv", "build", "dist", ".ruff_cache", ".pytest_cache", "data", "models", ]
 reportMissingImports = "error"
 reportMissingTypeStubs = false
-executionEnvironments = [ { root = "src", extraPaths = ["src"] }, { root = "tests", extraPaths = ["src", "tests"] }, { root = "docker/dev/airflow/dag", extraPaths = ["src", "docker/dev/airflow/dag"] }, { root = "docker/prod/airflow/dag", extraPaths = ["src", "docker/prod/airflow/dag"] }, ]
+extraPaths = [ ".", "docker/dev/airflow/dag", "docker/prod/airflow/dag", ]
 
 [tool.ruff]
 line-length = 100
@@ -83,8 +83,17 @@ src = [ "src", "tests", "docker/dev/airflow/dag", "docker/prod/airflow/dag", ]
 include = [ "pyproject.toml", "src/**/*.py", "tests/**/*.py", "docker/dev/airflow/dag/**/*.py", "docker/prod/airflow/dag/**/*.py", ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP"]
-# select = [ "E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "A", "PT", "AIR", "FAST", ]
+# select = ["E", "F", "W", "I", "UP"]
+select = [ "E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "A", "PT", "AIR", "FAST", ]
+# Group     Target
+# B	        Possible Python bugs, defects, mutables, traps
+# C4        Comprehension simplification
+# SIM       Lisibility simplification
+# RUF       Ruff own rules
+# A	        Avoid builtins masking like id, list, type
+# PT        pytest conventions
+# AIR       Airflow specific checks
+# FAST      FastAPI specific checks
 ignore = []
 
 [tool.ruff.format]

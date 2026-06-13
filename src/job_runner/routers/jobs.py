@@ -19,6 +19,7 @@ JobRequestBody = Annotated[
     Body(discriminator="job_type"),
 ]
 
+
 @router.post(
     "",
     response_model=JobStatus,
@@ -31,7 +32,7 @@ JobRequestBody = Annotated[
 )
 def submit_job(
     job_request: JobRequestBody,
-    service: JobRunnerService = Depends(get_job_runner_service),
+    service: Annotated[JobRunnerService, Depends(get_job_runner_service)],
 ) -> JobStatus:
     """Accept one typed ML step request and execute it through the runner."""
 
@@ -49,7 +50,7 @@ def submit_job(
 )
 def get_job_status(
     job_id: str,
-    service: JobRunnerService = Depends(get_job_runner_service),
+    service: Annotated[JobRunnerService, Depends(get_job_runner_service)],
 ) -> JobStatus:
     """Return the current status for an in-memory job id."""
 

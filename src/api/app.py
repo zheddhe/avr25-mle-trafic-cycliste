@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Query, Request
@@ -64,8 +64,8 @@ GENERIC_RESPONSES: ResponsesDict = {
 class ApiBusinessException(Exception):
     """Exception mapped to the API business error response."""
 
-    def __init__(self, type: str, date: str, message: str | None) -> None:
-        self.type = type
+    def __init__(self, error_type: str, date: str, message: str | None) -> None:
+        self.type = error_type
         self.date = date
         self.message = message
 
@@ -84,17 +84,14 @@ class PredictionStore:
         result = load_predictions_from_manifests(self.settings)
         self.predictions = result.predictions
         self.artifacts = result.artifacts
-        LOGGER.info(
-            f"Store refreshed from manifests: {len(self.predictions)} "
-            "counters available."
-        )
+        LOGGER.info(f"Store refreshed from manifests: {len(self.predictions)} counters available.")
 
     def require_predictions(self) -> dict[str, pd.DataFrame]:
         """Return loaded predictions or raise a structured API error."""
 
         if not self.predictions:
             raise ApiBusinessException(
-                type="PredictionsNotLoaded",
+                error_type="PredictionsNotLoaded",
                 message="No promoted prediction manifest has been loaded.",
                 date=str(datetime.now()),
             )
@@ -105,7 +102,7 @@ class PredictionStore:
 
         if not self.artifacts:
             raise ApiBusinessException(
-                type="ArtifactsNotLoaded",
+                error_type="ArtifactsNotLoaded",
                 message="No promoted prediction artifact metadata has been loaded.",
                 date=str(datetime.now()),
             )
@@ -170,7 +167,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         responses=GENERIC_RESPONSES,
     )
     def post_refresh(
-        user_info: dict[str, str] = Depends(check_admin_role),
+        user_info: Annotated[dict[str, str], Depends(check_admin_role)],
     ) -> AdminRefreshResponse:
         """Refresh the prediction store from promoted manifests."""
 
@@ -199,22 +196,18 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         "/counters",
         tags=["Predictions"],
         summary="List available counters",
-        description=(
-            "List counters loaded from promoted prediction manifests. "
-            "[USER or ADMIN]"
-        ),
+        description=("List counters loaded from promoted prediction manifests. [USER or ADMIN]"),
         response_model=list[Counter],
         responses=GENERIC_RESPONSES,
     )
     def get_all_counters(
-        user_info: dict[str, str] = Depends(check_user_or_admin_role),
+        user_info: Annotated[dict[str, str], Depends(check_user_or_admin_role)],
     ) -> list[Counter]:
         """Return counters loaded in the manifest-first prediction store."""
 
         predictions = prediction_store.require_predictions()
         LOGGER.debug(
-            f"Counters list requested by user: {user_info['username']} "
-            f"(role: {user_info['role']})"
+            f"Counters list requested by user: {user_info['username']} (role: {user_info['role']})"
         )
         return [Counter(id=name) for name in sorted(predictions.keys())]
 
@@ -231,32 +224,36 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     )
     def get_predictions_by_counter(
         counter_id: str,
-        limit: int = Query(
-            10,
-            ge=1,
-            le=100,
-            description="Max number of predictions to return.",
-        ),
-        offset: int = Query(
-            0,
-            ge=0,
-            description="Number of predictions to skip (pagination).",
-        ),
-        user_info: dict[str, str] = Depends(check_user_or_admin_role),
+        user_info: Annotated[dict[str, str], Depends(check_user_or_admin_role)],
+        limit: Annotated[
+            int,
+            Query(
+                ge=1,
+                le=100,
+                description="Max number of predictions to return.",
+            ),
+        ] = 10,
+        offset: Annotated[
+            int,
+            Query(
+                ge=0,
+                description="Number of predictions to skip (pagination).",
+            ),
+        ] = 0,
     ) -> PredictionList:
         """Return predictions for one loaded counter."""
 
         predictions = prediction_store.require_predictions()
         if counter_id not in predictions:
-            available_counters = sorted(list(predictions.keys()))
+            available_counters = sorted(predictions.keys())
             raise ApiBusinessException(
-                type="CounterUnavailable",
+                error_type="CounterUnavailable",
                 message=f"Available counters: {available_counters}",
                 date=str(datetime.now()),
             )
 
         dataframe = predictions[counter_id]
-        dataframe_page = dataframe.iloc[offset: offset + limit]
+        dataframe_page = dataframe.iloc[offset : offset + limit]
         LOGGER.debug(
             f"Predictions for counter {counter_id} requested by user: "
             f"{user_info['username']} (role: {user_info['role']}, "
@@ -264,7 +261,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         )
 
         return PredictionList(
-            total=int(len(dataframe)),
+            total=len(dataframe),
             limit=int(limit),
             offset=int(offset),
             item=[
@@ -281,7 +278,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         responses=GENERIC_RESPONSES,
     )
     def get_current_artifacts(
-        user_info: dict[str, str] = Depends(check_user_or_admin_role),
+        user_info: Annotated[dict[str, str], Depends(check_user_or_admin_role)],
     ) -> list[CurrentArtifactMetadata]:
         """Return current artifact metadata for all loaded counters."""
 
@@ -301,15 +298,15 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     )
     def get_current_artifact_by_counter(
         counter_id: str,
-        user_info: dict[str, str] = Depends(check_user_or_admin_role),
+        user_info: Annotated[dict[str, str], Depends(check_user_or_admin_role)],
     ) -> CurrentArtifactMetadata:
         """Return current artifact metadata for one loaded counter."""
 
         artifacts = prediction_store.require_artifacts()
         if counter_id not in artifacts:
-            available_counters = sorted(list(artifacts.keys()))
+            available_counters = sorted(artifacts.keys())
             raise ApiBusinessException(
-                type="ArtifactUnavailable",
+                error_type="ArtifactUnavailable",
                 message=f"Available counters: {available_counters}",
                 date=str(datetime.now()),
             )
@@ -328,7 +325,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         responses=GENERIC_RESPONSES,
     )
     def get_current_user(
-        user_info: dict[str, str] = Depends(check_credentials),
+        user_info: Annotated[dict[str, str], Depends(check_credentials)],
     ) -> dict[str, Any]:
         """Return information about the authenticated user."""
 
@@ -347,7 +344,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 def _raise_store_error(error: Exception) -> None:
     error_type = error.__class__.__name__
     raise ApiBusinessException(
-        type=error_type,
+        error_type=error_type,
         message=str(error),
         date=str(datetime.now()),
     ) from error

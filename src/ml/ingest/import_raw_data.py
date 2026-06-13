@@ -134,13 +134,11 @@ def main(
     with track_pipeline_step("ingest", labels) as metrics_payload:
         if not (0.0 <= range_start <= 100.0 and 0.0 <= range_end <= 100.0):
             raise click.BadParameter(
-                "range-start/range-end must be within [0, 100]. "
-                f"Got ({range_start}, {range_end}).",
+                f"range-start/range-end must be within [0, 100]. Got ({range_start}, {range_end}).",
             )
         if range_start > range_end:
             raise click.BadParameter(
-                "range-start must be <= range-end. "
-                f"Got ({range_start}, {range_end}).",
+                f"range-start must be <= range-end. Got ({range_start}, {range_end}).",
             )
 
         try:
@@ -151,7 +149,7 @@ def main(
             raise click.ClickException(f"Failed to load raw CSV: {exc}") from exc
 
         key_cols = ["nom_du_site_de_comptage", "orientation_compteur"]
-        missing = [col for col in key_cols + [timestamp_col] if col not in df.columns]
+        missing = [col for col in [*key_cols, timestamp_col] if col not in df.columns]
         if missing:
             raise click.ClickException(f"Missing required columns: {missing}")
 
@@ -212,7 +210,7 @@ def main(
                 f"run_id=[{emitted_manifest.run_id}].",
             )
 
-        metrics_payload["records"] = int(len(df_counter))
+        metrics_payload["records"] = len(df_counter)
 
     LOGGER.info("Data ingestion ended successfully.")
     sys.exit(0)

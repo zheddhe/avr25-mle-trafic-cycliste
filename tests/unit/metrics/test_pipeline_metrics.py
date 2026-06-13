@@ -137,9 +137,11 @@ class TestPipelineMetrics:
             fake_push_step_metrics,
         )
 
-        with pytest.raises(RuntimeError, match="boom"):
-            with track_pipeline_step("ingest", {"site": "Sebastopol"}):
-                raise RuntimeError("boom")
+        with (
+            pytest.raises(RuntimeError, match="boom"),
+            track_pipeline_step("ingest", {"site": "Sebastopol"}),
+        ):
+            raise RuntimeError("boom")
 
         assert calls[0]["step"] == "ingest"
         assert calls[0]["records"] == 0

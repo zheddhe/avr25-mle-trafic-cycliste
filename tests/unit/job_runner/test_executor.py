@@ -244,12 +244,14 @@ class TestUrllibMlServiceTransport:
             fp=Mock(read=Mock(return_value=b"boom")),
         )
 
-        with patch("urllib.request.urlopen", side_effect=error):
-            with pytest.raises(MlJobExecutionError) as exc_info:
-                transport.submit(
-                    endpoint="http://service",
-                    job_request=_ingest_request(),
-                )
+        with (
+            patch("urllib.request.urlopen", side_effect=error),
+            pytest.raises(MlJobExecutionError) as exc_info,
+        ):
+            transport.submit(
+                endpoint="http://service",
+                job_request=_ingest_request(),
+            )
 
         assert exc_info.value.code == "ML_SERVICE_HTTP_ERROR"
         assert exc_info.value.retryable is True
@@ -258,12 +260,14 @@ class TestUrllibMlServiceTransport:
     def test_submit_maps_url_error(self) -> None:
         transport = UrllibMlServiceTransport(timeout_seconds=1)
 
-        with patch("urllib.request.urlopen", side_effect=URLError("offline")):
-            with pytest.raises(MlJobExecutionError) as exc_info:
-                transport.submit(
-                    endpoint="http://service",
-                    job_request=_ingest_request(),
-                )
+        with (
+            patch("urllib.request.urlopen", side_effect=URLError("offline")),
+            pytest.raises(MlJobExecutionError) as exc_info,
+        ):
+            transport.submit(
+                endpoint="http://service",
+                job_request=_ingest_request(),
+            )
 
         assert exc_info.value.code == "ML_SERVICE_UNAVAILABLE"
         assert exc_info.value.retryable is True
@@ -276,12 +280,14 @@ class TestUrllibMlServiceTransport:
         response.read.return_value = b"not-json"
         transport = UrllibMlServiceTransport(timeout_seconds=1)
 
-        with patch("urllib.request.urlopen", return_value=response):
-            with pytest.raises(MlJobExecutionError) as exc_info:
-                transport.submit(
-                    endpoint="http://service",
-                    job_request=_ingest_request(),
-                )
+        with (
+            patch("urllib.request.urlopen", return_value=response),
+            pytest.raises(MlJobExecutionError) as exc_info,
+        ):
+            transport.submit(
+                endpoint="http://service",
+                job_request=_ingest_request(),
+            )
 
         assert exc_info.value.code == "ML_SERVICE_INVALID_RESPONSE"
 
@@ -315,7 +321,7 @@ class TestRunnerExecutorConfiguration:
     ) -> None:
         monkeypatch.setenv("JOB_RUNNER_EXECUTOR", "docker")
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"local|service") as exc_info:
             build_default_executor()
 
         assert "JOB_RUNNER_EXECUTOR" in str(exc_info.value)

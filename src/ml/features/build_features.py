@@ -182,7 +182,7 @@ def main(
                 f"run_id=[{emitted_manifest.run_id}].",
             )
 
-        metrics_payload["records"] = int(len(df))
+        metrics_payload["records"] = len(df)
 
     LOGGER.info("Feature engineering ended successfully.")
     sys.exit(0)
