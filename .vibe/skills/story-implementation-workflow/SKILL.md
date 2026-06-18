@@ -38,10 +38,9 @@ work that is not attached to a clear story or issue.
 Before planning or editing files, read the project agent rules:
 
 1. Read `AGENTS.md` at the repository root.
-2. If a singular `AGENT.md` file exists in the current checkout, read it too.
-3. Treat `AGENTS.md` as the canonical project rule file when both files exist
+2. Treat `AGENTS.md` as the canonical project rule file when both files exist
    unless the user explicitly says otherwise.
-4. Read `docs/README.md` before documentation or architecture work.
+3. Read `docs/README.md` before documentation or architecture work.
 
 The current `AGENTS.md` rules are valid for this skill: keep a Machine Learning
 Engineer / MLOps perspective, use one branch per story, open PRs against `main`,
