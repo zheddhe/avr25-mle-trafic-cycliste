@@ -50,6 +50,7 @@ Remaining gaps belong under `remaining-work/`.
 | -------- | ------- |
 | [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md) | Security, scale-out, full ETL source chain, object-storage-first serving, remote operations, and observability hardening. |
 | [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md) | Future-state bounded scale-out contract and remaining implementation rules. |
+| [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md) | Source catalog, preprocessing pipeline, and implementation priorities for the full ETL source chain. |
 
 ## Reading order
 
@@ -65,4 +66,5 @@ For future improvement planning, read:
 
 1. [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md)
 2. [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md)
-3. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+3. [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md)
+4. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)

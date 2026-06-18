@@ -1,10 +1,14 @@
-# Source Catalog — Phase 10 ETL Chain
+# Phase 10 — ETL Source Chain
 
-> **Status**: Decision-ready catalog. No connector code.
+> **Status**: Future-state design target. No connector code.
 >
 > **Epic**: Phase 10 — Source-driven ETL and reproducible ML-ready dataset generation
 >
 > **Story**: [Issue #105](https://github.com/zheddhe/avr25-mle-trafic-cycliste/issues/105)
+>
+> **Design reference**:
+> [zheddhe/mai25-bds-trafic-cycliste](https://github.com/zheddhe/mai25-bds-trafic-cycliste) —
+> notebooks and `smartcheck/` source code.
 
 ---
 
@@ -15,6 +19,49 @@
 | **Required** | Needed for MVP — the pipeline cannot produce valid predictions without it. |
 | **Optional** | Improves prediction quality but the pipeline can run without it (with degraded accuracy). |
 | **Experimental** | Investigational — not yet validated for production use, outside MVP scope. |
+
+---
+
+## Cold Start Strategy
+
+Sources 1 and 2 require a two-phase initialization before the daily runtime pipeline can operate:
+
+### Phase 1 — Mass Purge (Cold Start)
+
+A one-off batch with rare frequency to perform a global data realignment:
+
+- **Load initial archive**: Download and ingest the full 13-month rolling window from the Mairie de Paris open data portal.
+- **Mass counter name correction**: Apply the full counter name correction mapping (see Source 1 data quality steps) across all historical data.
+- **Outlier correction**: Apply the `comptage_horaire` cap (3000) and sensor anomaly removal across the full archive.
+- **Missing-value propagation**: Copy reference columns from corrected counter rows to all rows with duplicate/erroneous names across the full archive.
+- **Counter reference join**: Join with the separate "Comptage vélo — Compteurs" dataset to enrich all counter metadata (location, installation date, operational status).
+- **Administrative boundary enrichment**: Assign arrondissement to each counter via GeoJSON point-in-polygon lookup.
+- **Output**: A clean, aligned, 13-month reference dataset that serves as the baseline for all future incremental updates.
+
+This batch is exceptional — it runs once (or very rarely, e.g., when counter metadata changes significantly). It requires downloading the full archive file from opendata.paris.fr (~149 MB) and processing it end-to-end.
+
+### Phase 2 — Daily Runtime (Incremental J-1)
+
+After the cold start, the pipeline operates in daily incremental mode:
+
+- **Collect J-1 data**: Fetch only the previous day's new data from the Mairie de Paris API or open data portal.
+- **Apply quality corrections**: Run counter name correction, outlier detection, and missing-value propagation on the new data only.
+- **Join with counter reference**: Validate counter identifiers against the authoritative reference dataset.
+- **Append to baseline**: Merge the cleaned J-1 data with the existing baseline archive.
+- **Trigger downstream**: The enriched dataset feeds the feature engineering and model training steps.
+
+This daily runtime is automated and runs as part of the Airflow DAG (`bike_traffic_daily`). It assumes the baseline archive from Phase 1 already exists.
+
+### Cold Start Summary
+
+| Aspect | Phase 1 — Mass Purge | Phase 2 — Daily Runtime |
+| --- | --- | --- |
+| **Frequency** | One-off (rare re-runs only) | Daily (J-1 data) |
+| **Data scope** | Full 13-month archive | New J-1 data only |
+| **Initial load** | Download full archive CSV (~149 MB) | API call for yesterday's data |
+| **Processing** | Full counter name correction, outlier removal, missing-value propagation, reference join, boundary enrichment | Incremental quality corrections, reference validation, append to baseline |
+| **Output** | Clean baseline archive | Incremental dataset update |
+| **Trigger** | Manual or scheduled exceptional batch | Automated Airflow DAG (`bike_traffic_daily`) |
 
 ---
 
@@ -61,6 +108,16 @@
 | `arrondissement` | int | Paris arrondissement number (embedded) |
 | `elevation` | float | Site elevation in meters (embedded) |
 
+### Data Quality Steps (mai25 design)
+
+The mai25 design applies these quality corrections before the ML pipeline:
+
+| Step | Detail | mai25 Notebook |
+| --- | --- | --- |
+| **Counter name correction** | Propagate metadata from corrected counter names to erroneous duplicates (e.g., "10 avenue de la Grande Armée 10 avenue de la Grande Armée [Bike IN]" → "10 avenue de la Grande Armée SE-NO"). | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cell 58 |
+| **Outlier correction** | Cap `comptage_horaire` at 3000 to remove sensor anomalies (e.g., "Quai d'Orsay O-E" on 2025-01-05). | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cells 96–100 |
+| **Missing-value propagation** | Copy reference columns from corrected counter rows to rows with duplicate/erroneous names. | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cell 58 |
+
 ### Known Limits (Bike-Counting Dataset)
 
 | Limit | Detail |
@@ -86,7 +143,7 @@
 | **Update frequency** | Rare — only when counters are added, removed, or relocated. |
 | **Classification** | **Required** |
 | **Usage** | Provides authoritative metadata for each counter: unique identifier, site name, geographic coordinates, installation date, and operational status. Used to validate counter identifiers in the raw dataset and to enrich the dataset with stable site metadata. |
-| **Current state** | Not yet separated from the raw dataset. Counter metadata is embedded in the raw CSV (latitude, longitude, arrondissement, elevation). Phase 10 should extract this into a dedicated reference source. |
+| **Current state** | **avr25**: embedded in the raw CSV (latitude, longitude, arrondissement, elevation). **mai25 design**: separate opendatasoft dataset used for counter name correction and missing-value propagation. Phase 10 should extract this into a dedicated reference source. |
 
 ### Source Verification (Counter Reference)
 
@@ -103,8 +160,8 @@
 | Field | Value |
 | --- | --- |
 | **Name** | Calendrier des jours fériés français |
-| **Owner** | Various national authorities (verified via public holiday APIs) |
-| **Provider** | [date.nager.at](https://date.nager.at) (Public Holiday API) — confirmed France (FR) support |
+| **Owner** | French government (Ministère de la Transition écologique et durable) |
+| **Provider** | [calendrier.api.gouv.fr](https://calendrier.api.gouv.fr) (official French government API) |
 | **Access mode** | REST API (JSON response) |
 | **Format** | JSON |
 | **Update frequency** | Annual — published each year for the upcoming 3–5 years. Fixed dates with rare legislative changes. |
@@ -114,13 +171,19 @@
 
 ### Source Verification (Public Holidays)
 
-- **API endpoint**: `https://date.nager.at/api/v3/AvailableCountries` — confirmed France (FR) is supported
-- **Coverage**: 130 countries supported including all French territories (FR, GP, MQ, RE, YT, MF, BL, PM, WF, PF, NC, PF, TF, PM)
-- **API style**: RESTful JSON API, no authentication required for basic usage
-- **Determinism**: Public holiday dates are fixed and deterministic (unlike school holidays). This source is safe for reproducible ETL.
+- **Primary API endpoint**: `https://calendrier.api.gouv.fr/jours-feries/{country_code}/{year}.json`
+- **Country code**: `metropole` for mainland France; `alsace-moselle` for regional exceptions
+- **Determinism**: Public holiday dates are fixed and deterministic. This source is safe for reproducible ETL.
 - **Regional variation**: Some holidays (e.g., Ascension, Pentecôte) may have regional exceptions. Paris follows national rules.
 - **Schema stability**: High — holiday dates are calendrical and do not change format.
-- **Alternative providers**: [nageraud-guilloux/et-holidays](https://github.com/nageraud-guilloux/et-holidays) (GitHub repository with holiday data)
+- **Alternative providers**: [date.nager.at](https://date.nager.at) (Public Holiday API, 130 countries); [nageraud-guilloux/et-holidays](https://github.com/nageraud-guilloux/et-holidays) (GitHub repository with holiday data)
+
+### mai25 Implementation Reference — Public Holidays
+
+- **Transformer**: `smartcheck/preprocessing_project_specific.py::HolidayFromDatetimeTransformer`
+- **Function**: `smartcheck/dataframe_project_specific.py::add_holiday_column_from_datetime`
+- **Output column**: `jour_ferie` (binary: 0 = not a holiday, 1 = holiday)
+- **API call pattern**: Fetches all years in the data range, caches dates in a `set`, then maps each row's local date against it.
 
 ---
 
@@ -130,13 +193,19 @@
 | --- | --- |
 | **Name** | Calendrier des vacances scolaires — Zone C (Paris) |
 | **Owner** | Ministère de l'Éducation nationale |
-| **Provider** | [data.gouv.fr](https://www.data.gouv.fr) — `calendrier-des-vacances-scolaires` dataset |
-| **Access mode** | File download (CSV / JSON) via data.gouv.fr |
-| **Format** | CSV or JSON |
+| **Provider** | [data.education.gouv.fr](https://data.education.gouv.fr) (official education ministry API) |
+| **Access mode** | REST API (JSON export) |
+| **Format** | JSON |
 | **Update frequency** | Annual — published each summer for the upcoming school year. |
 | **Classification** | **Optional** |
 | **Usage** | School holidays affect bike traffic, especially on weekdays. Paris (Zone C) has its own holiday schedule distinct from Zones A and B. Holidays should be encoded as features during feature engineering. |
 | **Current state** | **Not implemented.** No school calendar integration exists in the pipeline. |
+
+### API Endpoint
+
+The API endpoint is `https://data.education.gouv.fr/api/v2/catalog/datasets/fr-en-calendrier-scolaire/exports/json`.
+
+The API returns all school holiday records. The mai25 design filters by `location` ("Paris") and `zones` ("Zone C"), then maps each datetime to its holiday description (e.g., "Vacances d'hiver", "Vacances d'été") or "aucune".
 
 ### Known Limits (School Holidays)
 
@@ -145,6 +214,12 @@
 | **Determinism** | School holiday dates are set by decree and are deterministic once published. However, exceptional closures (e.g., strikes, health crises) may introduce unpredictability. |
 | **Zone specificity** | Must use Zone C (Paris). Using the wrong zone's schedule would introduce feature leakage or misclassification. |
 | **Schema stability** | Moderate — the dataset structure is stable but may include additional fields in future releases. |
+
+### mai25 Implementation Reference — School Holidays
+
+- **Transformer**: `smartcheck/preprocessing_project_specific.py::SchoolHolidayTransformer`
+- **Function**: `smartcheck/dataframe_project_specific.py::add_school_vacation_column`
+- **Output column**: `vacances_scolaires` (categorical: holiday type name or "aucune")
 
 ---
 
@@ -155,8 +230,8 @@
 | **Name** | Météo — Données météorologiques historiques et prévisions |
 | **Owner** | Multiple weather model providers (ECMWF, DWD, NOAA, Météo-France, JMA, KMA, KNMI, DMI, MeteoSwiss, UK Met Office) |
 | **Provider** | [Open-Meteo API](https://open-meteo.com) (recommended for ETL) |
-| **Access mode** | REST API (HTTP GET, JSON response) |
-| **Format** | JSON |
+| **Access mode** | REST API (HTTP GET, CSV or JSON response) |
+| **Format** | CSV (recommended for batch) or JSON |
 | **Update frequency** | Hourly for forecasts; historical data available. |
 | **Classification** | **Optional** |
 | **Usage** | Weather conditions influence bike traffic (rain, temperature, snowfall). Currently embedded in the raw CSV as `weather_code_wmo_code`, `temperature_2m_c`, `rain_mm`, `snowfall_cm`. Phase 10 should fetch weather data directly from an API rather than relying on the embedded enrichment. |
@@ -164,19 +239,25 @@
 
 ### Source Verification (Weather Data)
 
-- **Pricing structure**: Caters to both non-commercial and commercial users. Non-commercial use is free, with fair usage guidelines and attribution required. Commercial clients enjoy dedicated API servers, personalized support, and a commercial use licence.
-- **Free tier**: 10,000 calls/day, 300,000 calls/month. Non-commercial use only. No commercial license.
-- **API Standard plan**: 1M calls/month, includes commercial use license and dedicated API key
-- **API Professional plan**: 5M calls/month, required for historical weather data, climate data, ensemble data, and satellite radiation APIs
-- **API Enterprise plan**: >50M calls/month, dedicated endpoint, 99.9% uptime target
+- **Historical API endpoint**: `https://historical-forecast-api.open-meteo.com/v1/forecast`
+- **Free tier**: 10,000 calls/day, 300,000 calls/month. Non-commercial use only.
 - **Weather models**: 30+ models from ECMWF, DWD, NOAA, Météo-France, JMA, KMA, KNMI, DMI, MeteoSwiss, UK Met Office
 - **AROME model**: Available for France region (high-resolution regional model)
-- **WMO codes**: Standard WMO Weather interpretation codes (WW) — codes 0-99 for weather conditions
+- **WMO codes**: Standard WMO Weather interpretation codes (WW) — codes 0–99 for weather conditions
 - **Available variables**: temperature_2m, relative_humidity_2m, dew_point_2m, apparent_temperature, precipitation, rain, snowfall, weather_code, wind_speed_10m, wind_direction_10m, wind_gusts_10m, visibility, and 50+ more
 - **License**: Server code is open-source under AGPLv3; weather data is CC BY 4.0
 - **Historical data**: Requires Professional API plan or higher; not available on free tier
 - **Timezone**: API responses use UTC. Conversion to local Paris time (CET/CEST) is required for consistency with counter timestamps.
 - **Geographic scope**: Query by counter coordinates (latitude, longitude) using WGS84 format
+
+### mai25 Implementation Reference — Weather Data
+
+- **Transformer**: `smartcheck/preprocessing_project_specific.py::WeatherDataEnrichmentTransformer`
+- **Function**: `smartcheck/dataframe_project_specific.py::fetch_weather_data_from_dataframe`
+- **API call**: Uses `historical-forecast-api.open-meteo.com` with `format=csv`, requests `temperature_2m,weather_code,rain,snowfall`
+- **Deduplication**: Drops duplicate (lat, lon, datetime) pairs before the API call, then re-joins the result
+- **WMO code transformer**: `smartcheck/preprocessing_project_specific.py::MeteoCodePreprocessingTransformer` maps WMO codes 0–99 to 16 categorical weather phenomena (e.g., "light_to_heavy_rain", "thunderstorm_or_hail", "snow_or_sleet")
+- **Output columns**: `temperature_2m`, `weather_code`, `rain`, `snowfall`, plus `weather_code_category`
 
 ---
 
@@ -201,6 +282,12 @@
 | **Schema stability** | High — Paris arrondissement boundaries have been stable for decades. |
 | **Volume** | Small — GeoJSON for Paris arrondissements is < 1 MB. |
 | **Geocoding** | Requires point-in-polygon lookup to map counter coordinates to arrondissements. |
+
+### mai25 Implementation Reference — Administrative Boundaries
+
+- **Loader**: `smartcheck/dataframe_project_specific.py::load_communes_from_config`
+- **Geocoding**: `smartcheck/dataframe_project_specific.py::get_commune_from_coordinates` and `assign_communes_to_df`
+- **Library**: GeoPandas with EPSG:4326 CRS, `gpd.sjoin` with `predicate="within"` (fallback to `"intersects"`)
 
 ---
 
@@ -233,15 +320,35 @@
 
 ---
 
+## Preprocessing Pipeline (mai25 Design)
+
+The mai25 design applies the following preprocessing steps (in order) before the ML pipeline. These are implemented as scikit-learn transformers in `smartcheck/preprocessing_project_specific.py`.
+
+| # | Step | Transformer | Source Notebook | avr25 Status |
+| --- | --- | --- | --- | --- |
+| 1 | Column filtering (keep subset) | `ColumnFilterTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ❌ Not implemented |
+| 2 | Datetime UTC/local conversion + calendar features | `DatetimePreprocessingTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ⚠️ Partially — periodic features only, no UTC/local split |
+| 3 | Public holiday flag | `HolidayFromDatetimeTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ❌ Not implemented |
+| 4 | School vacation type | `SchoolHolidayTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ❌ Not implemented |
+| 5 | Weather API enrichment | `WeatherDataEnrichmentTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ❌ Not implemented |
+| 6 | Column name normalization | `ColumnNameNormalizerTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ❌ Not implemented |
+| 7 | WMO code → category mapping | `MeteoCodePreprocessingTransformer` | `03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` cell 9 | ❌ Not implemented (weather columns dropped) |
+| 8 | Counter name correction | Manual dict mapping | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cell 58 | ❌ Not implemented |
+| 9 | Orientation extraction from counter name | `dfc.extract_difference` | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cell 64 | ❌ Not implemented (orientation embedded) |
+| 10 | Outlier correction (comptage_horaire > 3000) | Manual fix | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cells 96–100 | ❌ Not implemented |
+| 11 | Arrondissement GeoJSON enrichment | `load_communes_from_config` | `01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` cell 84 | ❌ Not implemented |
+
+---
+
 ## Summary Table
 
 | # | Source | Classification | Access Mode | Update Frequency | In Pipeline? |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Paris Bike-Counting Dataset | **Required** | File download (CSV) | Irregular | ✅ Raw input (static CSV) |
 | 2 | Counter Reference | **Required** | File download (CSV/GeoJSON) | Rare | ❌ Embedded in raw CSV |
-| 3 | Public Holidays (France) | **Optional** | API / File download (JSON/iCal) | Annual | ❌ Not implemented |
-| 4 | School Holidays (Zone C) | **Optional** | File download (CSV/JSON) | Annual | ❌ Not implemented |
-| 5 | Weather Data | **Optional** | REST API (JSON) | Hourly / Daily | ⚠️ Embedded, then dropped |
+| 3 | Public Holidays (France) | **Optional** | REST API (JSON) | Annual | ❌ Not implemented |
+| 4 | School Holidays (Zone C) | **Optional** | REST API (JSON) | Annual | ❌ Not implemented |
+| 5 | Weather Data | **Optional** | REST API (CSV/JSON) | Hourly / Daily | ⚠️ Embedded, then dropped |
 | 6 | Administrative Boundaries | **Optional** | File download (GeoJSON) | Rare | ❌ Not implemented |
 | 7 | Vélib' / GBFS | **Experimental** | REST API (JSON) | Near real-time | ❌ Not implemented |
 
@@ -253,9 +360,9 @@
 | --- | --- | --- |
 | P0 | 1 — Bike-Counting Dataset | Automate ingestion from opendata.paris.fr. Replace static CSV with versioned snapshot. |
 | P0 | 2 — Counter Reference | Extract counter metadata into a dedicated reference source. Validate against raw dataset. |
-| P1 | 3 — Public Holidays | Integrate French holiday calendar. Encode as features. |
-| P1 | 4 — School Holidays | Integrate Zone C school calendar. Encode as features. |
-| P2 | 5 — Weather Data | Replace embedded weather with live API fetch (Open-Meteo recommended). |
+| P1 | 3 — Public Holidays | Integrate French holiday calendar via `calendrier.api.gouv.fr`. Encode as features. |
+| P1 | 4 — School Holidays | Integrate Zone C school calendar via `data.education.gouv.fr`. Encode as features. |
+| P2 | 5 — Weather Data | Replace embedded weather with live API fetch from `historical-forecast-api.open-meteo.com`. |
 | P2 | 6 — Administrative Boundaries | Add district enrichment via GeoJSON lookup. |
 | — | 7 — Vélib' / GBFS | Defer to post-MVP. Investigate predictive value. |
 
@@ -264,9 +371,16 @@
 ## References
 
 - **Official bike-counting source**: Mairie de Paris — [opendata.paris.fr](https://opendata.paris.fr)
-- **Data science lab repository**: Streamlit exploration, model comparison, and feature influence analysis (internal)
+- **Public holidays API**: [calendrier.api.gouv.fr](https://calendrier.api.gouv.fr) (official French government)
+- **School holidays API**: [data.education.gouv.fr](https://data.education.gouv.fr) (official education ministry)
+- **Weather API**: [Open-Meteo](https://open-meteo.com)
+- **mai25 design reference**: [zheddhe/mai25-bds-trafic-cycliste](https://github.com/zheddhe/mai25-bds-trafic-cycliste)
+  - `notebooks/project/01_etapes1a2_trafic_cycliste_comptage_velo.ipynb` (data loading, quality, counter reference, arrondissement)
+  - `notebooks/project/03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb` (datetime, holidays, weather, ANOVA)
+  - `smartcheck/preprocessing_project_specific.py` (sklearn transformers)
+  - `smartcheck/dataframe_project_specific.py` (API calls, data loading, feature functions)
 - **Current MLOps repository**: Manifest-first pipeline, Airflow orchestration, existing runtime
-- **Remaining work**: `docs/remaining-work/global-remaining-work.md`
+- **Remaining work**: `global-remaining-work.md`
 - **Pipeline parameters**: `params.yaml` (ARIMA order, roll window, test ratio, scenarios)
 - **Feature engineering**: `src/ml/features/build_features.py`, `src/ml/features/features_utils.py`
 - **Ingestion**: `src/ml/ingest/import_raw_data.py`
