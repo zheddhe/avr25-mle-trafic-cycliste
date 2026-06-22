@@ -34,6 +34,7 @@ Remaining gaps belong under `remaining-work/`.
 | Document | Purpose |
 | -------- | ------- |
 | [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md) | Service-to-service communication, runner execution boundary, gateway routing, and mount coupling. |
+| [`architecture-references/execution-and-artifact-promotion-contract.md`](architecture-references/execution-and-artifact-promotion-contract.md) | Implemented execution boundary, manifest-first handoff, promotion safety, and traceability guarantees. |
 | [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket boundary, host exposure, and service privilege rules. |
 | [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md) | Implemented `docker/dev` and `docker/prod` functional network topology. |
 
@@ -49,7 +50,7 @@ Remaining gaps belong under `remaining-work/`.
 | Document | Purpose |
 | -------- | ------- |
 | [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md) | Security, scale-out, full ETL source chain, object-storage-first serving, remote operations, and observability hardening. |
-| [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md) | Future-state bounded scale-out contract and remaining implementation rules. |
+| [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md) | Future bounded scale-out objectives, acceptance evidence, and resource-safety requirements. |
 | [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md) | Source catalog, preprocessing pipeline, and implementation priorities for the full ETL source chain. |
 
 ## Reading order
@@ -60,7 +61,8 @@ For runtime work, read:
 2. [`current-runtime-and-operations/runtime-logging.md`](current-runtime-and-operations/runtime-logging.md)
 3. [`current-runtime-and-operations/repository-structure.md`](current-runtime-and-operations/repository-structure.md)
 4. [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md)
-5. [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md)
+5. [`architecture-references/execution-and-artifact-promotion-contract.md`](architecture-references/execution-and-artifact-promotion-contract.md)
+6. [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md)
 
 For future improvement planning, read:
 
