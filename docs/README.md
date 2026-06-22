@@ -13,11 +13,25 @@ architecture, and implementation decisions live here.
 | `current-runtime-and-operations/` | Implemented local commands, workspaces, service exposure, logging, dependencies, and runtime ownership. | Describe what exists and how to operate it. |
 | `architecture-references/` | Implemented cross-runtime boundaries, networks, communication paths, and runtime guardrails. | Describe the current architecture. |
 | `assets/` | Documentation-only icons and rendered diagrams. | Store visuals used by Markdown docs only. |
-| `remaining-work/` | Future improvement axes and not-yet-implemented design targets outside the validated baseline. | Keep future-state contracts here until implementation is validated. |
+| `remaining-work/` | Active phase contracts and cross-cutting future improvement axes outside the validated baseline. | Keep future-state contracts here only while they remain active or globally unresolved. |
 
-Story-level details belong in GitHub issues and pull requests. When a design
-becomes implemented, move stable wording to current runtime or architecture docs.
-Remaining gaps belong under `remaining-work/`.
+## Phase document lifecycle
+
+A phase document is a temporary working contract, not a permanent documentation
+category. It may grow as implementation decisions and acceptance criteria become
+clearer, then shrink as work is validated.
+
+At phase closure:
+
+1. move stable implemented behaviour to `current-runtime-and-operations/` or
+   `architecture-references/`;
+2. move unresolved cross-cutting work worth retaining to
+   `remaining-work/global-remaining-work.md`;
+3. delete the phase document when it has no unique active content left.
+
+Story-level details belong in GitHub issues and pull requests. The global
+remaining-work document is the durable backlog; phase documents must not become
+parallel long-lived backlogs.
 
 ## Current runtime and operations
 
@@ -34,6 +48,7 @@ Remaining gaps belong under `remaining-work/`.
 | Document | Purpose |
 | -------- | ------- |
 | [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md) | Service-to-service communication, runner execution boundary, gateway routing, and mount coupling. |
+| [`architecture-references/execution-and-artifact-promotion-contract.md`](architecture-references/execution-and-artifact-promotion-contract.md) | Implemented local bounded execution, manifest-first handoff, promotion safety, and traceability guarantees. |
 | [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md) | Runtime identities, Docker socket boundary, host exposure, and service privilege rules. |
 | [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md) | Implemented `docker/dev` and `docker/prod` functional network topology. |
 
@@ -48,9 +63,8 @@ Remaining gaps belong under `remaining-work/`.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md) | Security, scale-out, full ETL source chain, object-storage-first serving, remote operations, and observability hardening. |
-| [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md) | Future-state bounded scale-out contract and remaining implementation rules. |
-| [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md) | Source catalog, preprocessing pipeline, and implementation priorities for the full ETL source chain. |
+| [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md) | Durable backlog for security, distributed execution, source-chain, object-storage, remote operations, and observability hardening. |
+| [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md) | Active source catalog, preprocessing pipeline, and implementation priorities for the full ETL source chain. |
 
 ## Reading order
 
@@ -60,11 +74,11 @@ For runtime work, read:
 2. [`current-runtime-and-operations/runtime-logging.md`](current-runtime-and-operations/runtime-logging.md)
 3. [`current-runtime-and-operations/repository-structure.md`](current-runtime-and-operations/repository-structure.md)
 4. [`architecture-references/runtime-communication-matrix.md`](architecture-references/runtime-communication-matrix.md)
-5. [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md)
+5. [`architecture-references/execution-and-artifact-promotion-contract.md`](architecture-references/execution-and-artifact-promotion-contract.md)
+6. [`architecture-references/runtime-security-boundaries.md`](architecture-references/runtime-security-boundaries.md)
 
 For future improvement planning, read:
 
 1. [`remaining-work/global-remaining-work.md`](remaining-work/global-remaining-work.md)
-2. [`remaining-work/phase-9-bounded-scale-out-contract.md`](remaining-work/phase-9-bounded-scale-out-contract.md)
-3. [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md)
-4. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
+2. [`remaining-work/phase-10-etl-source-chain.md`](remaining-work/phase-10-etl-source-chain.md)
+3. [`architecture-references/local-prod-network-topology.md`](architecture-references/local-prod-network-topology.md)
