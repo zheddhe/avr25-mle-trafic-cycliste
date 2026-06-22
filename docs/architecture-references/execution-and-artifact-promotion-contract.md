@@ -3,16 +3,17 @@
 This document describes the implemented execution and artifact-promotion
 behaviour shared by the local `docker/dev` and `docker/prod` runtimes.
 
-It is a current-state architecture reference. Planned bounded scale-out work is
-tracked separately under `docs/remaining-work/`.
+It is a current-state architecture reference. Future work beyond the validated
+local baseline is tracked in `docs/remaining-work/global-remaining-work.md`.
 
 ## Scope
 
-The contract covers the stable execution boundary, manifest-backed handoff,
-promotion safety, traceability, and the limits of the validated local baseline.
+The contract covers the stable execution boundary, bounded local multi-counter
+execution, manifest-backed handoff, promotion safety, traceability, and the
+limits of the validated local baseline.
 
-It does not claim that multi-counter parallel execution, distributed workers, or
-remote production operations are implemented.
+It does not claim distributed workers, a remote workload runtime, or remote
+production operations are implemented.
 
 ## Implemented execution path
 
@@ -35,6 +36,23 @@ output by scanning runtime directories.
 `ml-gateway` provides stable typed routes to ingestion, feature, and model
 services. This keeps runner configuration independent from service replica DNS.
 
+## Local bounded scale-out
+
+The local runtime supports bounded multi-counter execution. Airflow reads explicit
+orchestrator and child-DAG concurrency limits from
+`docker/*/airflow/config/bike_dag_config.json`; these limits bound active DAG
+runs and tasks while preserving each counter's pipeline order.
+
+The runner also bounds service dispatch through `JOB_RUNNER_MAX_IN_FLIGHT_JOBS`.
+Its default is two in-flight jobs, enforced by a bounded semaphore. ML service
+replica counts remain explicit runtime configuration, not an implicit scaling
+behaviour.
+
+For one counter and one logical run, the active workflow preserves its required
+step order. A daily run fails safely when its required initialization state is
+missing or invalid. Phase 10 will evolve that precondition into a dataset
+readiness gate without weakening the failure-safety requirement.
+
 ## Artifact handoff and promotion
 
 ML step services write payloads and run-scoped manifests under the artifact
@@ -54,15 +72,14 @@ counter scope:
 - same-scope promotion is serialized by the lock scope
   `<artifact_type>/<counter_id>`.
 
-These guarantees protect the current local manifest-first serving path. They do
-not by themselves prove safe concurrent execution for all counters or all API
-refreshes.
+These guarantees protect the local manifest-first serving path and allow
+independent counter scopes to progress without cross-counter overwrite.
 
 ## Ordering and failure boundaries
 
-For the current single logical counter flow, model promotion precedes the API
-refresh that loads the promoted prediction artifact. A refresh failure must not
-invalidate the last successfully loaded API artifact state.
+Model promotion precedes the API refresh that loads the promoted prediction
+artifact. A refresh failure must not invalidate the last successfully loaded API
+artifact state.
 
 Runner and ML-service evidence includes the identifiers needed to trace a job
 through the local runtime:
@@ -74,20 +91,15 @@ through the local runtime:
 - `metrics_reference`;
 - service-instance log location when available.
 
-## Relationship to future work
+## Beyond the local baseline
 
-The current runtime has the execution and artifact-safety primitives required to
-start bounded scale-out work. It has not yet validated the following as a
-production-like contract:
+The following are not part of the validated local contract and belong to global
+remaining work:
 
-- bounded multi-counter fan-out;
-- explicit Airflow, runner, and service backpressure limits;
-- resource behaviour under concurrent workloads;
-- per-counter parallel API refresh consistency;
-- scale-out acceptance evidence and operational dashboards.
-
-Those gaps are owned by
-[`../remaining-work/phase-9-bounded-scale-out-contract.md`](../remaining-work/phase-9-bounded-scale-out-contract.md).
+- distributed orchestration, remote workers, or durable distributed queues;
+- resource and capacity planning beyond the local Compose runtime;
+- remote deployment, production ingress, and production operational SLOs;
+- object-storage-first artifact serving.
 
 ## Related documentation
 
