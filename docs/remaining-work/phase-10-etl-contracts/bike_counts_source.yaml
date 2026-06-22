@@ -1,0 +1,255 @@
+contract_version: 1.0.0
+source_id: paris_bike_counts
+source_name: Paris bike-counting dataset
+classification: required
+implementation_priority: P0
+shared_policy_reference: README.md
+authority:
+  organization: City of Paris, Direction de la Voirie et de la Circulation
+  source_of_truth: Official observed hourly bike-count history for Paris counting counters.
+provider:
+  name: opendata.paris.fr
+  distribution_platform: Opendatasoft
+access_mode:
+  supported_representations:
+    - CSV download
+    - Opendatasoft API payload
+  implementation_status: documentation_only
+purpose:
+  primary_use: Future canonical observed bike-traffic history.
+  secondary_use: Traceable inputs for deterministic future ML-ready dataset reconstruction.
+current_state:
+  status: planned_not_implemented
+  note: >
+    The current pipeline starts from a static enriched ML-ready CSV. No source
+    acquisition, raw-snapshot validation, canonicalization, or dataset
+    reconstruction is implemented by this contract.
+cadence:
+  expected_publication: Daily J-1 publication.
+  correction_expectation: Upstream corrections require a future documented lookback policy.
+coverage:
+  geography: Paris bicycle counting network.
+  historical_window: Rolling history, currently expected to be about 13 months.
+  granularity: Hourly observations.
+timezone_policy:
+  source_timezone: Europe/Paris local civil time.
+  raw_timestamp_field: date_et_heure_de_comptage
+  raw_timestamp_annotation: No timezone annotation is guaranteed.
+  canonical_timezone: Europe/Paris
+  canonical_instant_representation: UTC instant retained alongside local time.
+  daylight_saving_policy:
+    ambiguous_local_time: >
+      Never coerce silently. Require explicit provider disambiguation or
+      quarantine or reject the record.
+    nonexistent_local_time: Never coerce silently. Quarantine or reject the record.
+availability_at_prediction_time:
+  classification: delayed_observation
+  policy: >
+    Only observations available before the prediction cut-off may be used by a
+    future serving path. This source must not provide future target values.
+snapshot_requirements:
+  payload: Preserve the unmodified CSV or API response.
+  required_manifest_evidence:
+    - source_id
+    - contract_version
+    - provider_dataset_or_endpoint_identity
+    - acquisition_timestamp
+    - requested_and_observed_coverage
+    - request_context_when_applicable
+    - row_count
+    - schema_fingerprint
+    - payload_checksum
+  record_traceability: >
+    Every future canonical record must retain a reference to the raw snapshot
+    that supplied its observed count.
+logical_keys:
+  raw_observation_key: >
+    No free-text name is an approved raw logical key. Raw records are later
+    reconciled against the authoritative counter reference.
+  future_canonical_key:
+    - counter_id
+    - counting_timestamp_utc
+  key_policy: Mutable counter and site names must not be the sole canonical key.
+schema:
+  required_fields:
+    - source_counter_identifier
+    - counter_name
+    - counting_site_identifier
+    - counting_site_name
+    - counter_orientation
+    - counting_timestamp_local
+    - hourly_count
+  optional_fields:
+    - coordinates
+    - installation_date
+  canonicalization_dependencies:
+    - counter_id
+    - counting_site_id
+  field_definitions:
+    - contract_field_name: source_counter_identifier
+      source_field_name: null
+      canonical_target_name: counter_id
+      origin: raw_snapshot_or_counter_reference
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Provider stable identifier once its raw label is confirmed.
+      semantic_meaning: Stable identity for a physical counter or counter stream.
+      validation_severity: schema_level_failure
+      comments: >
+        The current Phase 10 evidence does not confirm an exact raw header. A
+        later implementation must use the counter-reference contract or an
+        approved source-profile mapping; it must not guess one.
+    - contract_field_name: counter_name
+      source_field_name: null
+      canonical_target_name: counter_name
+      origin: raw_snapshot_or_counter_reference
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty source text after an approved mapping is pinned.
+      semantic_meaning: Human-readable counter name.
+      validation_severity: schema_level_failure
+      comments: A mutable name is never an approved sole canonical key.
+    - contract_field_name: counting_site_identifier
+      source_field_name: null
+      canonical_target_name: counting_site_id
+      origin: raw_snapshot_or_counter_reference
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Provider stable site identifier once its raw label is confirmed.
+      semantic_meaning: Stable identity for a physical counting site.
+      validation_severity: schema_level_failure
+      comments: The authoritative reference supplies this value during canonicalization.
+    - contract_field_name: counting_site_name
+      source_field_name: nom_du_site_de_comptage
+      canonical_target_name: counting_site_name
+      origin: raw_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty source text after whitespace preservation.
+      semantic_meaning: Human-readable name of the counting site.
+      validation_severity: schema_level_failure
+      comments: Retained for reconciliation and lineage, not as a stable key.
+    - contract_field_name: counter_orientation
+      source_field_name: orientation_compteur
+      canonical_target_name: counter_orientation
+      origin: raw_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty source text.
+      semantic_meaning: Direction or orientation reported by the counter source.
+      validation_severity: schema_level_failure
+      comments: Orientation normalization is a future deterministic rule.
+    - contract_field_name: counting_timestamp_local
+      source_field_name: date_et_heure_de_comptage
+      canonical_target_name: counting_timestamp_local
+      origin: raw_snapshot
+      expected_type: local_datetime_text
+      required_status: required
+      nullable: false
+      accepted_format: Parseable local date-time under the timezone policy.
+      semantic_meaning: Local Paris hourly-count timestamp.
+      validation_severity: schema_level_failure
+      comments: >
+        Ambiguous and nonexistent Europe/Paris local times are record-level
+        rejection or quarantine cases; they must never be silently coerced.
+    - contract_field_name: hourly_count
+      source_field_name: comptage_horaire
+      canonical_target_name: hourly_count
+      origin: raw_snapshot
+      expected_type: numeric
+      required_status: required
+      nullable: false
+      accepted_format: Numeric value representing one hourly count.
+      semantic_meaning: Observed bike count for the reported hour.
+      validation_severity: schema_level_failure
+      comments: Non-negative value semantics are enforced by a business rule.
+    - contract_field_name: coordinates
+      source_field_name: null
+      canonical_target_name: coordinates
+      origin: raw_snapshot_or_counter_reference
+      expected_type: geographic_point
+      required_status: optional
+      nullable: true
+      accepted_format: Structurally valid latitude-longitude pair.
+      semantic_meaning: Location associated with the counter or counting site.
+      validation_severity: record_level_rejection_or_quarantine
+      comments: Geographic enrichment remains future work.
+    - contract_field_name: installation_date
+      source_field_name: null
+      canonical_target_name: installation_date
+      origin: raw_snapshot_or_counter_reference
+      expected_type: date
+      required_status: optional
+      nullable: true
+      accepted_format: Parseable calendar date.
+      semantic_meaning: Date the counter or relevant site was installed.
+      validation_severity: quality_warning
+      comments: The counter-reference contract is preferred when available.
+business_rules:
+  - rule_id: non_negative_hourly_count
+    statement: hourly_count must be numeric and greater than or equal to zero.
+    violation_level: record_level_rejection_or_quarantine
+  - rule_id: parseable_counting_timestamp
+    statement: counting_timestamp_local must be parseable under Europe/Paris policy.
+    violation_level: record_level_rejection_or_quarantine
+  - rule_id: canonical_identity
+    statement: >
+      A future canonical record requires a resolvable stable counter identity
+      and timestamp. Counter names alone are insufficient.
+    violation_level: schema_level_failure
+  - rule_id: structural_coordinate_validity
+    statement: Coordinates, when present, must be structurally valid.
+    violation_level: record_level_rejection_or_quarantine
+quality_rules:
+  - rule_id: documented_high_count_anomaly
+    condition: hourly_count is greater than 3000.
+    severity: quality_warning
+    evidence_required: Preserve raw value, record identity, snapshot reference, and rule identifier.
+    current_action: No transformation is performed by this story.
+    future_boundary: >
+      Any cap, correction, or exclusion must be separately approved,
+      deterministic, versioned, tested, and traceable.
+  - rule_id: unexpected_non_critical_field
+    condition: A source payload adds a non-critical field.
+    severity: quality_warning
+    evidence_required: Preserve future schema-fingerprint evidence.
+    current_action: No transformation is performed by this story.
+  - rule_id: unresolved_identity_or_metadata
+    condition: A raw record cannot be reconciled with the authoritative reference.
+    severity: record_level_rejection_or_quarantine
+    evidence_required: Preserve raw record and reference-snapshot context.
+    current_action: Reconciliation code is not implemented by this story.
+schema_change_policy:
+  missing_required_field: block_snapshot_promotion
+  incompatible_required_field_type: block_snapshot_promotion
+  unexpected_optional_or_non_critical_field: warn_and_capture_schema_fingerprint
+  changed_semantics: block_until_reviewed_and_contract_versioned
+failure_policy:
+  required_source_unavailable: block_future_required_source_build
+  schema_level_failure: block_future_snapshot_promotion
+  record_level_rejection_or_quarantine: >
+    Preserve evidence and apply a later documented coverage threshold before
+    allowing canonicalization to proceed.
+  quality_warning: Record for review without silently altering raw evidence.
+  optional_source_fallback: not_applicable
+  explicit_source_exclusion: not_applicable
+lineage_requirements:
+  future_canonical_record: >
+    Must reference the raw snapshot identity, contract version, original source
+    record identity when available, and reference snapshot used for resolution.
+  corrections: >
+    Must reference the raw value and a later versioned correction rule. No
+    correction rule is implemented here.
+out_of_scope:
+  - Source connector or API client.
+  - Snapshot writer, checksum generation, or schema fingerprint implementation.
+  - Executable schema validation.
+  - Counter-name reconciliation or metadata propagation code.
+  - Outlier capping or other data transformations.
+  - Quarantine storage or dataset reconstruction.
+  - Vélib' or GBFS data.

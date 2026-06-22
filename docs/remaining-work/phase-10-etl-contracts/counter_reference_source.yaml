@@ -1,0 +1,235 @@
+contract_version: 1.0.0
+source_id: paris_counter_reference
+source_name: Paris counter and counting-site reference
+classification: required
+implementation_priority: P0
+shared_policy_reference: README.md
+authority:
+  organization: City of Paris, Direction de la Voirie et de la Circulation
+  source_of_truth: >
+    Official reference for stable counter identity, counting-site metadata,
+    coordinates, installation information, and operational metadata when published.
+provider:
+  name: opendata.paris.fr
+  distribution_platform: Opendatasoft
+access_mode:
+  supported_representations:
+    - CSV download
+    - GeoJSON download
+    - Opendatasoft API payload
+  implementation_status: documentation_only
+purpose:
+  primary_use: >
+    Authoritative identity and metadata reference for future bike-count
+    canonicalization and raw-record reconciliation.
+  secondary_use: Versioned reference evidence for renamed, malformed, relocated, or retired counters.
+current_state:
+  status: planned_not_implemented
+  note: >
+    Current static source data embeds metadata. A separate reference snapshot,
+    reconciliation workflow, and metadata history are not implemented.
+cadence:
+  expected_publication: Changes are expected when counters are added, removed, relocated, renamed, or operational status changes.
+  versioning_policy: A future snapshot is versioned whenever published metadata changes.
+coverage:
+  geography: Paris bicycle counting network.
+  entities: Counters and counting sites.
+timezone_policy:
+  source_timezone: Europe/Paris for any published temporal metadata.
+  canonical_timezone: Europe/Paris
+  temporal_fields_policy: >
+    Installation and operational dates are calendar or local-time metadata; an
+    unannotated datetime follows the shared daylight-saving policy.
+availability_at_prediction_time:
+  classification: validated_reference_metadata
+  policy: >
+    Only a versioned and validated reference snapshot promoted before the
+    prediction cut-off may support a future serving or canonicalization path.
+snapshot_requirements:
+  payload: Preserve the unmodified source export or API response.
+  required_manifest_evidence:
+    - source_id
+    - contract_version
+    - provider_dataset_or_endpoint_identity
+    - acquisition_timestamp
+    - requested_and_observed_coverage
+    - request_context_when_applicable
+    - row_count
+    - schema_fingerprint
+    - payload_checksum
+  metadata_version_traceability: >
+    Future canonical records must identify the reference snapshot version used
+    to resolve their identity and metadata.
+logical_keys:
+  future_counter_key:
+    - counter_id
+  future_counting_site_key:
+    - counting_site_id
+  join_policy: >
+    Reference identity must be stable enough to join future bike-count records.
+    Human-readable names and coordinates are supporting metadata, not sole keys.
+schema:
+  required_fields:
+    - counter_id
+    - counting_site_id
+    - counter_name
+    - counting_site_name
+  optional_fields:
+    - counter_orientation
+    - coordinates
+    - installation_date
+    - operational_status
+    - operational_status_effective_at
+  field_definitions:
+    - contract_field_name: counter_id
+      source_field_name: null
+      canonical_target_name: counter_id
+      origin: authoritative_reference_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Stable provider identifier once the published field label is confirmed.
+      semantic_meaning: Stable identity for a physical counter or counter stream.
+      validation_severity: schema_level_failure
+      comments: The raw source header must be pinned by a later approved source-profile mapping.
+    - contract_field_name: counting_site_id
+      source_field_name: null
+      canonical_target_name: counting_site_id
+      origin: authoritative_reference_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Stable provider identifier once the published field label is confirmed.
+      semantic_meaning: Stable identity for the physical counting site.
+      validation_severity: schema_level_failure
+      comments: Required for site-level reconciliation and traceability.
+    - contract_field_name: counter_name
+      source_field_name: null
+      canonical_target_name: counter_name
+      origin: authoritative_reference_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty human-readable text.
+      semantic_meaning: Published counter name.
+      validation_severity: schema_level_failure
+      comments: Mutable metadata retained for reconciliation and lineage only.
+    - contract_field_name: counting_site_name
+      source_field_name: null
+      canonical_target_name: counting_site_name
+      origin: authoritative_reference_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty human-readable text.
+      semantic_meaning: Published counting-site name.
+      validation_severity: schema_level_failure
+      comments: Mutable metadata retained for reconciliation and lineage only.
+    - contract_field_name: counter_orientation
+      source_field_name: null
+      canonical_target_name: counter_orientation
+      origin: authoritative_reference_snapshot
+      expected_type: string
+      required_status: optional
+      nullable: true
+      accepted_format: Provider orientation text when available.
+      semantic_meaning: Direction or orientation of the counting stream.
+      validation_severity: quality_warning
+      comments: Future normalization is outside this story.
+    - contract_field_name: coordinates
+      source_field_name: null
+      canonical_target_name: coordinates
+      origin: authoritative_reference_snapshot
+      expected_type: geographic_point
+      required_status: optional
+      nullable: true
+      accepted_format: Structurally valid latitude-longitude pair with declared CRS.
+      semantic_meaning: Geographic location of the counter or counting site.
+      validation_severity: record_level_rejection_or_quarantine
+      comments: Coordinate precision and preferred geometry are to be confirmed from the official export.
+    - contract_field_name: installation_date
+      source_field_name: null
+      canonical_target_name: installation_date
+      origin: authoritative_reference_snapshot
+      expected_type: date
+      required_status: optional
+      nullable: true
+      accepted_format: Parseable calendar date.
+      semantic_meaning: Published installation date for the relevant asset.
+      validation_severity: quality_warning
+      comments: Historical changes must remain linked to the reference snapshot.
+    - contract_field_name: operational_status
+      source_field_name: null
+      canonical_target_name: operational_status
+      origin: authoritative_reference_snapshot
+      expected_type: string
+      required_status: optional
+      nullable: true
+      accepted_format: Provider-published status label.
+      semantic_meaning: Operational state when the provider publishes it.
+      validation_severity: quality_warning
+      comments: Operational interpretation is a later business decision.
+    - contract_field_name: operational_status_effective_at
+      source_field_name: null
+      canonical_target_name: operational_status_effective_at
+      origin: authoritative_reference_snapshot
+      expected_type: date_or_datetime
+      required_status: optional
+      nullable: true
+      accepted_format: Parseable date or timezone-safe datetime.
+      semantic_meaning: Effective time of an operational metadata change when published.
+      validation_severity: quality_warning
+      comments: Unannotated local datetimes follow the shared DST policy.
+business_rules:
+  - rule_id: stable_join_identity
+    statement: >
+      Required reference identities must support deterministic joins with future
+      bike-count records after an approved mapping is defined.
+    violation_level: schema_level_failure
+  - rule_id: identity_resolution
+    statement: >
+      A bike-count record requiring canonicalization must resolve to a required
+      reference identity; missing or unresolvable identity is blocking for that
+      canonicalization operation.
+    violation_level: schema_level_failure
+  - rule_id: traceable_metadata_version
+    statement: Metadata changes must remain traceable to the snapshot version used.
+    violation_level: schema_level_failure
+quality_rules:
+  - rule_id: malformed_or_renamed_raw_count_record
+    condition: A raw bike-count record differs from reference metadata.
+    severity: record_level_rejection_or_quarantine
+    evidence_required: Preserve raw record, reference snapshot version, and reconciliation decision when later implemented.
+    current_action: No reconciliation code is implemented by this story.
+  - rule_id: incomplete_optional_metadata
+    condition: Optional coordinates, installation date, orientation, or operational metadata is absent or malformed.
+    severity: quality_warning
+    evidence_required: Preserve source value and snapshot evidence.
+    current_action: Do not synthesize metadata.
+schema_change_policy:
+  missing_required_field: block_snapshot_promotion
+  incompatible_required_field_type: block_snapshot_promotion
+  unexpected_optional_or_non_critical_field: warn_and_capture_schema_fingerprint
+  changed_semantics: block_until_reviewed_and_contract_versioned
+failure_policy:
+  required_source_unavailable: block_future_canonicalization_that_requires_reference_resolution
+  schema_level_failure: block_future_reference_snapshot_promotion
+  record_level_rejection_or_quarantine: >
+    Preserve the raw-count and reference context; later policy determines
+    whether unresolved records block a dataset build.
+  quality_warning: Record for review without modifying source evidence.
+  optional_source_fallback: not_applicable
+  explicit_source_exclusion: not_applicable
+lineage_requirements:
+  future_canonical_record: >
+    Must retain the reference snapshot identity and contract version used for
+    identity resolution, metadata selection, or reconciliation.
+  metadata_history: >
+    A future metadata change must be represented as a new snapshot version, not
+    an in-place overwrite of prior reference evidence.
+out_of_scope:
+  - Source connector or API client.
+  - Reference snapshot writer or diff engine.
+  - Reconciliation code for renamed or malformed bike-count records.
+  - Geospatial enrichment or point-in-polygon join.
+  - Dataset builder or current-pipeline changes.

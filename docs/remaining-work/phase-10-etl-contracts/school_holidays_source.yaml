@@ -1,0 +1,174 @@
+contract_version: 1.0.0
+source_id: french_school_holidays_zone_c
+source_name: French school holidays for Paris and Zone C
+classification: optional
+implementation_priority: P1
+shared_policy_reference: README.md
+authority:
+  organization: French Ministry of National Education
+  source_of_truth: Official published school-holiday calendar filtered to Paris and Zone C.
+provider:
+  name: data.education.gouv.fr
+  distribution_platform: Government dataset export
+access_mode:
+  supported_representations:
+    - REST JSON export
+  implementation_status: documentation_only
+purpose:
+  primary_use: Future deterministic school-holiday enrichment for Paris bike-traffic datasets.
+  expected_derived_representation: school_holiday_label_or_flag
+  feature_selection_note: This contract does not select a final model feature.
+current_state:
+  status: planned_not_implemented
+  note: No calendar acquisition, Zone C filtering, validation, or feature generation is implemented.
+cadence:
+  expected_publication: Published school calendar covering one or more school years.
+  versioning_policy: Preserve each acquired calendar export and applied scope filter as versioned evidence.
+coverage:
+  geography: Paris only.
+  school_zone: Zone C.
+  temporal_scope: Published school-holiday intervals.
+timezone_policy:
+  source_timezone: Date or datetime values supplied by the provider.
+  canonical_timezone: Europe/Paris
+  interval_policy: >
+    Future implementation must preserve provider interval semantics. For this
+    contract, start_date is inclusive and end_date is exclusive only when the
+    published source semantics confirm that convention; a semantic change blocks use.
+availability_at_prediction_time:
+  classification: known_in_advance_after_publication
+  policy: >
+    A published Zone C calendar may be used after acquisition and validation.
+    The snapshot and scope filter used must be retained in future lineage.
+snapshot_requirements:
+  payload: Preserve the unmodified published JSON export.
+  required_manifest_evidence:
+    - source_id
+    - contract_version
+    - provider_dataset_or_endpoint_identity
+    - acquisition_timestamp
+    - requested_and_observed_coverage
+    - applied_location_and_zone_filter
+    - row_count
+    - schema_fingerprint
+    - payload_checksum
+logical_keys:
+  future_interval_key:
+    - school_zone
+    - start_date
+    - end_date
+    - holiday_label
+  required_scope_filter:
+    location: Paris
+    zones: Zone C
+schema:
+  required_fields:
+    - start_date
+    - end_date
+    - school_zone
+    - location
+    - holiday_label
+  optional_fields: []
+  field_definitions:
+    - contract_field_name: start_date
+      source_field_name: start_date
+      canonical_target_name: school_holiday_start_date
+      origin: raw_snapshot
+      expected_type: date_or_datetime
+      required_status: required
+      nullable: false
+      accepted_format: Parseable provider-published date or datetime.
+      semantic_meaning: Beginning of a published school-holiday interval.
+      validation_severity: schema_level_failure
+      comments: Canonical date extraction must follow the shared Europe/Paris policy.
+    - contract_field_name: end_date
+      source_field_name: end_date
+      canonical_target_name: school_holiday_end_date
+      origin: raw_snapshot
+      expected_type: date_or_datetime
+      required_status: required
+      nullable: false
+      accepted_format: Parseable provider-published date or datetime.
+      semantic_meaning: End of a published school-holiday interval.
+      validation_severity: schema_level_failure
+      comments: The provider's inclusive or exclusive endpoint semantics must be retained and reviewed.
+    - contract_field_name: school_zone
+      source_field_name: zones
+      canonical_target_name: school_zone
+      origin: raw_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Provider zone label; Zone C is the only accepted scope.
+      semantic_meaning: School-holiday zone.
+      validation_severity: schema_level_failure
+      comments: Records outside Zone C are explicitly excluded from the Paris enrichment scope.
+    - contract_field_name: location
+      source_field_name: location
+      canonical_target_name: school_location
+      origin: raw_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Provider location label; Paris is the required location.
+      semantic_meaning: Education location associated with the calendar interval.
+      validation_severity: schema_level_failure
+      comments: Paris is required in addition to Zone C to make the scope explicit.
+    - contract_field_name: holiday_label
+      source_field_name: description
+      canonical_target_name: school_holiday_label
+      origin: raw_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty provider description.
+      semantic_meaning: Published school-holiday label.
+      validation_severity: schema_level_failure
+      comments: Retained for lineage; categorical feature construction is future work.
+business_rules:
+  - rule_id: paris_zone_c_scope
+    statement: Only records where location is Paris and school_zone is Zone C are in scope.
+    violation_level: explicit_source_exclusion
+  - rule_id: valid_interval
+    statement: start_date must precede end_date after applying provider semantics.
+    violation_level: record_level_rejection_or_quarantine
+  - rule_id: deterministic_representation
+    statement: >
+      Future derived school-holiday values must be calculated from the versioned
+      filtered intervals under Europe/Paris civil-date semantics.
+    violation_level: schema_level_failure
+quality_rules:
+  - rule_id: outside_zone_c_or_paris
+    condition: A published record does not match Paris and Zone C.
+    severity: explicit_source_exclusion
+    evidence_required: Retain the applied filter and excluded-record count in a future snapshot manifest.
+    current_action: No filtering code is implemented by this story.
+  - rule_id: overlapping_conflicting_intervals
+    condition: Intervals overlap with incompatible labels after scope filtering.
+    severity: quality_warning
+    evidence_required: Preserve conflicting raw records and snapshot identity.
+    current_action: Review before a deterministic precedence policy is introduced.
+schema_change_policy:
+  missing_required_field: block_snapshot_promotion
+  incompatible_required_field_type: block_snapshot_promotion
+  unexpected_optional_or_non_critical_field: warn_and_capture_schema_fingerprint
+  changed_semantics: block_until_reviewed_and_contract_versioned
+failure_policy:
+  required_source_unavailable: not_applicable
+  schema_level_failure: block_future_optional_enrichment_for_that_snapshot
+  record_level_rejection_or_quarantine: Quarantine invalid in-scope records with snapshot evidence.
+  quality_warning: Record for review without changing source evidence.
+  optional_source_fallback: >
+    Continue without school-holiday enrichment and record the fallback in future
+    dataset lineage. Do not silently substitute another zone or a stale calendar.
+  explicit_source_exclusion: Records outside Paris and Zone C must not be joined.
+lineage_requirements:
+  future_derived_value: >
+    Must reference the calendar snapshot identity, contract version, and the
+    explicit Paris and Zone C filtering criteria.
+out_of_scope:
+  - Source connector or JSON parser.
+  - Zone filtering implementation.
+  - Holiday interval join implementation.
+  - Model-feature selection.
+  - School zones other than Zone C.

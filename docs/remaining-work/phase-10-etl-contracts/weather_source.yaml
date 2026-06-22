@@ -1,0 +1,220 @@
+contract_version: 1.0.0
+source_id: weather_enrichment
+source_name: Weather enrichment source
+classification: optional
+implementation_priority: P2
+shared_policy_reference: README.md
+authority:
+  organization: Selected weather provider subject to later provider and plan review.
+  source_of_truth: >
+    Provider payloads are authoritative only within their declared mode:
+    historical observation or prediction-time forecast.
+provider:
+  name: Open-Meteo candidate
+  distribution_platform: REST CSV or JSON
+  provider_selection_status: Candidate documented from the Phase 10 design; no connector is implemented.
+access_mode:
+  supported_representations:
+    - Historical observation payload
+    - Prediction-time forecast payload
+  implementation_status: documentation_only
+purpose:
+  primary_use: Optional future weather enrichment for offline datasets and prediction-time-safe serving inputs.
+  candidate_fields_only:
+    - temperature_2m
+    - weather_code
+    - rain
+    - snowfall
+  feature_selection_note: Candidate fields do not constitute a model-feature selection decision.
+current_state:
+  status: planned_not_implemented
+  note: >
+    Existing static source data may contain weather columns, but no source
+    acquisition, anti-leakage validation, or operational weather path is implemented.
+cadence:
+  historical_mode: Provider-dependent historical observation availability.
+  forecast_mode: Provider-dependent forecast publication cadence.
+  versioning_policy: Historical and forecast payloads are distinct snapshot families and must never share an ambiguous mode.
+coverage:
+  geography: Paris or approved counter-location coordinates.
+  granularity: Hourly when provided.
+timezone_policy:
+  source_timezone: API UTC timestamps when emitted by the provider.
+  canonical_timezone: Europe/Paris
+  conversion_policy: >
+    Retain the original UTC instant and deterministically derive Europe/Paris
+    local time. A provider local timestamp without explicit offset follows the
+    shared daylight-saving policy and must not be guessed.
+availability_at_prediction_time:
+  historical_observation:
+    permitted_use: Offline canonicalization and training only.
+    serving_policy: Must not be used as a substitute for future weather at prediction time.
+  prediction_time_forecast:
+    permitted_use: Future serving only when the payload was available before the prediction cut-off.
+    serving_policy: Retain forecast issuance or acquisition evidence and forecast-valid-time coverage.
+  anti_leakage_rule: >
+    A future dataset build or serving request must never silently substitute a
+    weather observation that became available after its prediction cut-off.
+snapshot_requirements:
+  payload: Preserve the unmodified historical or forecast response separately.
+  required_manifest_evidence:
+    - source_id
+    - contract_version
+    - contract_mode
+    - provider_endpoint_identity
+    - acquisition_timestamp
+    - forecast_issue_time_when_available
+    - requested_and_observed_coverage
+    - request_context_including_coordinates_and_parameters
+    - row_count
+    - schema_fingerprint
+    - payload_checksum
+logical_keys:
+  historical_observation_key:
+    - location_identity
+    - weather_timestamp_utc
+    - contract_mode
+  forecast_value_key:
+    - location_identity
+    - forecast_valid_timestamp_utc
+    - forecast_issue_or_acquisition_identity
+    - contract_mode
+schema:
+  required_fields:
+    - weather_timestamp
+  optional_fields:
+    - temperature_2m
+    - weather_code
+    - rain
+    - snowfall
+    - location_identity
+    - forecast_issue_time
+  field_definitions:
+    - contract_field_name: weather_timestamp
+      source_field_name: time
+      canonical_target_name: weather_timestamp_utc
+      origin: raw_snapshot
+      expected_type: timezone_aware_datetime
+      required_status: required
+      nullable: false
+      accepted_format: Parseable provider timestamp with explicit UTC instant or offset.
+      semantic_meaning: Observation timestamp or forecast valid timestamp, according to contract_mode.
+      validation_severity: schema_level_failure
+      comments: A future implementation must retain contract_mode to interpret the timestamp.
+    - contract_field_name: temperature_2m
+      source_field_name: temperature_2m
+      canonical_target_name: temperature_2m
+      origin: raw_snapshot
+      expected_type: numeric
+      required_status: optional
+      nullable: true
+      accepted_format: Provider numeric temperature value with documented unit.
+      semantic_meaning: Candidate air-temperature measurement or forecast at two metres.
+      validation_severity: quality_warning
+      comments: Unit normalization and feature selection are future work.
+    - contract_field_name: weather_code
+      source_field_name: weather_code
+      canonical_target_name: weather_code
+      origin: raw_snapshot
+      expected_type: integer_or_string_code
+      required_status: optional
+      nullable: true
+      accepted_format: Provider weather-condition code.
+      semantic_meaning: Candidate coded weather condition.
+      validation_severity: quality_warning
+      comments: WMO categorization is not defined or implemented here.
+    - contract_field_name: rain
+      source_field_name: rain
+      canonical_target_name: rain
+      origin: raw_snapshot
+      expected_type: numeric
+      required_status: optional
+      nullable: true
+      accepted_format: Provider numeric precipitation value with documented unit.
+      semantic_meaning: Candidate liquid precipitation measurement or forecast.
+      validation_severity: quality_warning
+      comments: Aggregation and unit normalization are future work.
+    - contract_field_name: snowfall
+      source_field_name: snowfall
+      canonical_target_name: snowfall
+      origin: raw_snapshot
+      expected_type: numeric
+      required_status: optional
+      nullable: true
+      accepted_format: Provider numeric snowfall value with documented unit.
+      semantic_meaning: Candidate snowfall measurement or forecast.
+      validation_severity: quality_warning
+      comments: Aggregation and unit normalization are future work.
+    - contract_field_name: location_identity
+      source_field_name: null
+      canonical_target_name: weather_location_id
+      origin: request_context_or_raw_snapshot
+      expected_type: string_or_geographic_point
+      required_status: optional
+      nullable: true
+      accepted_format: Provider location identifier or explicitly recorded coordinates.
+      semantic_meaning: Location to which a weather value applies.
+      validation_severity: quality_warning
+      comments: A later implementation must record the request context and not infer location implicitly.
+    - contract_field_name: forecast_issue_time
+      source_field_name: null
+      canonical_target_name: forecast_issue_time_utc
+      origin: raw_snapshot_or_acquisition_metadata
+      expected_type: timezone_aware_datetime
+      required_status: optional
+      nullable: true
+      accepted_format: Provider issue time or immutable acquisition time with explicit UTC instant.
+      semantic_meaning: Evidence used to prove forecast availability before the cut-off.
+      validation_severity: schema_level_failure
+      comments: Required by the anti-leakage policy when forecast mode is used.
+business_rules:
+  - rule_id: explicit_contract_mode
+    statement: Every snapshot is exactly one of historical_observation or prediction_time_forecast.
+    violation_level: schema_level_failure
+  - rule_id: historical_training_only
+    statement: Historical observations are valid for offline canonicalization and training, not prediction-time future weather.
+    violation_level: schema_level_failure
+  - rule_id: forecast_cutoff_availability
+    statement: >
+      A forecast value used for future serving must have issuance or acquisition
+      evidence strictly before or at the prediction cut-off.
+    violation_level: schema_level_failure
+  - rule_id: timestamp_conversion
+    statement: API UTC timestamps must be retained as UTC and converted deterministically to Europe/Paris.
+    violation_level: schema_level_failure
+quality_rules:
+  - rule_id: missing_candidate_weather_field
+    condition: An optional candidate field is absent or null.
+    severity: quality_warning
+    evidence_required: Preserve field availability in future snapshot lineage.
+    current_action: No imputation or substitution is performed by this story.
+  - rule_id: unavailable_forecast_issue_time
+    condition: Forecast mode lacks provider issue time and immutable acquisition evidence.
+    severity: schema_level_failure
+    evidence_required: Preserve payload and acquisition context for review.
+    current_action: Do not use the payload for prediction-time enrichment.
+schema_change_policy:
+  missing_required_field: block_snapshot_promotion
+  incompatible_required_field_type: block_snapshot_promotion
+  unexpected_optional_or_non_critical_field: warn_and_capture_schema_fingerprint
+  changed_semantics: block_until_reviewed_and_contract_versioned
+failure_policy:
+  required_source_unavailable: not_applicable
+  schema_level_failure: Block use of the affected weather snapshot or contract mode.
+  record_level_rejection_or_quarantine: Quarantine invalid records with mode and snapshot evidence.
+  quality_warning: Record for review without altering the raw response.
+  optional_source_fallback: >
+    Continue without weather enrichment and record the fallback. Never silently
+    substitute later observations, another contract mode, or a future payload.
+  explicit_source_exclusion: Weather is optional in the Phase 10 MVP.
+lineage_requirements:
+  future_weather_value: >
+    Must retain source snapshot identity, contract version, contract_mode,
+    original UTC timestamp, Europe/Paris derivation, location request context,
+    and forecast availability evidence when applicable.
+out_of_scope:
+  - Weather API client.
+  - Historical or forecast snapshot writer.
+  - Forecast selection or point-in-time join implementation.
+  - Unit normalization, WMO categorization, and model-feature selection.
+  - Any use of future observations for serving.

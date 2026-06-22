@@ -10,6 +10,12 @@
 > **Design reference**:
 > [zheddhe/mai25-bds-trafic-cycliste](https://github.com/zheddhe/mai25-bds-trafic-cycliste)
 > notebooks and `smartcheck/` source code.
+>
+> **Source data contracts**:
+> [Phase 10.2 contract directory](phase-10-etl-contracts/README.md). These
+> versioned documentation contracts define future snapshot validation,
+> canonicalization, and ML-ready dataset reconstruction inputs; they do not
+> implement acquisition, validation, or dataset building.
 
 ---
 
@@ -166,7 +172,12 @@ ambiguous records according to the data contract.
 | Field | Value |
 | --- | --- |
 | **Name** | Comptage vélo — Compteurs |
-| **Authority** | Mairie de Paris — Direction de la Voirie et de la Circulation |
+| **Source 2 — Counter reference / counting sites
+
+| Field | Value |
+| --- | --- |
+| **Name** | Comptage vélo — Compteurs |
+| **Authority** | Mairie de Paris — Direction de la Voirie et la Circulation |
 | **Provider** | [opendata.paris.fr](https://opendata.paris.fr) |
 | **Access mode** | CSV, GeoJSON, or Opendatasoft API |
 | **Cadence** | Rare changes when counters are added, removed, or relocated |
@@ -305,7 +316,7 @@ turn approved transformations into versioned, testable code and data contracts:
   [data.education.gouv.fr](https://data.education.gouv.fr)
 - **Weather**: [Open-Meteo](https://open-meteo.com)
 - **mai25 design reference**:
-  [zheddhe/mai25-bds-trafic-cycliste](https://github.com/zheddhe/mai25-bds-trafic-cycliste)
+  [zheddhe.mai25-bds-trafic-cycliste](https://github.com/zheddhe/mai25-bds-trafic-cycliste)
   - `notebooks/project/01_etapes1a2_trafic_cycliste_comptage_velo.ipynb`
   - `notebooks/project/03_etapes1a2_trafic_cycliste_enrich_with_meteo_holidays.ipynb`
   - `smartcheck/preprocessing_project_specific.py`
@@ -313,4 +324,4 @@ turn approved transformations into versioned, testable code and data contracts:
 - **Current MLOps pipeline**:
   `src/ml/ingest/import_raw_data.py`, `src/ml/features/build_features.py`, and
   `src/ml/features/features_utils.py`
-- **Global roadmap**: `docs/remaining-work/global-remaining-work.md`
+- **Global roadmap**: `docs/remaining-work/global-remaining-work.md
