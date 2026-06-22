@@ -1,0 +1,259 @@
+contract_version: 1.0.0
+contract_id: canonical_history_repository
+contract_name: Canonical history repository and date-range extraction
+contract_type: persistence_and_extraction
+classification: required
+implementation_priority: P0
+shared_policy_reference: README.md
+current_state:
+  status: planned_not_implemented
+  note: >
+    No dedicated source-history database, repository schema, source
+    synchronization stage, date-range extraction, or Airflow integration is
+    implemented by this contract.
+purpose:
+  primary_use: >
+    Define a durable canonical repository between validated source snapshots and
+    future ML-ready dataset reconstruction.
+  operational_value: >
+    Support idempotent daily updates, explicit historical backfills, correction
+    replays, and targeted repair of proven data gaps without relying on a mutable
+    rolling raw file.
+  downstream_boundary: >
+    A later implementation may extract a selected time range from this repository
+    before the existing ML processing sequence. This contract does not change the
+    current static CSV pipeline.
+storage_intent:
+  preferred_engine: PostgreSQL-compatible relational database.
+  implementation_status: documentation_only
+  logical_isolation: >
+    The repository must be isolated from orchestration and experiment-tracking
+    metadata stores through dedicated data ownership, credentials, and a schema
+    or database boundary. It must not reuse their application tables.
+  deployment_topology: >
+    The future choice between a dedicated database service and an approved shared
+    PostgreSQL server boundary is outside this contract.
+  raw_evidence_boundary: >
+    The repository is not a substitute for immutable raw payload retention.
+    Snapshot payloads remain immutable evidence, referenced by checksum and
+    storage identity from the repository ledger.
+source_contracts:
+  required_sources:
+    - paris_bike_counts
+    - paris_counter_reference
+  optional_sources:
+    - french_public_holidays
+    - french_school_holidays_zone_c
+    - weather_enrichment
+    - paris_administrative_boundaries
+  excluded_sources:
+    - velib_gbfs
+repository_objects:
+  source_snapshot_ledger:
+    purpose: >
+      Record one immutable accepted, rejected, or quarantined source snapshot
+      and its lineage evidence.
+    logical_key:
+      - source_id
+      - snapshot_id
+    required_evidence:
+      - contract_version
+      - payload_checksum
+      - raw_payload_storage_reference
+      - acquisition_timestamp
+      - requested_coverage
+      - observed_coverage
+      - request_context_when_applicable
+      - row_count
+      - schema_fingerprint
+      - validation_outcome
+  source_record_revision_ledger:
+    purpose: >
+      Retain source-derived records and their relation to the exact snapshot that
+      supplied them, including rejected and quarantined records.
+    revision_policy: >
+      A future implementation must append a new revision or status transition;
+      it must not overwrite the source-derived value in place.
+  canonical_history_projection:
+    purpose: >
+      Expose the currently selected canonical representation for validated,
+      reconciled records while retaining references to immutable revisions.
+    bike_count_logical_key:
+      - counter_id
+      - counting_timestamp_utc
+    required_lineage:
+      - canonical_revision_id
+      - source_snapshot_id
+      - source_record_revision_id
+      - source_contract_version
+      - reference_snapshot_id_when_resolution_is_required
+      - canonicalization_rule_version_when_a_future_rule_is_applied
+  coverage_assessment:
+    purpose: >
+      Record expected-versus-observed coverage for a requested time window,
+      including valid records, quarantined records, unavailable source periods,
+      and proven gaps.
+  extraction_manifest:
+    purpose: >
+      Record an immutable future request and result description for a selected
+      canonical range consumed by dataset reconstruction.
+repository_invariants:
+  raw_snapshot_immutability: >
+    An accepted raw payload and its manifest evidence must remain immutable.
+    A new provider publication, correction, or validation result creates a new
+    snapshot or revision instead of replacing prior evidence.
+  transactional_visibility: >
+    A repository revision becomes visible only after its snapshot ledger entry,
+    validated records, lineage references, and coverage assessment are committed
+    together. Failed processing must not expose a partial canonical update.
+  idempotent_retry: >
+    A retry with the same source identity, contract version, requested coverage,
+    request context, and payload checksum must resolve to the same accepted
+    repository result rather than duplicate canonical revisions.
+  correction_preservation: >
+    A later source correction may supersede the current canonical representation,
+    but the prior source and canonical revisions must remain queryable by their
+    repository revision or snapshot identity.
+  deterministic_current_selection: >
+    The current canonical projection must select one approved revision per
+    logical key through a documented precedence rule. A tie or unresolved
+    precedence is blocking until reviewed.
+  source_specific_separation: >
+    Historical weather observations and prediction-time forecasts remain distinct
+    modes. Optional-source fallbacks must remain visible in lineage and must not
+    silently replace missing required data.
+timezone_policy:
+  canonical_instant: UTC for persisted time-window boundaries and canonical observation keys.
+  canonical_local_timezone: Europe/Paris for Paris business dates and local-calendar semantics.
+  range_boundary_policy: >
+    All extraction windows are half-open: window_start_inclusive <= timestamp <
+    window_end_exclusive. Inputs must be timezone-aware instants or explicit
+    Europe/Paris local dates converted under the shared DST policy.
+  daylight_saving_policy: >
+    Expected hourly coverage is generated from actual Europe/Paris civil-time
+    transitions. A local day can contain 23 or 25 hourly slots; no fixed
+    24-record-per-day assumption is permitted.
+write_contract:
+  accepted_snapshot_sequence:
+    - Persist immutable raw snapshot evidence.
+    - Validate against the relevant source contract.
+    - Persist source-record revisions and validation outcomes.
+    - Reconcile required identities using the authoritative reference snapshot.
+    - Assess coverage for the requested window.
+    - Commit one new repository revision or retain the previous revision on failure.
+  prohibited_behaviours:
+    - Blind append to a mutable rolling CSV.
+    - In-place overwrite of raw or canonical record history.
+    - Promotion of a partial or unvalidated repository revision.
+    - Implicit substitution of optional-source values.
+  quality_and_quarantine: >
+    Schema failures, record-level rejection or quarantine, quality warnings, and
+    future deterministic corrections remain separate outcomes. Quarantined
+    records retain snapshot and rule evidence and are excluded from the canonical
+    projection unless a later documented policy approves them.
+operation_contracts:
+  nominal_daily_sync:
+    purpose: >
+      Add newly available observations and re-evaluate a documented correction
+      lookback range.
+    required_selector:
+      - business_date_or_explicit_window
+      - correction_lookback_window
+      - source_id
+    result: >
+      A new repository revision only when validated source evidence changes the
+      selected canonical history.
+  historical_backfill:
+    purpose: Fill an explicitly requested historical interval.
+    required_selector:
+      - window_start_inclusive
+      - window_end_exclusive
+      - source_id
+    result: >
+      Idempotent range processing that may add snapshots and revisions without
+      changing records outside the selected interval.
+  completeness_repair:
+    purpose: Refill a range identified by a persisted coverage assessment.
+    required_selector:
+      - coverage_assessment_id_or_explicit_gap_intervals
+      - source_id
+    result: >
+      Reuses the historical-backfill contract and records whether each expected
+      gap was filled, remains unavailable, or remains quarantined.
+  correction_replay:
+    purpose: >
+      Recompute canonical selection for a selected interval after an upstream
+      correction, reference metadata change, or approved deterministic rule change.
+    required_selector:
+      - window_start_inclusive
+      - window_end_exclusive
+      - triggering_snapshot_or_rule_version
+    result: >
+      A traceable new repository revision with preserved superseded revisions.
+extraction_contract:
+  selector:
+    required_fields:
+      - window_start_inclusive
+      - window_end_exclusive
+      - as_of_repository_revision_or_snapshot_cutoff
+    optional_fields:
+      - counter_ids
+      - source_ids
+      - required_enrichment_sources
+      - expected_schema_or_dataset_contract_version
+  selector_rules:
+    - window_start_inclusive must precede window_end_exclusive.
+    - The selection uses canonical UTC timestamps after timezone normalization.
+    - A local calendar request must declare Europe/Paris and convert to explicit UTC boundaries.
+    - Percentage or row-position slicing of a mutable raw dataset is not a valid source-repository selector.
+    - The requested repository revision or snapshot cut-off makes replay deterministic.
+  result_requirements:
+    - Records ordered deterministically by canonical logical key.
+    - Repository revision and extraction manifest identity.
+    - Source snapshot and canonical revision lineage for every record.
+    - Coverage assessment for the selected interval.
+    - Explicit optional-source fallback evidence when applicable.
+  downstream_use: >
+    A later adapter may pass this date-bounded extraction to existing ML stages,
+    but the repository range is authoritative. No percentage-to-date conversion
+    or Airflow task is implemented here.
+coverage_and_gap_policy:
+  expected_population: >
+    Build expected bike-count slots only for counters considered active by the
+    versioned counter-reference metadata applicable to the selected window.
+  proven_gap: >
+    A missing canonical observation for an expected UTC hourly slot after source
+    availability, valid counter status, and quarantine outcomes are considered.
+  not_a_gap:
+    - A counter before installation or after documented retirement.
+    - A source period explicitly unavailable in snapshot lineage.
+    - A record quarantined with a separately recorded quality outcome.
+    - An optional enrichment value unavailable under its fallback policy.
+  repair_input: >
+    Persist gap intervals and their evidence so a future repair run can select
+    them directly instead of rediscovering them from an evolving raw file.
+failure_policy:
+  required_source_snapshot_failure: >
+    Do not advance the repository revision for the affected required data window.
+  incomplete_required_coverage: >
+    Preserve the coverage assessment and block future dataset promotion when the
+    later dataset contract requires complete coverage.
+  optional_source_unavailable: >
+    Record an explicit fallback and continue only without that enrichment.
+  repository_write_failure: >
+    Roll back the attempted repository revision and preserve the last accepted
+    revision unchanged.
+lineage_requirements:
+  repository_revision: >
+    Must identify the set of source snapshots, contract versions, validation
+    outcomes, reference snapshots, and future correction-rule versions used.
+  extraction_manifest: >
+    Must identify the selector, repository revision or snapshot cut-off, returned
+    row count, coverage result, output checksum, and downstream dataset build
+    when one is later implemented.
+out_of_scope:
+  - PostgreSQL container, service, database, role, schema, migration, or credential implementation.
+  - Airflow DAG, task, schedule, runtime command, or source connector.
+  - Snapshot writer, validation library, dataframe transformation, or dataset builder.
+  - Retention duration, backup, restore, and disaster-recovery implementation.
+  - Changes to the current static CSV pipeline.

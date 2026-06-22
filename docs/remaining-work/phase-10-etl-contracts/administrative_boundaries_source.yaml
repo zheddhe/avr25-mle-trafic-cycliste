@@ -1,0 +1,163 @@
+contract_version: 1.0.0
+source_id: paris_administrative_boundaries
+source_name: Paris administrative boundaries
+classification: optional
+implementation_priority: P2
+shared_policy_reference: README.md
+authority:
+  organization: Approved official geographic publisher to be selected from data.gouv.fr, IGN, Insee, or City of Paris.
+  source_of_truth: Versioned administrative-boundary geometry for offline Paris geographic enrichment.
+provider:
+  name: Official boundary dataset candidate
+  distribution_platform: GeoJSON or Shapefile download
+  provider_selection_status: Provider and dataset identity must be approved before implementation.
+access_mode:
+  supported_representations:
+    - GeoJSON download
+    - Shapefile download
+  implementation_status: documentation_only
+purpose:
+  primary_use: >
+    Future offline point-in-polygon validation and administrative enrichment,
+    such as arrondissement assignment.
+  output_intent: arrondissement_or_equivalent_administrative_label
+  serving_policy: No live geographic lookup during pipeline execution.
+current_state:
+  status: planned_not_implemented
+  note: >
+    Current static data may embed arrondissement values, but no authoritative
+    boundary snapshot, geometry validation, or geographic join is implemented.
+cadence:
+  expected_publication: Infrequent administrative-boundary releases or revisions.
+  versioning_policy: Preserve each downloaded boundary release and declared source version.
+coverage:
+  geography: Paris administrative areas.
+  geometry_scope: Polygon or multipolygon boundaries for approved administrative units.
+timezone_policy:
+  source_timezone: Not applicable to static geometry.
+  canonical_timezone: Europe/Paris for any future temporal metadata associated with a boundary release.
+availability_at_prediction_time:
+  classification: stable_validated_reference
+  policy: >
+    A versioned validated boundary snapshot may be reused by future offline
+    dataset reconstruction. Pipeline execution must not make a live geographic lookup.
+snapshot_requirements:
+  payload: Preserve the unmodified GeoJSON or Shapefile release and related metadata files.
+  required_manifest_evidence:
+    - source_id
+    - contract_version
+    - provider_dataset_or_file_identity
+    - declared_release_or_version
+    - acquisition_timestamp
+    - coverage
+    - coordinate_reference_system
+    - feature_count
+    - schema_fingerprint
+    - payload_checksum
+logical_keys:
+  future_boundary_key:
+    - administrative_unit_identifier
+    - boundary_release_version
+  future_enrichment_key:
+    - counter_or_site_coordinates
+    - boundary_release_version
+schema:
+  required_fields:
+    - administrative_unit_identifier
+    - geometry
+  optional_fields:
+    - administrative_unit_label
+    - administrative_level
+  field_definitions:
+    - contract_field_name: administrative_unit_identifier
+      source_field_name: null
+      canonical_target_name: administrative_unit_id
+      origin: authoritative_boundary_snapshot
+      expected_type: string_or_integer_identifier
+      required_status: required
+      nullable: false
+      accepted_format: Stable identifier from the approved official dataset.
+      semantic_meaning: Identity of the administrative boundary feature.
+      validation_severity: schema_level_failure
+      comments: The exact provider field is intentionally unconfirmed until a source dataset is selected.
+    - contract_field_name: geometry
+      source_field_name: geometry
+      canonical_target_name: geometry
+      origin: authoritative_boundary_snapshot
+      expected_type: polygon_or_multipolygon
+      required_status: required
+      nullable: false
+      accepted_format: Valid GeoJSON geometry or valid Shapefile geometry with declared CRS.
+      semantic_meaning: Administrative boundary used for future point-in-polygon operations.
+      validation_severity: schema_level_failure
+      comments: Geometry validity and CRS must be checked before any enrichment.
+    - contract_field_name: administrative_unit_label
+      source_field_name: null
+      canonical_target_name: administrative_unit_label
+      origin: authoritative_boundary_snapshot
+      expected_type: string
+      required_status: optional
+      nullable: true
+      accepted_format: Human-readable administrative label.
+      semantic_meaning: Expected arrondissement or equivalent output label.
+      validation_severity: quality_warning
+      comments: The label complements a stable identifier and must not replace it.
+    - contract_field_name: administrative_level
+      source_field_name: null
+      canonical_target_name: administrative_level
+      origin: authoritative_boundary_snapshot
+      expected_type: string_or_integer
+      required_status: optional
+      nullable: true
+      accepted_format: Provider-published administrative level.
+      semantic_meaning: Level of the boundary feature, such as arrondissement when published.
+      validation_severity: quality_warning
+      comments: Supports verification that the approved dataset has the intended granularity.
+business_rules:
+  - rule_id: declared_coordinate_reference_system
+    statement: The snapshot must declare a coordinate reference system that can be transformed deterministically for future point-in-polygon work.
+    violation_level: schema_level_failure
+  - rule_id: valid_geometry
+    statement: Each in-scope geometry must be structurally valid polygon or multipolygon geometry.
+    violation_level: schema_level_failure
+  - rule_id: offline_enrichment_only
+    statement: Future geographic enrichment must use a versioned local snapshot and must not perform live geographic lookup during pipeline execution.
+    violation_level: schema_level_failure
+  - rule_id: intended_administrative_output
+    statement: The approved dataset must provide an arrondissement or equivalent administrative output through identifier or label.
+    violation_level: schema_level_failure
+quality_rules:
+  - rule_id: invalid_or_empty_geometry
+    condition: A feature has invalid, empty, or non-polygon geometry.
+    severity: record_level_rejection_or_quarantine
+    evidence_required: Preserve feature identity, geometry issue, and snapshot identity.
+    current_action: No geometry repair is performed by this story.
+  - rule_id: overlapping_or_ambiguous_boundary_result
+    condition: A future point-in-polygon operation produces more than one incompatible administrative result.
+    severity: quality_warning
+    evidence_required: Preserve coordinate, boundary-release version, and matching feature identifiers.
+    current_action: A deterministic precedence rule is future work.
+schema_change_policy:
+  missing_required_field: block_snapshot_promotion
+  incompatible_required_field_type: block_snapshot_promotion
+  unexpected_optional_or_non_critical_field: warn_and_capture_schema_fingerprint
+  changed_semantics: block_until_reviewed_and_contract_versioned
+failure_policy:
+  required_source_unavailable: not_applicable
+  schema_level_failure: Block future use of the affected boundary snapshot.
+  record_level_rejection_or_quarantine: Quarantine invalid features with snapshot evidence.
+  quality_warning: Record for review without altering the original boundary payload.
+  optional_source_fallback: >
+    Continue without geographic enrichment and record the fallback in future
+    dataset lineage. Do not use a live lookup or unapproved alternative boundary source.
+  explicit_source_exclusion: Administrative boundaries are optional in the Phase 10 MVP.
+lineage_requirements:
+  future_enriched_record: >
+    Must retain boundary snapshot identity, contract version, declared CRS,
+    geometry feature identifier, and future spatial predicate result.
+out_of_scope:
+  - Boundary download client or format parser.
+  - CRS transformation or geometry-repair implementation.
+  - Point-in-polygon join implementation.
+  - Live reverse-geocoding or geographic lookup.
+  - Model-feature selection.

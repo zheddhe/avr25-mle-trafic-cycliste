@@ -1,0 +1,127 @@
+contract_version: 1.0.0
+source_id: french_public_holidays
+source_name: French mainland public holidays
+classification: optional
+implementation_priority: P1
+shared_policy_reference: README.md
+authority:
+  organization: French public administration
+  source_of_truth: Official French mainland public-holiday calendar for Paris.
+provider:
+  name: calendrier.api.gouv.fr
+  distribution_platform: Government REST API
+access_mode:
+  supported_representations:
+    - Yearly REST JSON payload
+  implementation_status: documentation_only
+purpose:
+  primary_use: Future deterministic calendar enrichment for Paris bike-traffic datasets.
+  expected_derived_representation: is_public_holiday
+  feature_selection_note: This contract does not decide whether the derived representation is a model feature.
+current_state:
+  status: planned_not_implemented
+  note: No public-holiday acquisition, snapshot validation, or feature generation is implemented.
+cadence:
+  expected_publication: Published calendar by year.
+  versioning_policy: Preserve a yearly snapshot version and its acquisition evidence.
+coverage:
+  geography: French mainland, provider scope metropole.
+  temporal_scope: Calendar dates for the requested year.
+timezone_policy:
+  source_timezone: Date-only calendar values with no time-of-day.
+  canonical_timezone: Europe/Paris
+  date_interpretation: A holiday date applies to the Europe/Paris civil date.
+availability_at_prediction_time:
+  classification: known_in_advance_after_publication
+  policy: >
+    A published yearly calendar may be used only after its snapshot is acquired
+    and validated. Its availability must be recorded in future lineage.
+snapshot_requirements:
+  payload: Preserve the unmodified yearly JSON response.
+  required_manifest_evidence:
+    - source_id
+    - contract_version
+    - provider_endpoint_identity
+    - requested_year
+    - acquisition_timestamp
+    - row_count
+    - schema_fingerprint
+    - payload_checksum
+logical_keys:
+  future_calendar_key:
+    - holiday_date
+  scope_filter: metropole
+schema:
+  required_fields:
+    - holiday_date
+    - holiday_label
+  optional_fields: []
+  field_definitions:
+    - contract_field_name: holiday_date
+      source_field_name: JSON object key representing a calendar date
+      canonical_target_name: holiday_date
+      origin: raw_snapshot
+      expected_type: date
+      required_status: required
+      nullable: false
+      accepted_format: ISO calendar date, YYYY-MM-DD.
+      semantic_meaning: French mainland public-holiday date.
+      validation_severity: schema_level_failure
+      comments: The date is interpreted in Europe/Paris for future enrichment.
+    - contract_field_name: holiday_label
+      source_field_name: JSON object value representing the holiday name
+      canonical_target_name: holiday_label
+      origin: raw_snapshot
+      expected_type: string
+      required_status: required
+      nullable: false
+      accepted_format: Non-empty provider label.
+      semantic_meaning: Published public-holiday name.
+      validation_severity: schema_level_failure
+      comments: Label text is retained for lineage; no category mapping is defined here.
+business_rules:
+  - rule_id: mainland_scope
+    statement: Only provider scope metropole is valid for the Paris use case.
+    violation_level: schema_level_failure
+  - rule_id: unique_calendar_date
+    statement: A yearly snapshot must not contain conflicting labels for the same holiday date.
+    violation_level: schema_level_failure
+  - rule_id: deterministic_derived_representation
+    statement: >
+      Future generation of is_public_holiday must derive from the versioned
+      holiday-date set and the Europe/Paris civil date.
+    violation_level: schema_level_failure
+quality_rules:
+  - rule_id: unexpected_non_critical_field
+    condition: A payload adds a non-critical field.
+    severity: quality_warning
+    evidence_required: Preserve future schema-fingerprint evidence.
+    current_action: No transformation is performed by this story.
+  - rule_id: outside_requested_year
+    condition: A date falls outside the requested yearly snapshot scope.
+    severity: quality_warning
+    evidence_required: Preserve source and request evidence.
+    current_action: Future implementation must review rather than silently discard it.
+schema_change_policy:
+  missing_required_field: block_snapshot_promotion
+  incompatible_required_field_type: block_snapshot_promotion
+  unexpected_optional_or_non_critical_field: warn_and_capture_schema_fingerprint
+  changed_semantics: block_until_reviewed_and_contract_versioned
+failure_policy:
+  required_source_unavailable: not_applicable
+  schema_level_failure: block_future_optional_enrichment_for_that_snapshot
+  record_level_rejection_or_quarantine: Quarantine invalid calendar records with snapshot evidence.
+  quality_warning: Record for review without changing the raw payload.
+  optional_source_fallback: >
+    Continue without public-holiday enrichment, record the fallback in future
+    dataset lineage, and do not substitute an unapproved stale or alternative source.
+  explicit_source_exclusion: not_applicable
+lineage_requirements:
+  future_derived_value: >
+    Must reference the yearly source snapshot identity, contract version, and
+    metropole scope used to derive it.
+out_of_scope:
+  - Calendar API client or snapshot writer.
+  - Derived feature-generation code.
+  - Model-feature selection.
+  - Non-mainland French calendar scopes.

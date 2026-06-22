@@ -10,6 +10,12 @@
 > **Design reference**:
 > [zheddhe/mai25-bds-trafic-cycliste](https://github.com/zheddhe/mai25-bds-trafic-cycliste)
 > notebooks and `smartcheck/` source code.
+>
+> **Source data contracts**:
+> [Phase 10.2 contract directory](phase-10-etl-contracts/README.md). These
+> versioned documentation contracts define future snapshot validation,
+> canonicalization, and ML-ready dataset reconstruction inputs; they do not
+> implement acquisition, validation, or dataset building.
 
 ---
 
