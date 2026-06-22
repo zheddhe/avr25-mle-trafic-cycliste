@@ -1,7 +1,17 @@
-# Phase 9 bounded scale-out execution contract
+# Phase 9 — Bounded scale-out execution
 
-This document defines the Phase 9 scale-out contract. It records the rules that
-must remain true while bounded local parallelism is implemented and validated.
+> **Status**: Future-state execution target. The current execution and
+> artifact-promotion contract is documented in
+> [`../architecture-references/execution-and-artifact-promotion-contract.md`](../architecture-references/execution-and-artifact-promotion-contract.md).
+
+## Purpose
+
+Phase 9 defines the additional behaviour that must be implemented and validated
+before the local runtime can claim safe bounded multi-counter parallelism.
+
+It does not redefine the current runner, gateway, manifest-promotion, or API
+serving guarantees. Those current-state rules are architecture references and
+remain mandatory compatibility constraints for Phase 9 work.
 
 ## Scope
 
@@ -9,7 +19,7 @@ Phase 9 targets bounded parallel execution for the local `docker/prod` runtime,
 while keeping `docker/dev` structurally comparable for debugging and demos.
 
 The intended outcome is controlled multi-counter execution with explicit
-concurrency, retry, resource-safety, traceability, and manifest-promotion rules.
+concurrency, retry, resource-safety, traceability, and operational evidence.
 
 ## Out of scope
 
@@ -22,25 +32,22 @@ The following topics remain outside Phase 9 unless a later story changes scope:
 - full ETL source-chain redesign;
 - production security hardening beyond preserving existing runtime boundaries.
 
-## Current safe baseline
+## Required compatibility with the current architecture
 
-The current local runtime keeps the execution boundary narrow:
+Phase 9 must preserve the current execution and artifact-promotion contract:
 
-- Airflow owns DAG ordering and counter fan-out decisions;
-- Airflow submits typed step jobs to the internal `job-runner-api`;
-- the runner dispatches allow-listed jobs through `ml-gateway`;
-- ML step services execute one typed job request at a time per service process;
-- API refresh happens after successful model promotion;
-- serving reads promoted prediction manifests through `current.json`.
-
-This baseline is the rollback point for Phase 9 work. Increasing parallelism must
-not bypass typed contracts, gateway routing, manifest promotion safety, or the
-current Docker socket boundary.
+- Airflow continues to own DAG ordering and fan-out decisions;
+- typed jobs continue to cross `job-runner-api` and `ml-gateway`;
+- promoted artifacts remain manifest-first and counter-scoped;
+- same-scope `current.json` promotion remains atomic and serialized;
+- an API refresh failure does not invalidate the last successfully loaded
+  artifact state;
+- runner and ML-service trace identifiers remain available for diagnosis.
 
 ## Target bounded concurrency model
 
-Bounded parallelism can be enabled when the following behavior is documented and
-testable:
+Bounded parallelism can be enabled only when the following behaviour is
+implemented, configured, and tested:
 
 - orchestrator fan-out across counters is bounded by configuration;
 - child DAG concurrency is bounded by configuration;
@@ -48,123 +55,73 @@ testable:
 - runner in-flight service dispatch is bounded;
 - ML service replica counts are explicit and conservative by default;
 - API refresh happens only after the relevant model promotion succeeds;
-- runtime logs and metrics expose enough evidence to diagnose slow or failed jobs.
+- logs and metrics provide evidence for queued, running, succeeded, retried, and
+  failed jobs.
 
 The target is local bounded parallelism, not unbounded throughput.
 
-## Per-counter ordering rules
+## Per-counter ordering and readiness
 
-For one counter and one logical run, the task order remains:
+For one counter and one logical run, parallel execution must not reorder the
+pipeline steps required by the active dataset and model workflow.
 
-```text
-init gate, when applicable
-  -> ingest
-  -> features
-  -> models
-  -> API refresh
-```
+Until Phase 10 changes the source chain, a daily run must still fail safely when
+the required initialization state is missing or invalid.
 
-Parallel execution must not reorder steps within a single counter run.
+After Phase 10 is implemented, this becomes a dataset-readiness gate: a daily
+run must require a valid canonical dataset state and must not publish partial
+artifacts when bootstrap, source validation, or current-window reconstruction
+has failed.
 
-A daily run must not bypass the init requirement for the same counter. If init
-state is missing or invalid, daily execution must fail safely instead of creating
-partial artifacts.
+## Serialization and isolation objectives
 
-## Serialization rules
-
-The following operations must remain serialized:
+The following must remain serialized or equivalently protected by a documented
+concurrency control mechanism:
 
 - promotion of the same artifact type for the same counter;
 - updates to the same promoted `current.json` path;
-- init marker updates for the same counter;
+- readiness-state updates for the same counter;
 - API refresh for the same counter when it depends on a newly promoted model.
 
-The following operations may become parallel when resource limits allow it:
+The following may become parallel only after capacity and isolation are proven:
 
 - execution for different counters;
 - writes to independent counter-scoped artifact paths;
 - API refreshes for different counters when API state remains consistent;
 - ML step service calls that do not share unsafe mutable state.
 
-## Manifest promotion invariants
-
-Manifest promotion must preserve these invariants:
-
-- there is one promoted `current.json` per artifact type and counter;
-- readers must not observe partial `current.json` content;
-- a failed promotion leaves the previous valid manifest intact when one exists;
-- retries are deterministic for the same run inputs;
-- cross-counter overwrites are impossible by construction;
-- promoted manifest paths remain counter-scoped;
-- payload checksum evidence remains valid after promotion.
-
-The local filesystem manifest store implements these invariants with atomic
-write-and-replace behavior and a scope-local promotion lock. The lock scope is
-`<artifact_type>/<counter_id>`, which serializes same-counter promotion without
-blocking independent counters unnecessarily.
-
-## Failure and retry contract
-
-Runner, ML service, Airflow, and API refresh failures must remain explicit and
-traceable.
-
-A failed job should provide enough evidence to identify:
-
-- `job_type`;
-- `counter_id`;
-- `run_id` or trace id;
-- `job_id`;
-- service instance log file or `metrics_reference`;
-- whether retry is safe;
-- manifest or payload path affected, when applicable.
-
-Retries must not corrupt promoted artifacts. Retrying a completed run should be
-safe when inputs and paths are identical, or explicitly rejected with a clear
-error.
-
-API refresh failures must not invalidate the last successfully loaded artifact
-state.
-
-## Resource-safety contract
+## Resource-safety and backpressure objectives
 
 Parallelism must be bounded by explicit configuration. Defaults must remain safe
 for a local development laptop.
 
-Implementation stories should define or preserve:
+Implementation stories must define and validate:
 
 - maximum active parent DAG runs;
 - maximum active child DAG runs;
 - maximum active tasks per child DAG;
 - maximum runner in-flight jobs;
-- ML step service timeout behavior;
-- backpressure behavior when capacity is exhausted;
-- monitoring signals for queued, running, succeeded, and failed jobs.
+- ML step service timeout and retry behaviour;
+- backpressure behaviour when capacity is exhausted;
+- resource limits per service family;
+- monitoring signals for queueing, running, success, retry, failure, and slow
+  jobs.
 
-No story should introduce unbounded mapped task expansion or unbounded runner
+No story may introduce unbounded mapped-task expansion or unbounded runner
 submissions.
 
-## Implemented prerequisites
+## Acceptance evidence
 
-The following prerequisites are implemented in the local runtime baseline:
+The bounded scale-out claim requires production-like acceptance evidence showing
+at least:
 
-- manifest promotion is atomic from the API reader perspective;
-- run-scoped manifests and promoted `current.json` files remain counter-scoped;
-- same artifact type and counter promotions are serialized with a scope-local
-  lock;
-- repeated promotion of identical manifest content is idempotent;
-- failed promoted-manifest writes preserve the previous valid `current.json`;
-- manifest-backed API loading keeps serving the latest promoted artifact;
-- runner and ML service logs expose `run_id`, `job_id`, `job_type`, `counter_id`,
-  and `metrics_reference`.
-
-## Remaining implementation stories
-
-Remaining implementation work includes:
-
-- bounded multi-counter parallel execution;
-- scale-out acceptance validation and operational observability;
-- stronger API refresh consistency if refreshes become per-counter parallel;
-- explicit resource limits and backpressure behavior for local scale-out.
+- concurrent execution for multiple counters within configured bounds;
+- deterministic ordering for each counter;
+- preservation of counter-scoped manifest promotion;
+- safe retry behaviour without promoted-artifact corruption;
+- clear capacity-exhaustion and timeout behaviour;
+- observable job correlation across Airflow, runner, ML services, and API
+  refresh.
 
 ## Expected file and test impact
 
@@ -174,10 +131,10 @@ Remaining implementation stories may update:
 - `docker/prod/airflow/config/bike_dag_config.json`;
 - `src/job_runner/`;
 - `src/ml/` manifest emission callers when concurrency semantics change;
-- `src/api/` refresh behavior when needed;
-- `tests/unit/` for contract-level concurrency and idempotency checks;
-- `tests/integration/` for runner and manifest behavior;
+- `src/api/` refresh behaviour when needed;
+- `tests/unit/` for concurrency, idempotency, and readiness contracts;
+- `tests/integration/` for runner, gateway, and manifest behaviour;
 - `tests/acceptance/` for production-like scale-out validation.
 
-Current runtime and architecture documentation should only be updated after the
-related behavior is implemented and validated.
+Stable behaviour becomes current documentation only after it is implemented and
+validated.
