@@ -2,11 +2,12 @@
 
 > **Status**: Documentation-level future-state contracts. They do not implement
 > source acquisition, snapshot writing, schema fingerprinting, record validation,
-> canonicalization, enrichment, or dataset reconstruction.
+> canonicalization, repository persistence, enrichment, or dataset reconstruction.
 
-This directory contains versioned, implementation-neutral source contracts for
-the future Phase 10 ETL source chain. A later implementation may consume these
-documents as design input, but this story adds no YAML parser or runtime coupling.
+This directory contains versioned, implementation-neutral source and persistence
+contracts for the future Phase 10 ETL source chain. A later implementation may
+consume these documents as design input, but this story adds no YAML parser or
+runtime coupling.
 
 ## Contract vocabulary
 
@@ -36,6 +37,10 @@ Every source contract uses the following top-level fields:
 | `failure_policy` | Blocking, record-level, warning, fallback, and exclusion outcomes. |
 | `lineage_requirements` | Traceability requirements across source, snapshot, and future canonical records. |
 | `out_of_scope` | Deliberate exclusions from this contract and story. |
+
+The supporting repository contract uses `contract_id` and `contract_type` rather
+than `source_id`. It defines the persistence and extraction boundary shared by
+all included source contracts; it is not an additional external source.
 
 ### Field-definition vocabulary
 
@@ -114,17 +119,35 @@ Later canonical records and dataset manifests must reference the applicable
 source snapshot identity and contract version. This story does not implement
 manifest writing, checksums, or schema fingerprints.
 
+### Canonical repository and date-range extraction
+
+[`canonical_history_repository_contract.yaml`](canonical_history_repository_contract.yaml)
+defines the future persistence boundary between validated source snapshots and
+ML-ready dataset reconstruction. Its intended implementation target is a
+PostgreSQL-compatible relational repository with logical isolation from
+orchestration and experiment-tracking metadata stores. It does not introduce a
+PostgreSQL container, schema, migration, DAG task, or runtime configuration.
+
+The repository preserves immutable raw-payload references and append-only source
+and canonical revisions. It supports idempotent nominal daily synchronization,
+explicit historical backfills, targeted gap repair, and correction replay. Its
+only valid downstream selector is an explicit, timezone-safe half-open date range
+`[window_start_inclusive, window_end_exclusive)` plus a repository revision or
+snapshot cut-off. Percentage or row-position slicing of a mutable raw file is
+not a valid source-repository selector.
+
 ### No direct runtime coupling
 
 These contracts stay independent of FastAPI, Airflow, Docker, CLI internals,
 local paths, Python class names, and validation-library APIs. Runtime
-acquisition, validation, dataset building, and serving integration belong to
-later Phase 10 stories.
+acquisition, validation, repository implementation, dataset building, and
+serving integration belong to later Phase 10 stories.
 
 ## Contract inventory
 
 | Contract | Classification | Priority | Purpose |
 | --- | --- | --- | --- |
+| [`canonical_history_repository_contract.yaml`](canonical_history_repository_contract.yaml) | Required persistence boundary | P0 | Canonical history, revision lineage, gap assessment, and deterministic date-range extraction. |
 | [`bike_counts_source.yaml`](bike_counts_source.yaml) | Required | P0 | Primary observed bike-traffic history. |
 | [`counter_reference_source.yaml`](counter_reference_source.yaml) | Required | P0 | Stable counter identity and reference metadata. |
 | [`public_holidays_source.yaml`](public_holidays_source.yaml) | Optional | P1 | French mainland calendar enrichment. |
